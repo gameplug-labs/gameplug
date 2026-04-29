@@ -1,0 +1,11 @@
+{
+    "file_format_version": "1.0.0",
+    "layer": {
+        "name": "VK_LAYER_GAMEPLUG",
+        "type": "GLOBAL",
+        "library_path": ".\\vklayer.dll",
+        "api_version": "1.3.268",
+        "implementation_version": "1",
+        "description": "GamePlug Vulkan Layer Framework"
+    }
+}

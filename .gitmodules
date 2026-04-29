@@ -1,0 +1,23 @@
+[submodule "external/imgui"]
+	path = external/imgui
+	url = https://github.com/ocornut/imgui
+[submodule "external/volk"]
+	path = external/volk
+	url = https://github.com/zeux/volk
+[submodule "external/glm"]
+	path = external/glm
+	url = https://github.com/g-truc/glm
+[submodule "external/VulkanMemoryAllocator"]
+	path = external/VulkanMemoryAllocator
+	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
+[submodule "external/minhook"]
+	path = external/minhook
+	url = https://github.com/tsudakageyu/minhook
+
+	branch = pd-upscaler-update
+[submodule "external/safetyhook"]
+	path = external/safetyhook
+	url = https://github.com/cursey/safetyhook.git
+[submodule "external/spdlog"]
+	path = external/spdlog
+	url = https://github.com/gabime/spdlog

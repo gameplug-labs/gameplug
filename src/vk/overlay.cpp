@@ -3,7 +3,6 @@
 #include "logger.h"
 #include "dispatch.h"
 #include "plugin_manager.h"
-#include "upscaler_manager.h"
 #include "config.h"
 #include <iostream>
 #include <algorithm>
@@ -112,9 +111,6 @@ void OverlayRenderer::SetupDevice(VkInstance instance, VkPhysicalDevice physical
     // Load Plugins
     PluginManager::Get().LoadPlugins();
 
-    // Initialize Upscaler
-    Logger::info("OverlayRenderer: Triggering UpscalerManager::LoadUpscaler");
-    UpscalerManager::Get().LoadUpscaler((uintptr_t)instance, (uintptr_t)physicalDevice, (uintptr_t)device);
 }
 
 void OverlayRenderer::SetupSwapchain(VkSwapchainKHR swapchain, VkFormat format, VkExtent2D extent, 
@@ -313,7 +309,6 @@ void OverlayRenderer::NewFrame() {
         Logger::info("OverlayRenderer: NewFrame started (Logged every 600 frames)");
     }
 
-    UpscalerManager::Get().NewFrame();
 
     // Toggle Visibility with HOME key
     bool keyCurrentlyPressed = (GetAsyncKeyState(VK_HOME) & 0x8000) != 0;
@@ -359,10 +354,6 @@ void OverlayRenderer::Render(VkCommandBuffer cmd, VkImage source, VkImage target
     auto* dev_entry = DispatchManager::Get().GetDevice(m_device);
     if (!dev_entry) return;
 
-    // 1. Perform Upscaling (Source -> Target) if images are valid
-    if (source != VK_NULL_HANDLE && target != VK_NULL_HANDLE) {
-        UpscalerManager::Get().RenderFrame((uintptr_t)cmd, (uint64_t)source, (uint64_t)target, width, height);
-    }
 
     // 2. Draw GamePlug ImGui UI
     m_uiRendered = true;
@@ -390,16 +381,8 @@ void OverlayRenderer::Render(VkCommandBuffer cmd, VkImage source, VkImage target
     Config::Get().RenderUI();
 
     bool pluginsEnabled = Config::Get().GetBool("PluginEnabled", true);
-    bool hasUpscaler = UpscalerManager::Get().IsLoaded();
     bool hasPlugins = pluginsEnabled && !PluginManager::Get().IsEmpty();
 
-    // 2. Render Upscaler UI (with its own separator if loaded)
-    if (hasUpscaler) {
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
-        UpscalerManager::Get().RenderUI(io.Framerate, m_swapchainRes.extent.width, m_swapchainRes.extent.height);
-    }
 
     // 3. Render Plugins UI (with a separator if we already showed an upscaler or if we want one after config)
     if (hasPlugins) {
@@ -409,7 +392,7 @@ void OverlayRenderer::Render(VkCommandBuffer cmd, VkImage source, VkImage target
         PluginManager::Get().RenderPlugins();
     }
  
-    if (!hasUpscaler && !hasPlugins) {
+    if (!hasPlugins) {
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::Spacing();

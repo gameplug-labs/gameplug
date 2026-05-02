@@ -9,7 +9,6 @@
 #include "config.h"
 #include "plugin_manager.h"
 #include "plugin_manager.h"
-#include "upscaler_manager.h"
 #include <mutex>
 #include <unordered_map>
 
@@ -121,8 +120,8 @@ void SetLastEngineRenderTarget(ID3D12Resource* pRes) {
     D3D12_RESOURCE_DESC desc = pRes->GetDesc();
     if (desc.Flags & D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL) return;
 
-    uint32_t rw = DXUpscalerManager::Get().GetRenderWidth();
-    uint32_t rh = DXUpscalerManager::Get().GetRenderHeight();
+    uint32_t rw = 0;
+    uint32_t rh = 0;
 
     bool matchesRenderSize =
         abs((int)desc.Width - (int)rw) < 16 &&
@@ -182,8 +181,6 @@ void CleanupDX12(bool isResize) {
             SyncAllDX12Queues();
         }
 
-        Logger::info(" - Releasing Upscaler Resources");
-        DXUpscalerManager::Get().CleanupPlugin();
 
         if (g_lastEngineRenderTarget) {
             std::lock_guard<std::recursive_mutex> lock(g_TargetMtx);
@@ -308,8 +305,6 @@ bool InitImGuiDX11(IDXGISwapChain* pSwapChain) {
     }
 
     Logger::info("DX11 Init: Success");
-    DXUpscalerManager::Get().InitDX11(g_pd3dDevice, g_pd3dDeviceContext);
-    DXUpscalerManager::Get().UpdateDimensions(sd.BufferDesc.Width, sd.BufferDesc.Height);
     return true;
 }
 
@@ -464,8 +459,6 @@ bool InitImGuiDX12(IDXGISwapChain* pSwapChain, ID3D12CommandQueue* pQueue) {
 
     // Load Plugins
     PluginManager::Get().LoadPlugins();
-    DXUpscalerManager::Get().InitDX12(g_pd3d12Device, pQueue);
-    DXUpscalerManager::Get().UpdateDimensions(sd.BufferDesc.Width, sd.BufferDesc.Height);
 
     // Premium Styling Port from vk_overlay.cpp
     ImGuiStyle& style = ImGui::GetStyle();
@@ -509,13 +502,7 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
     if (g_InHook) return;
     ScopedRecursionGuard guard;
 
-    // [FIX] Execute FSR every frame when signaled by the engine
-    if (DXUpscalerManager::Get().IsFSRReady() && DXUpscalerManager::Get().HasValidRT()) {
-        Logger::warn("FSR RUNNING IN PRESENT");
-        DXUpscalerManager::Get().RunFSRPass();
-    }
 
-    DXUpscalerManager::Get().ResetFrame();
 
     {
         std::lock_guard<std::recursive_mutex> lock(g_TargetMtx);
@@ -541,8 +528,6 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
     g_frameCounter++;
     
     // RE Engine Stability: Ensure hooks are applied as soon as a SceneView is available
-    DXUpscalerManager::Get().UpdateREEngineHooks();
-    DXUpscalerManager::Get().SetCurrentSwapChain(pSwapChain);
 
     g_needsNewImGuiFrame = true;
     g_totalPresentCalls++;
@@ -716,7 +701,6 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
         ImGui_ImplDX11_NewFrame();
         ImGui_ImplWin32_NewFrame();
         ImGui::NewFrame();
-        DXUpscalerManager::Get().NewFrame();
 
         float uiScale = (std::max)(1.0f, (float)desc.BufferDesc.Height / 720.0f);
         
@@ -743,7 +727,6 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
             ImGui::Spacing();
         }
         
-        DXUpscalerManager::Get().RenderUI(ImGui::GetIO().Framerate, desc.BufferDesc.Width, desc.BufferDesc.Height);
 
         if (pluginsEnabled && !PluginManager::Get().IsEmpty()) {
             ImGui::Spacing();
@@ -752,7 +735,7 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
             PluginManager::Get().RenderPlugins();
         }
 
-        if (!DXUpscalerManager::Get().IsLoaded() && PluginManager::Get().IsEmpty()) {
+        if (PluginManager::Get().IsEmpty()) {
             ImGui::Spacing();
             ImGui::TextDisabled("No modules or plugins loaded.");
         }
@@ -763,7 +746,6 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
         if (g_mainRenderTargetView) {
             if (shouldLog) Logger::info("DX11 Frame Trace: Entry Render Objects");
             // Diagnostic: Attempt upscaling. Note: sourceSRV is currently nullptr in DX11.
-            DXUpscalerManager::Get().RenderFrameDX11(g_pd3dDeviceContext, nullptr, g_mainRenderTargetView, desc.BufferDesc.Width, desc.BufferDesc.Height);
 
             g_pd3dDeviceContext->OMSetRenderTargets(1, &g_mainRenderTargetView, NULL);
             ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
@@ -866,7 +848,6 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
                         ImGui::Spacing();
                     }
 
-                    DXUpscalerManager::Get().RenderUI(g_realFPS, width, height);
 
                     if (pluginsEnabled && !PluginManager::Get().IsEmpty()) {
                         ImGui::Spacing();
@@ -875,7 +856,7 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
                         PluginManager::Get().RenderPlugins();
                     }
 
-                    if (!DXUpscalerManager::Get().IsLoaded() && PluginManager::Get().IsEmpty()) {
+                    if (PluginManager::Get().IsEmpty()) {
                         ImGui::Spacing();
                         ImGui::TextDisabled("No modules or plugins loaded.");
                     }

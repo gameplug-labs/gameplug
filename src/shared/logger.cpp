@@ -72,14 +72,5 @@ void Logger::Init(const std::string& filename) {
     }
 }
 
-void Logger::LogBridge(GamePlugUpscalerInterface::LogLevel level, const char* message, void* context) {
-    std::string formattedMsg = "[Bridge] " + std::string(message);
-    switch (level) {
-        case GamePlugUpscalerInterface::LOG_INFO:  Logger::info(formattedMsg); break;
-        case GamePlugUpscalerInterface::LOG_WARN:  Logger::warn(formattedMsg); break;
-        case GamePlugUpscalerInterface::LOG_ERROR: Logger::error(formattedMsg); break;
-        case GamePlugUpscalerInterface::LOG_DEBUG: Logger::debug(formattedMsg); break;
-    }
-}
 
 } // namespace GamePlug

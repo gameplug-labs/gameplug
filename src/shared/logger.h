@@ -3,7 +3,6 @@
 #include <spdlog/spdlog.h>
 #include <spdlog/fmt/fmt.h>
 #include "framework_export.h"
-#include "upscaler_interface.h"
 
 namespace GamePlug {
     FRAMEWORK_API void Init();
@@ -49,7 +48,6 @@ public:
         if (s_logger) s_logger->debug("{}", msg);
     }
 
-    static void LogBridge(GamePlugUpscalerInterface::LogLevel level, const char* message, void* context);
 
     // Compatibility shim for old Logger::Get().Init()
     struct GetShim {

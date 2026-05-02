@@ -3,7 +3,6 @@
 #include <d3d12.h>
 #include <dxgi1_5.h>
 #include "minhook.h"
-#include "upscaler_manager.h"
 #include "config.h"
 #include <mutex>
 #include <set>
@@ -144,103 +143,10 @@ void STDMETHODCALLTYPE HookedRSSetViewports(ID3D12GraphicsCommandList* pList, UI
     }
     ScopedRecursionGuard guard;
 
-    if (Count > 0 && pViewports && DXUpscalerManager::Get().IsUpscalingEnabled()) {
-        // Stability Fix: Bypass scaling during first 50 frames or if RT not ready
-        if (g_frameCount < 50 || !DXUpscalerManager::Get().HasValidRT()) {
+    if (Count > 0 && pViewports) {
             g_OriginalRSSetViewports(pList, Count, pViewports);
             return;
-        }
-
-        uint32_t rw = DXUpscalerManager::Get().GetRenderWidth();
-        uint32_t rh = DXUpscalerManager::Get().GetRenderHeight();
-        if (g_frameCount < 50 || !DXUpscalerManager::Get().HasValidRT()) {
-            g_OriginalRSSetViewports(pList, Count, pViewports);
-            return;
-        }
-        uint32_t dw = DXUpscalerManager::Get().GetDisplayWidth();
-        uint32_t dh = DXUpscalerManager::Get().GetDisplayHeight();
-
-        float scaleX = (float)rw / (float)dw;
-        float scaleY = (float)rh / (float)dh;
-
-        // NEW LOGIC: Check target classification
-        bool isScaledTarget = false;
-        bool isNativeTarget = false;
-        ID3D12Resource* pTarget = nullptr;
-
-        {
-            std::lock_guard<std::mutex> lock(g_TrackingMtx);
-            if (g_CommandListTargets.count(pList)) {
-                pTarget = g_CommandListTargets[pList];
-                if (g_OverriddenResources.count(pTarget)) {
-                    isScaledTarget = true;
-                }
-                if (g_NativeResources.count(pTarget)) {
-                    isNativeTarget = true;
-                }
-            }
-        }
-
-        // Viewport Check for Fallback
-        bool isFullDisplayViewport = (pViewports[0].Width >= (float)dw * 0.95f) && (pViewports[0].Height >= (float)dh * 0.95f);
-
-        bool shouldScale = false;
-        const char* reason = "Unknown";
-
-        if (isNativeTarget) {
-            shouldScale = false;
-            reason = "Native SwapChain Target";
-        } else if (isScaledTarget) {
-            shouldScale = true;
-            reason = "Overridden Engine Target";
-        } else if (pTarget == nullptr) {
-            // Fallback: If we don't know the target, scale ONLY if it's a full-screen viewport
-            if (isFullDisplayViewport) {
-                shouldScale = true;
-                reason = "Unknown Target (Full Screen Fallback)";
-            } else {
-                shouldScale = false;
-                reason = "Unknown Target (Partial Viewport)";
-            }
-        } else {
-            // We know the target, but it's neither overridden nor native. 
-            // This is likely a small utility buffer (MIP, shadow, etc.)
-            shouldScale = false;
-            reason = "Normal Internal Buffer (Small)";
-        }
-
-        static uint32_t s_scaleCount = 0;
-        if (!shouldScale) {
-            if (s_scaleCount < 100 && isFullDisplayViewport) {
-                Logger::info("RSSetViewports: SKIP scaling (" + std::string(reason) + ") @ " + std::to_string((int)pViewports[0].Width) + "x" + std::to_string((int)pViewports[0].Height));
-                s_scaleCount++;
-            }
-            g_OriginalRSSetViewports(pList, Count, pViewports);
-            return;
-        }
-
-        std::vector<D3D12_VIEWPORT> scaled(Count);
-        for (UINT i = 0; i < Count; i++) {
-            scaled[i] = pViewports[i];
-            scaled[i].TopLeftX *= scaleX;
-            scaled[i].TopLeftY *= scaleY;
-            scaled[i].Width *= scaleX;
-            scaled[i].Height *= scaleY;
-        }
-
-        static uint32_t s_logCount = 0;
-        if (s_logCount < 500) {
-            Logger::info("DX12: SCALING VIEWPORT [Reason=" + std::string(reason) + "] " +
-                         std::to_string((int)pViewports[0].Width) + "x" + std::to_string((int)pViewports[0].Height) + 
-                         " @ (" + std::to_string((int)pViewports[0].TopLeftX) + "," + std::to_string((int)pViewports[0].TopLeftY) + ") -> " +
-                         std::to_string((int)scaled[0].Width) + "x" + std::to_string((int)scaled[0].Height));
-            s_logCount++;
-        }
-
-        g_OriginalRSSetViewports(pList, Count, scaled.data());
-        return;
     }
-
     g_OriginalRSSetViewports(pList, Count, pViewports);
 }
 
@@ -251,83 +157,9 @@ void STDMETHODCALLTYPE HookedRSSetScissorRects(ID3D12GraphicsCommandList* pList,
     }
     ScopedRecursionGuard guard;
 
-    if (Count > 0 && pRects && DXUpscalerManager::Get().IsUpscalingEnabled()) {
-        if (g_frameCount < 50 || !DXUpscalerManager::Get().HasValidRT()) {
+    if (Count > 0 && pRects) {
             g_OriginalRSSetScissorRects(pList, Count, pRects);
             return;
-        }
-
-        uint32_t rw = DXUpscalerManager::Get().GetRenderWidth();
-        uint32_t rh = DXUpscalerManager::Get().GetRenderHeight();
-        uint32_t dw = DXUpscalerManager::Get().GetDisplayWidth();
-        uint32_t dh = DXUpscalerManager::Get().GetDisplayHeight();
-
-        float scaleX = (float)rw / (float)dw;
-        float scaleY = (float)rh / (float)dh;
-
-        bool shouldScale = false;
-        {
-            std::lock_guard<std::mutex> lock(g_TrackingMtx);
-            if (g_CommandListTargets.count(pList)) {
-                ID3D12Resource* pTarget = g_CommandListTargets[pList];
-                // Scale if it's an overridden buffer OR if it's unknown but large
-                if (g_OverriddenResources.count(pTarget)) {
-                    shouldScale = true;
-                } else if (!g_NativeResources.count(pTarget)) {
-                    // Fallback for scissors: if it's a huge scissor rect, it's likely for a scene RT we missed
-                    if ((pRects[0].right - pRects[0].left) >= (LONG)dw * 0.9f) {
-                        shouldScale = true;
-                    }
-                }
-            }
-        }
-
-        if (!shouldScale) {
-            g_OriginalRSSetScissorRects(pList, Count, pRects);
-            return;
-        }
-
-        std::vector<D3D12_RECT> scaled(Count);
-        bool needsScaling = false;
-
-        for (UINT i = 0; i < Count; i++) {
-            scaled[i] = pRects[i];
-
-            // Handle massive values (like -32768, 32767) or 1080p values
-            if (scaled[i].left < 0 || scaled[i].top < 0 || 
-                (scaled[i].right - scaled[i].left) > (LONG)rw || 
-                (scaled[i].bottom - scaled[i].top) > (LONG)rh) {
-                
-                // If it's a "Global" scissor, just clamp to target
-                if (scaled[i].left <= -10000 || scaled[i].right >= 20000) {
-                    scaled[i].left = 0;
-                    scaled[i].top = 0;
-                    scaled[i].right = (LONG)rw;
-                    scaled[i].bottom = (LONG)rh;
-                } else {
-                    // Normal coordinate scaling
-                    scaled[i].left = (LONG)((float)scaled[i].left * scaleX);
-                    scaled[i].top = (LONG)((float)scaled[i].top * scaleY);
-                    scaled[i].right = (LONG)((float)scaled[i].right * scaleX);
-                    scaled[i].bottom = (LONG)((float)scaled[i].bottom * scaleY);
-                }
-                needsScaling = true;
-            }
-        }
-
-        if (needsScaling) {
-            static int s_scallCount = 0;
-            if (s_scallCount < 500 && s_scallCount % 100 == 0) {
-                Logger::warn("DX12: SCALING SCISSOR [" + std::to_string(Count) + "] (" + 
-                             std::to_string(pRects[0].left) + "," + std::to_string(pRects[0].top) + " - " + 
-                             std::to_string(pRects[0].right) + "," + std::to_string(pRects[0].bottom) + ") -> (" +
-                             std::to_string(scaled[0].left) + "," + std::to_string(scaled[0].top) + " - " + 
-                             std::to_string(scaled[0].right) + "," + std::to_string(scaled[0].bottom) + ")");
-            }
-            s_scallCount++;
-            g_OriginalRSSetScissorRects(pList, Count, scaled.data());
-            return;
-        }
     }
 
     g_OriginalRSSetScissorRects(pList, Count, pRects);
@@ -418,7 +250,6 @@ void STDMETHODCALLTYPE HookedExecuteCommandLists(ID3D12CommandQueue* pQueue, UIN
     g_OriginalExecuteCommandLists(pQueue, NumCommandLists, ppCommandLists);
 
     // Now signal that FSR is ready to run in the Present pass
-    DXUpscalerManager::Get().MarkFSRReady();
 }
 void HookCommandQueue(ID3D12CommandQueue* pQueue) {
     if (!pQueue) return;
@@ -504,11 +335,10 @@ void STDMETHODCALLTYPE HookedResourceBarrier(ID3D12GraphicsCommandList* pList, U
 
             D3D12_RESOURCE_DESC d = pRes->GetDesc();
 
-            uint32_t rw = DXUpscalerManager::Get().GetRenderWidth();
-            uint32_t rh = DXUpscalerManager::Get().GetRenderHeight();
+            uint32_t rw = d.Width;
+            uint32_t rh = d.Height;
 
             // Safety: If upscaler haven't determined resolution yet, skip discovery to avoid picking noise
-            if (rw == 0 || rh == 0) continue;
 
             // TIGHTENED LOGIC: Source buffer MUST be very close to our internal render resolution
             // We allow a small margin (5%) for engine padding/alignment
@@ -542,7 +372,6 @@ void STDMETHODCALLTYPE HookedResourceBarrier(ID3D12GraphicsCommandList* pList, U
 
             // SAFE to use captured final scene-like RT
             SetLastEngineRenderTarget(pRes);
-            DXUpscalerManager::Get().SetHasValidRT(true);
 
             if (s_logCounter < 500 && s_logCounter % 100 == 0) {
                 Logger::warn(
@@ -561,10 +390,9 @@ void STDMETHODCALLTYPE HookedResourceBarrier(ID3D12GraphicsCommandList* pList, U
 
 bool ShouldOverrideD3D12(const D3D12_RESOURCE_DESC& desc) {
     if (!Config::Get().GetBool("ReGame", false)) return false;
-    if (!DXUpscalerManager::Get().IsUpscalingEnabled()) return false;
 
-    uint32_t dw = DXUpscalerManager::Get().GetDisplayWidth();
-    uint32_t dh = DXUpscalerManager::Get().GetDisplayHeight();
+    uint32_t dw = desc.Width;
+    uint32_t dh = desc.Height;
 
     // Core Check: Does it match the target display resolution exactly?
     if (desc.Width != dw || desc.Height != dh) return false;
@@ -600,8 +428,8 @@ HRESULT STDMETHODCALLTYPE HookedCreateCommittedResource(
     bool overridden = false;
 
     if (ShouldOverrideD3D12(desc)) {
-        uint32_t renderW = DXUpscalerManager::Get().GetRenderWidth();
-        uint32_t renderH = DXUpscalerManager::Get().GetRenderHeight();
+        uint32_t renderW = desc.Width;
+        uint32_t renderH = desc.Height;
 
         if (renderW > 0 && renderH > 0) {
             Logger::info("FSR1: Override DX12 RT " + std::to_string(desc.Width) + "x" + std::to_string(desc.Height) + " -> " + std::to_string(renderW) + "x" + std::to_string(renderH));
@@ -641,8 +469,8 @@ HRESULT STDMETHODCALLTYPE HookedCreatePlacedResource(
     bool overridden = false;
 
     if (ShouldOverrideD3D12(desc)) {
-        uint32_t renderW = DXUpscalerManager::Get().GetRenderWidth();
-        uint32_t renderH = DXUpscalerManager::Get().GetRenderHeight();
+        uint32_t renderW = desc.Width;
+        uint32_t renderH = desc.Height;
 
         if (renderW > 128 && renderH > 128) { // Extra safety for tiny textures
             Logger::info("FSR1: Override DX12 Placed RT " + std::to_string(desc.Width) + "x" + std::to_string(desc.Height) + " -> " + std::to_string(renderW) + "x" + std::to_string(renderH));
@@ -680,8 +508,8 @@ HRESULT STDMETHODCALLTYPE HookedCreateTexture2D(
 
     D3D11_TEXTURE2D_DESC desc = *pDesc;
     if (ShouldOverrideD3D11(desc)) {
-        uint32_t renderW = DXUpscalerManager::Get().GetRenderWidth();
-        uint32_t renderH = DXUpscalerManager::Get().GetRenderHeight();
+        uint32_t renderW = desc.Width;
+        uint32_t renderH = desc.Height;
 
         if (renderW > 0 && renderH > 0) {
             Logger::info("FSR1: Override DX11 RT " + std::to_string(desc.Width) + "x" + std::to_string(desc.Height) + " -> " + std::to_string(renderW) + "x" + std::to_string(renderH));
@@ -745,7 +573,6 @@ HRESULT STDMETHODCALLTYPE HookedResizeBuffers(IDXGISwapChain* pSwapChain, UINT B
 
     Logger::info("HookedResizeBuffers Entry [SC=" + std::to_string((uintptr_t)pSwapChain) + "]");
     g_IsResizing = true;
-    DXUpscalerManager::Get().UpdateDimensions(Width, Height);
     OnDXResize(pSwapChain);
 
     // Phase 12 & 15: Total Integrity Restoration
@@ -803,7 +630,6 @@ HRESULT STDMETHODCALLTYPE HookedResizeBuffers1(IDXGISwapChain3* pSwapChain, UINT
 
     Logger::info("HookedResizeBuffers1 Entry [SC=" + std::to_string((uintptr_t)pSwapChain) + "]");
     g_IsResizing = true;
-    DXUpscalerManager::Get().UpdateDimensions(Width, Height);
     OnDXResize(pSwapChain);
 
     // Phase 12 & 15: Total Integrity Restoration
@@ -1069,7 +895,6 @@ void HookDXGIFactories() {
 
 void InstallDXGIHooks() {
     Logger::info("InstallDXGIHooks: Start (Signal-Sync Logic Active)");
-    DXUpscalerManager::Get().EarlyInit();
     
     WNDCLASSEX wc = { sizeof(WNDCLASSEX), CS_CLASSDC, DefWindowProc, 0L, 0L, GetModuleHandle(NULL), NULL, NULL, NULL, NULL, "GamePlugDummy", NULL };
     RegisterClassEx(&wc);

@@ -3,7 +3,6 @@
 #include "imgui_impl_dx9.h"
 #include "imgui_impl_win32.h"
 #include "logger.h"
-#include "upscaler_manager.h"
 #include "config.h"
 #include "plugin_manager.h"
 
@@ -163,7 +162,6 @@ void OverlayRenderer::DrawUI(uint32_t width, uint32_t height) {
         ImGui::Spacing();
         
         // 2. Render Upscaler UI
-        UpscalerManager::Get().RenderUI(io.Framerate, width, height);
 
         ImGui::Spacing();
         ImGui::Separator();

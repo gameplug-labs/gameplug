@@ -6,7 +6,6 @@ add_library(d3d9_proxy_dll SHARED
     d3d9.def
     ${PROJECT_SOURCE_DIR}/src/shared/logger.cpp
     ${PROJECT_SOURCE_DIR}/src/shared/config.cpp
-    upscaler_manager.cpp
     ${PROJECT_SOURCE_DIR}/src/shared/plugin_manager.cpp
     dx_overlay.cpp
     

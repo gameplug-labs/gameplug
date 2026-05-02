@@ -17,7 +17,6 @@ add_library(framework_vk STATIC
     vk/overlay.cpp
     vk/image_tracker.cpp
     vk/dispatch.cpp
-    vk/upscaler_manager.cpp
     vk/jitter_helper.cpp
     ${PROJECT_SOURCE_DIR}/external/imgui/backends/imgui_impl_vulkan.cpp
 )
@@ -53,7 +52,6 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 8)
         d3d12/framework.cpp
         d3d12/overlay.cpp
         d3d12/hooks.cpp
-        d3d12/upscaler_manager.cpp
         ${PROJECT_SOURCE_DIR}/external/imgui/backends/imgui_impl_dx11.cpp
         ${PROJECT_SOURCE_DIR}/external/imgui/backends/imgui_impl_dx12.cpp
     )
@@ -84,8 +82,6 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 8)
         dxgi
         d3dcompiler
         delayimp.lib
-        RE4SDK
-        utility
     )
 
     if(MSVC)

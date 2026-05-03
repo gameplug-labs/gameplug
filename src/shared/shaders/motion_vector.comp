@@ -1,0 +1,32 @@
+#version 450
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(binding = 0) uniform sampler2D depthCurr;
+layout(binding = 1) uniform sampler2D depthPrev;
+
+layout(binding = 2, rg16f) uniform image2D motionOut;
+
+layout(push_constant) uniform PushConstants {
+    float motionScale;
+} pcs;
+
+void main() {
+    ivec2 pix = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(motionOut);
+    if (pix.x >= size.x || pix.y >= size.y) return;
+
+    vec2 uv = (vec2(pix) + 0.5) / vec2(size);
+
+    float dCurr = texture(depthCurr, uv).r;
+    float dPrev = texture(depthPrev, uv).r;
+
+    // Basic depth difference as fake motion
+    float dz = dCurr - dPrev;
+
+    // Project depth difference into screen space motion
+    // This is a very rough approximation
+    vec2 motion = vec2(dz * pcs.motionScale);
+
+    imageStore(motionOut, pix, vec4(motion, 0.0, 0.0));
+}

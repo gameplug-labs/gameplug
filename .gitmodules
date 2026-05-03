@@ -1,0 +1,15 @@
+[submodule "external/imgui"]
+	path = external/imgui
+	url = https://github.com/ocornut/imgui
+[submodule "external/volk"]
+	path = external/volk
+	url = https://github.com/zeux/volk
+[submodule "external/minhook"]
+	path = external/minhook
+	url = https://github.com/tsudakageyu/minhook
+[submodule "external/safetyhook"]
+	path = external/safetyhook
+	url = https://github.com/cursey/safetyhook.git
+[submodule "external/spdlog"]
+	path = external/spdlog
+	url = https://github.com/gabime/spdlog

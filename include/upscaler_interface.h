@@ -89,7 +89,7 @@ struct GamePlugUpscalerInterface {
 } // extern "C"
  
 #ifdef __cplusplus
-#if !defined(FRAMEWORK_EXPORTS) && !defined(GamePlug_INTERNAL_LOGGER)
+#if !defined(FRAMEWORK_EXPORTS) && !defined(GamePlug_INTERNAL_LOGGER) && !defined(GAMEPLUG_LOGGER_DEFINED)
 namespace GamePlug {
     typedef void (__cdecl *LogFuncPtr)(GamePlugUpscalerInterface::LogLevel, const char*, void*);
     

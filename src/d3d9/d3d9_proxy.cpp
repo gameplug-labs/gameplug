@@ -7,6 +7,7 @@
 
 #include "logger.h"
 #include "config.h"
+#include "upscaler_manager.h"
 #include "dx_overlay.h"
 #include "MinHook.h"
 
@@ -133,16 +134,32 @@ bool g_InUpscalerPass = false;
 
 // --- Helper Functions ---
 void GetScaledResolution(int& outW, int& outH) {
+    int gameW = outW;
+    int gameH = outH;
     try {
         Config& cfg = Config::Get();
         // Poll current target from config (refreshed by overlay UI)
         int targetWidth = cfg.GetTargetWidth();
         int targetHeight = cfg.GetTargetHeight();
         
+        if (targetWidth <= 0 || targetHeight <= 0) {
+            targetWidth = gameW;
+            targetHeight = gameH;
+        }
+        
         if (targetWidth > 0 && targetHeight > 0) {
-            bool nativeRendering = true;
-            bool upscaling = false;
-            int quality = 0;
+            UpscalerManager& mgr = UpscalerManager::Get();
+            bool nativeRendering = mgr.IsNativeRenderingEnabled();
+            int quality = mgr.GetUpscaleQuality();
+            bool upscaling = mgr.IsUpscalingEnabled();
+            
+            static int lastQ = -1;
+            static int lastN = -1;
+            static int lastU = -1;
+            if (quality != lastQ || (int)nativeRendering != lastN || (int)upscaling != lastU) {
+                Logger::info("GetScaledResolution: mgr={:p}, quality={}, native={}, upscaling={}", (void*)&mgr, quality, nativeRendering, upscaling);
+                lastQ = quality; lastN = (int)nativeRendering; lastU = (int)upscaling;
+            }
 
             if (!nativeRendering && upscaling) {
                 float scale = 1.0f;
@@ -254,6 +271,18 @@ public:
         
         OverlayRenderer::Get().Init((IDirect3DDevice9*)this);
 
+        if (m_isUpscaling) {
+            if (UpscalerManager::Get().LoadUpscaler()) {
+                UpscalerManager::Get().InitUpscaler((void*)m_pReal);
+                if (SUCCEEDED(m_pReal->CreateTexture(m_renderW, m_renderH, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &m_pFakeBackBufferTex, nullptr))) {
+                    IDirect3DSurface9* pRealSurf = nullptr;
+                    m_pFakeBackBufferTex->GetSurfaceLevel(0, &pRealSurf);
+                    m_pFakeBackBuffer = new ProxySurface9(pRealSurf, this, m_displayW, m_displayH);
+                    if (pRealSurf) pRealSurf->Release();
+                    Logger::info("Proxy: Fake backbuffer created at native {}x{}", m_renderW, m_renderH);
+                }
+            }
+        }
     }
 
     virtual ~ProxyDirect3DDevice9() {
@@ -309,6 +338,7 @@ public:
     STDMETHOD_(UINT, GetNumberOfSwapChains)() override { return m_pReal->GetNumberOfSwapChains(); }
     STDMETHOD(Reset)(D3DPRESENT_PARAMETERS* pPP) override {
         OverlayRenderer::Get().OnReset();
+        UpscalerManager::Get().OnReset();
         if (m_pFakeBackBuffer) { m_pFakeBackBuffer->Release(); m_pFakeBackBuffer = nullptr; }
         if (m_pFakeBackBufferTex) { m_pFakeBackBufferTex->Release(); m_pFakeBackBufferTex = nullptr; }
         
@@ -361,7 +391,17 @@ public:
         IDirect3DSurface9* pRBB = nullptr;
         if (SUCCEEDED(m_pReal->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &pRBB))) {
             if (m_isUpscaling && m_pFakeBackBuffer) {
-                m_pReal->StretchRect(m_pFakeBackBuffer->GetInternalSurface(), NULL, pRBB, NULL, D3DTEXF_LINEAR);
+                bool upscalerHandled = false;
+                if (UpscalerManager::Get().IsUpscalingEnabled()) {
+                    g_InUpscalerPass = true;
+                    UpscalerManager::Get().RenderFrame((void*)m_pReal, (void*)m_pFakeBackBuffer->GetInternalSurface(), (void*)pRBB, m_displayW, m_displayH, m_renderW, m_renderH);
+                    g_InUpscalerPass = false;
+                    upscalerHandled = true;
+                }
+
+                if (!upscalerHandled) {
+                    m_pReal->StretchRect(m_pFakeBackBuffer->GetInternalSurface(), NULL, pRBB, NULL, D3DTEXF_LINEAR);
+                }
             }
             IDirect3DSurface9* pOldRT = nullptr;
             m_pReal->GetRenderTarget(0, &pOldRT);
@@ -619,6 +659,12 @@ public:
         if (SUCCEEDED(m_pReal->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &pRBB))) {
             if (m_isUpscaling && m_pFakeBackBuffer) {
                 bool upscalerHandled = false;
+                if (UpscalerManager::Get().IsUpscalingEnabled()) {
+                    g_InUpscalerPass = true;
+                    UpscalerManager::Get().RenderFrame((void*)m_pReal, (void*)m_pFakeBackBuffer->GetInternalSurface(), (void*)pRBB, m_displayW, m_displayH, m_renderW, m_renderH);
+                    g_InUpscalerPass = false;
+                    upscalerHandled = true;
+                }
 
                 if (!upscalerHandled) {
                     m_pReal->StretchRect(m_pFakeBackBuffer->GetInternalSurface(), NULL, pRBB, NULL, D3DTEXF_LINEAR);

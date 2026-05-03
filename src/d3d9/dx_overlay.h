@@ -29,7 +29,6 @@ public:
 private:
     OverlayRenderer() = default;
     static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-    void DrawUI(uint32_t width, uint32_t height);
 
     HWND m_hWnd = nullptr;
     IDirect3DDevice9* m_pDevice = nullptr;

@@ -10,7 +10,7 @@ class UpscalerManager {
 public:
     static UpscalerManager& Get();
 
-    bool LoadUpscaler(const std::string& name = "dxupscaler_core.dll");
+    bool LoadUpscaler(const std::string& name = "upscaler_d3d9.dll");
     void UnloadUpscaler();
 
     void InitUpscaler(void* device);

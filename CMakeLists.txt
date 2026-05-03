@@ -26,6 +26,7 @@ add_subdirectory(external/minhook)
 
 # Framework and Vulkan Subprojects
 add_subdirectory(src)
+add_subdirectory(sub_projects/dxupscaler_core)
 
 
 

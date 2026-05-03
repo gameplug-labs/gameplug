@@ -3,6 +3,7 @@
 #include "imgui_impl_dx9.h"
 #include "imgui_impl_win32.h"
 #include "logger.h"
+#include "upscaler_manager.h"
 #include "config.h"
 #include "plugin_manager.h"
 #include "imgui_overlay_shared.h"
@@ -130,14 +131,16 @@ void OverlayRenderer::Render(IDirect3DDevice9* device, uint32_t width, uint32_t 
         }
     }
 
-    ImGuiOverlayShared::DrawUI(width, height);
+    ImGuiOverlayShared::DrawUI(width, height, [width, height]() {
+        ImGuiIO& io = ImGui::GetIO();
+        UpscalerManager::Get().RenderUI(io.Framerate, width, height);
+    });
 
     ImGui::Render();
     ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
     
     g_isRenderingOverlay = false;
 }
-
 
 LRESULT CALLBACK OverlayRenderer::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     auto& renderer = OverlayRenderer::Get();

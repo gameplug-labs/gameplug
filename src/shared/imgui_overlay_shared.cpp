@@ -6,7 +6,7 @@
 
 namespace GamePlug {
 
-void ImGuiOverlayShared::DrawUI(uint32_t width, uint32_t height) {
+void ImGuiOverlayShared::DrawUI(uint32_t width, uint32_t height, std::function<void()> apiSpecificUI) {
     ImGuiIO& io = ImGui::GetIO();
     float uiScale = (std::max)(1.0f, (float)height / 720.0f);
     io.FontGlobalScale = uiScale;
@@ -26,6 +26,13 @@ void ImGuiOverlayShared::DrawUI(uint32_t width, uint32_t height) {
     if (ImGui::Begin("GamePlug", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         // 1. Master Toggle (at the top)
         Config::Get().RenderUI();
+        
+        if (apiSpecificUI) {
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+            apiSpecificUI();
+        }
 
         bool pluginsEnabled = Config::Get().GetBool("PluginEnabled", true);
         bool hasPlugins = pluginsEnabled && !PluginManager::Get().IsEmpty();
@@ -38,7 +45,7 @@ void ImGuiOverlayShared::DrawUI(uint32_t width, uint32_t height) {
             PluginManager::Get().RenderPlugins();
         }
      
-        if (!hasPlugins) {
+        if (!hasPlugins && !apiSpecificUI) {
             ImGui::Spacing();
             ImGui::Separator();
             ImGui::Spacing();

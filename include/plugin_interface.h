@@ -83,7 +83,7 @@ struct GamePlugPluginInterface {
 } // extern "C"
 
 #ifdef __cplusplus
-#if !defined(FRAMEWORK_EXPORTS) && !defined(GamePlug_INTERNAL_LOGGER)
+#if !defined(FRAMEWORK_EXPORTS) && !defined(GamePlug_INTERNAL_LOGGER) && !defined(GAMEPLUG_LOGGER_DEFINED)
 namespace GamePlug {
     // Hidden global for the Logger wrapper
     // The plugin must define this somewhere (usually sample_plugin.cpp)

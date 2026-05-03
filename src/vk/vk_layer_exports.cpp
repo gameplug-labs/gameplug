@@ -6,7 +6,6 @@
 #include "dispatch.h"
 #include "overlay.h"
 #include "image_tracker.h"
-#include "upscaler_manager.h"
 #include "framework_export.h"
 
 #ifndef VK_LAYER_EXPORT
@@ -130,8 +129,6 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateSwapchainKHR(
     GamePlug::Logger::info("vkCreateSwapchainKHR: Entry. Game Requested Extent=" + std::to_string(pCreateInfo->imageExtent.width) + "x" + std::to_string(pCreateInfo->imageExtent.height));
     auto* dev_entry = GamePlug::DispatchManager::Get().GetDevice(device);
     
-    // Load upscaler early to get resolution info
-    GamePlug::UpscalerManager::Get().LoadUpscaler((uintptr_t)g_Instance, (uintptr_t)g_PhysDevice, (uintptr_t)device);
 
     // SPOOF: If the game requested 720p because we lied to it, OVERRIDE it to 1080p 
     // so we get a full-res backbuffer for FSR2 output.
@@ -188,7 +185,6 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateSwapchainKHR(
         GamePlug::Logger::info("vkCreateSwapchainKHR: Trace 10.5 (SetupDevice)");
         GamePlug::ImageTracker::Get().ResetScores();
         GamePlug::ImageTracker::Get().SetScreenDimensions(pCreateInfo->imageExtent.width, pCreateInfo->imageExtent.height);
-        GamePlug::UpscalerManager::Get().UpdateDimensions(pCreateInfo->imageExtent.width, pCreateInfo->imageExtent.height);
         GamePlug::OverlayRenderer::Get().SetupDevice(g_Instance, g_PhysDevice, device, 0, queue);
 
         GamePlug::Logger::info("vkCreateSwapchainKHR: Trace 10.6 (SetupSwapchain)");
@@ -451,10 +447,7 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdBeginRenderPass(VkCommandBuffer comm
     auto* dev_entry = GamePlug::DispatchManager::Get().GetDeviceByCommandBuffer(commandBuffer);
     if (!dev_entry) return;
 
-    // Reset frame state if this is the start of a frame's processing
-    if (!GamePlug::UpscalerManager::Get().WasUpscaledThisFrame()) {
-        GamePlug::OverlayRenderer::Get().NewFrame();
-    }
+    GamePlug::OverlayRenderer::Get().NewFrame();
 
     if (pRenderPassBegin) {
         g_ActiveFBs[commandBuffer] = pRenderPassBegin->framebuffer;
@@ -474,9 +467,6 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdBeginRenderPass(VkCommandBuffer comm
 
             // Always call Render for UI visibility, even if source/target are NULL.
             // OverlayRenderer::Render now handles NULL handles and identical source/target gracefully.
-            if (!GamePlug::UpscalerManager::Get().WasUpscaledThisFrame()) {
-                GamePlug::OverlayRenderer::Get().Render(commandBuffer, source, target, sw, sh);
-            }
         }
     }
 
@@ -489,25 +479,15 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdEndRenderPass(VkCommandBuffer comman
 
     VkFramebuffer fb = g_ActiveFBs[commandBuffer];
     if (fb != VK_NULL_HANDLE) {
-        // Draw GamePlug UI directly into the game's final pass if it's the swapchain
-        if (GamePlug::OverlayRenderer::Get().IsVisible() && GamePlug::ImageTracker::Get().IsSwapchainFramebuffer(fb)) {
-            if (!GamePlug::UpscalerManager::Get().WasUpscaledThisFrame()) {
-                VkImage source = GamePlug::ImageTracker::Get().GetLastSceneImage();
-                VkImage target = GamePlug::ImageTracker::Get().GetSwapchainImageFromFramebuffer(fb);
-                uint32_t sw = GamePlug::ImageTracker::Get().GetScreenWidth();
-                uint32_t sh = GamePlug::ImageTracker::Get().GetScreenHeight();
-                GamePlug::OverlayRenderer::Get().Render(commandBuffer, source, target, sw, sh);
-            }
-        }
     }
 
     dev_entry->table.vkCmdEndRenderPass(commandBuffer);
 
     if (fb != VK_NULL_HANDLE) {
-        uint32_t rw = GamePlug::UpscalerManager::Get().GetRenderWidth();
-        uint32_t rh = GamePlug::UpscalerManager::Get().GetRenderHeight();
         uint32_t sw = GamePlug::ImageTracker::Get().GetScreenWidth();
         uint32_t sh = GamePlug::ImageTracker::Get().GetScreenHeight();
+        uint32_t rw = sw; 
+        uint32_t rh = sh;
 
         // 1. Capture Scene Source: If this was an offscreen scene pass, save its result.
         if (GamePlug::ImageTracker::Get().IsSceneFramebuffer(fb, rw, rh)) {
@@ -518,14 +498,13 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdEndRenderPass(VkCommandBuffer comman
         }
 
         // 2. Fallback Unified Render: Handle Scaling + UI if we missed it in Begin
-        if (GamePlug::ImageTracker::Get().IsSwapchainFramebuffer(fb) && !GamePlug::UpscalerManager::Get().WasUpscaledThisFrame()) {
+        if (GamePlug::ImageTracker::Get().IsSwapchainFramebuffer(fb)){
              VkImage source = GamePlug::ImageTracker::Get().GetLastSceneImage();
              VkImage target = GamePlug::ImageTracker::Get().GetSwapchainImageFromFramebuffer(fb);
              
              if (source != VK_NULL_HANDLE && target != VK_NULL_HANDLE) {
                  GamePlug::OverlayRenderer::Get().Render(commandBuffer, source, target, sw, sh);
              } else {
-                 // Absolute fallback: In-place upscale
                  GamePlug::OverlayRenderer::Get().Render(commandBuffer, target, target, sw, sh);
              }
         }
@@ -568,8 +547,7 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_DestroyDevice(
     const VkAllocationCallbacks* pAllocator) {
     GamePlug::Logger::info("vkDestroyDevice intercepted - Shutting down GamePlug");
     GamePlug::OverlayRenderer::Get().Shutdown();
-    GamePlug::UpscalerManager::Get().UnloadUpscaler();
-    
+
     auto* dev_entry = GamePlug::DispatchManager::Get().GetDevice(device);
     if (dev_entry) {
         dev_entry->table.vkDestroyDevice(device, pAllocator);
@@ -628,7 +606,6 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_QueuePresentKHR(VkQueue queue, cons
         
         // Reset overlay and upscaler frame lifecycle after presentation
         GamePlug::OverlayRenderer::Get().EndFrame();
-        GamePlug::UpscalerManager::Get().NewFrame();
 
         return result;
     }

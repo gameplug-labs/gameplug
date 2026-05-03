@@ -6,8 +6,8 @@ add_library(d3d9_proxy_dll SHARED
     d3d9.def
     ${PROJECT_SOURCE_DIR}/src/shared/logger.cpp
     ${PROJECT_SOURCE_DIR}/src/shared/config.cpp
-    upscaler_manager.cpp
     ${PROJECT_SOURCE_DIR}/src/shared/plugin_manager.cpp
+    ${PROJECT_SOURCE_DIR}/src/shared/imgui_overlay_shared.cpp
     dx_overlay.cpp
     
     ${PROJECT_SOURCE_DIR}/external/imgui/imgui.cpp
@@ -19,13 +19,13 @@ add_library(d3d9_proxy_dll SHARED
 )
 
 target_include_directories(d3d9_proxy_dll PRIVATE 
-    ${CMAKE_SOURCE_DIR}/src/d3d9
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/src/shared
-    ${CMAKE_SOURCE_DIR}/external/spdlog/include
-    ${CMAKE_SOURCE_DIR}/external/imgui
-    ${CMAKE_SOURCE_DIR}/external/imgui/backends
-    ${CMAKE_SOURCE_DIR}/external/minhook/include
+    ${PROJECT_SOURCE_DIR}/src/d3d9
+    ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/src/shared
+    ${PROJECT_SOURCE_DIR}/external/spdlog/include
+    ${PROJECT_SOURCE_DIR}/external/imgui
+    ${PROJECT_SOURCE_DIR}/external/imgui/backends
+    ${PROJECT_SOURCE_DIR}/external/minhook/include
 )
 
 set_target_properties(d3d9_proxy_dll PROPERTIES OUTPUT_NAME "dinput8")

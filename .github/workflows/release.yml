@@ -1,0 +1,93 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release Version (e.g. v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+jobs:
+  build:
+    name: Build ${{ matrix.arch }}
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        arch: [Win32, x64]
+        include:
+          - arch: Win32
+            output_dir: x32
+          - arch: x64
+            output_dir: x64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Vulkan SDK
+        uses: jakoch/install-vulkan-sdk-action@v1.1.1
+        with:
+          vulkan_version: 1.3.296.0
+          cache: false
+
+      - name: Configure CMake
+        run: cmake -B build -A ${{ matrix.arch }}
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.output_dir }}
+          path: bin/${{ matrix.output_dir }}
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download x32
+        uses: actions/download-artifact@v4
+        with:
+          name: build-x32
+          path: bin/x32
+
+      - name: Download x64
+        uses: actions/download-artifact@v4
+        with:
+          name: build-x64
+          path: bin/x64
+
+      - name: Prepare Assets
+        run: |
+          mkdir assets
+          
+          # d3d9.zip (x32 only)
+          # The file is in bin/x32/d3d9/dinput8.dll
+          zip -j assets/d3d9.zip bin/x32/d3d9/dinput8.dll
+          
+          # d3d12.zip (x64 only)
+          # The file is in bin/x64/dinput8.dll
+          zip -j assets/d3d12.zip bin/x64/dinput8.dll
+          
+          # vk.zip (Both x32 and x64)
+          mkdir -p vk_package/x32 vk_package/x64
+          cp bin/x32/vklayer.dll bin/x32/VK_LAYER_GAMEPLUG.json bin/x32/GAMEPLUG.exe bin/x32/run_game.bat vk_package/x32/
+          cp bin/x64/vklayer.dll bin/x64/VK_LAYER_GAMEPLUG.json bin/x64/GAMEPLUG.exe bin/x64/run_game.bat vk_package/x64/
+          cd vk_package && zip -r ../assets/vk.zip . && cd ..
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.version }}
+          name: Release ${{ github.event.inputs.version }}
+          files: assets/*.zip
+          generate_release_notes: true
+          draft: false
+          prerelease: false

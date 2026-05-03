@@ -1,0 +1,49 @@
+name: Test Build
+
+on:
+  push:
+    branches: [ main, upscaler ]
+  pull_request:
+    branches: [ main, upscaler ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-build:
+    name: Test Build ${{ matrix.arch }}
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        arch: [Win32, x64]
+        include:
+          - arch: Win32
+            output_dir: x32
+          - arch: x64
+            output_dir: x64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Vulkan SDK
+        uses: jakoch/install-vulkan-sdk-action@v1.1.1
+        with:
+          vulkan_version: 1.3.296.0
+          cache: false
+
+      - name: Configure CMake
+        run: cmake -B build -A ${{ matrix.arch }}
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Upload Artifacts
+        if: github.event_name == 'push' && github.ref == 'refs/heads/upscaler'
+        uses: actions/upload-artifact@v4
+        with:
+          name: upscaler-${{ matrix.output_dir }}
+          path: bin/${{ matrix.output_dir }}

@@ -7,7 +7,7 @@ namespace GamePlug {
 
     void InitDX() {
         OutputDebugStringA("[GamePlug] framework.dll: InitDX starting...");
-        Logger::Get().Init("framework_dx.log");
+        Logger::Get().Init("gameplug.log");
         Logger::info("DirectX Framework Initialized");
         Config::Get().Load();
         

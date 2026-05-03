@@ -17,7 +17,7 @@ else()
     set(BIN_ARCH "x32")
 endif()
 
-set(BIN_OUTPUT_DIR "${CMAKE_SOURCE_DIR}/bin/${BIN_ARCH}")
+set(BIN_OUTPUT_DIR "${PROJECT_SOURCE_DIR}/bin/${BIN_ARCH}")
 file(MAKE_DIRECTORY ${BIN_OUTPUT_DIR})
 
 # External dependencies
@@ -29,13 +29,9 @@ add_subdirectory(src)
 
 
 
-add_subdirectory(sub_projects/dxupscaler_core)
 add_subdirectory(examples)
 
 # x32-only Subprojects
-if(CMAKE_SIZEOF_VOID_P EQUAL 4)
-    add_subdirectory(sub_projects/vkupscaler)
-endif()
 
 # x64-only Subprojects (REFramework, DX-specific)
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
@@ -43,9 +39,7 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 8)
     set(REF_BUILD_RE4_SDK ON CACHE BOOL "" FORCE)
     set(REF_BUILD_FRAMEWORK OFF CACHE BOOL "" FORCE)
     set(REF_BUILD_DEPENDENCIES ON CACHE BOOL "" FORCE)
-    add_subdirectory(external/REFramework)
 
-    add_subdirectory(sub_projects/dxupscaler)
 endif()
 
 

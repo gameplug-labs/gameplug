@@ -29,8 +29,6 @@ target_link_libraries(dinput8 PRIVATE
     dxgi
     d3dcompiler
     delayimp.lib
-    RE4SDK
-    utility
 )
 
 if(MSVC)

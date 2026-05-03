@@ -8,8 +8,7 @@
 #include "imgui_impl_dx12.h"
 #include "config.h"
 #include "plugin_manager.h"
-#include "plugin_manager.h"
-#include "upscaler_manager.h"
+#include "imgui_overlay_shared.h"
 #include <mutex>
 #include <unordered_map>
 
@@ -121,8 +120,8 @@ void SetLastEngineRenderTarget(ID3D12Resource* pRes) {
     D3D12_RESOURCE_DESC desc = pRes->GetDesc();
     if (desc.Flags & D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL) return;
 
-    uint32_t rw = DXUpscalerManager::Get().GetRenderWidth();
-    uint32_t rh = DXUpscalerManager::Get().GetRenderHeight();
+    uint32_t rw = 0;
+    uint32_t rh = 0;
 
     bool matchesRenderSize =
         abs((int)desc.Width - (int)rw) < 16 &&
@@ -182,8 +181,6 @@ void CleanupDX12(bool isResize) {
             SyncAllDX12Queues();
         }
 
-        Logger::info(" - Releasing Upscaler Resources");
-        DXUpscalerManager::Get().CleanupPlugin();
 
         if (g_lastEngineRenderTarget) {
             std::lock_guard<std::recursive_mutex> lock(g_TargetMtx);
@@ -200,11 +197,12 @@ void CleanupDX12(bool isResize) {
                 ImGui_ImplDX11_Shutdown();
             }
             ImGui_ImplWin32_Shutdown();
+            PluginManager::Get().UnloadPlugins();
             if (ImGui::GetCurrentContext()) {
                 ImGui::DestroyContext();
             }
             g_ImGuiInitialized = false;
-            Logger::info(" - ImGui Shutdown Complete");
+            Logger::info(" - ImGui Shutdown Complete (Plugins Unloaded)");
         }
 
         // Safe Resource Draining
@@ -308,8 +306,6 @@ bool InitImGuiDX11(IDXGISwapChain* pSwapChain) {
     }
 
     Logger::info("DX11 Init: Success");
-    DXUpscalerManager::Get().InitDX11(g_pd3dDevice, g_pd3dDeviceContext);
-    DXUpscalerManager::Get().UpdateDimensions(sd.BufferDesc.Width, sd.BufferDesc.Height);
     return true;
 }
 
@@ -464,17 +460,6 @@ bool InitImGuiDX12(IDXGISwapChain* pSwapChain, ID3D12CommandQueue* pQueue) {
 
     // Load Plugins
     PluginManager::Get().LoadPlugins();
-    DXUpscalerManager::Get().InitDX12(g_pd3d12Device, pQueue);
-    DXUpscalerManager::Get().UpdateDimensions(sd.BufferDesc.Width, sd.BufferDesc.Height);
-
-    // Premium Styling Port from vk_overlay.cpp
-    ImGuiStyle& style = ImGui::GetStyle();
-    style.WindowRounding = 8.0f;
-    style.FrameRounding = 4.0f;
-    style.WindowBorderSize = 1.0f;
-    style.Colors[ImGuiCol_WindowBg] = ImVec4(0.06f, 0.06f, 0.08f, 0.75f);
-    style.Colors[ImGuiCol_TitleBgActive] = ImVec4(0.16f, 0.29f, 0.48f, 0.90f);
-    style.Colors[ImGuiCol_Border] = ImVec4(0.43f, 0.43f, 0.50f, 0.50f);
 
     Logger::info("DX12 Init: Success");
     return true;
@@ -509,13 +494,7 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
     if (g_InHook) return;
     ScopedRecursionGuard guard;
 
-    // [FIX] Execute FSR every frame when signaled by the engine
-    if (DXUpscalerManager::Get().IsFSRReady() && DXUpscalerManager::Get().HasValidRT()) {
-        Logger::warn("FSR RUNNING IN PRESENT");
-        DXUpscalerManager::Get().RunFSRPass();
-    }
 
-    DXUpscalerManager::Get().ResetFrame();
 
     {
         std::lock_guard<std::recursive_mutex> lock(g_TargetMtx);
@@ -541,8 +520,6 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
     g_frameCounter++;
     
     // RE Engine Stability: Ensure hooks are applied as soon as a SceneView is available
-    DXUpscalerManager::Get().UpdateREEngineHooks();
-    DXUpscalerManager::Get().SetCurrentSwapChain(pSwapChain);
 
     g_needsNewImGuiFrame = true;
     g_totalPresentCalls++;
@@ -716,54 +693,14 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
         ImGui_ImplDX11_NewFrame();
         ImGui_ImplWin32_NewFrame();
         ImGui::NewFrame();
-        DXUpscalerManager::Get().NewFrame();
-
-        float uiScale = (std::max)(1.0f, (float)desc.BufferDesc.Height / 720.0f);
         
-        // Premium Styling Port from vk_overlay.cpp
-        ImGuiStyle& style = ImGui::GetStyle();
-        style.WindowRounding = 8.0f * uiScale;
-        style.FrameRounding = 4.0f * uiScale;
-        style.WindowBorderSize = 1.0f;
-        style.Colors[ImGuiCol_WindowBg] = ImVec4(0.06f, 0.06f, 0.08f, 0.75f);
-        style.Colors[ImGuiCol_TitleBgActive] = ImVec4(0.16f, 0.29f, 0.48f, 0.90f);
-        style.Colors[ImGuiCol_Border] = ImVec4(0.43f, 0.43f, 0.50f, 0.50f);
+        ImGuiOverlayShared::DrawUI(desc.BufferDesc.Width, desc.BufferDesc.Height);
 
-        ImGui::SetNextWindowPos(ImVec2(20.0f * uiScale, 20.0f * uiScale), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize(ImVec2(300.0f * uiScale, 150.0f * uiScale), ImGuiCond_Always);
-
-        ImGui::Begin("GamePlug v0.1", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-        
-        Config::Get().RenderUI();
-        bool pluginsEnabled = Config::Get().GetBool("PluginEnabled", true);
-
-        if (pluginsEnabled) {
-            ImGui::Spacing();
-            ImGui::Separator();
-            ImGui::Spacing();
-        }
-        
-        DXUpscalerManager::Get().RenderUI(ImGui::GetIO().Framerate, desc.BufferDesc.Width, desc.BufferDesc.Height);
-
-        if (pluginsEnabled && !PluginManager::Get().IsEmpty()) {
-            ImGui::Spacing();
-            ImGui::Separator();
-            ImGui::Spacing();
-            PluginManager::Get().RenderPlugins();
-        }
-
-        if (!DXUpscalerManager::Get().IsLoaded() && PluginManager::Get().IsEmpty()) {
-            ImGui::Spacing();
-            ImGui::TextDisabled("No modules or plugins loaded.");
-        }
-
-        ImGui::End();
         ImGui::Render();
         
         if (g_mainRenderTargetView) {
             if (shouldLog) Logger::info("DX11 Frame Trace: Entry Render Objects");
             // Diagnostic: Attempt upscaling. Note: sourceSRV is currently nullptr in DX11.
-            DXUpscalerManager::Get().RenderFrameDX11(g_pd3dDeviceContext, nullptr, g_mainRenderTargetView, desc.BufferDesc.Width, desc.BufferDesc.Height);
 
             g_pd3dDeviceContext->OMSetRenderTargets(1, &g_mainRenderTargetView, NULL);
             ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
@@ -841,46 +778,7 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
                     ImGui_ImplWin32_NewFrame();
                     ImGui::NewFrame();
                     
-                    float uiScale = (std::max)(1.0f, (float)height / 720.0f);
-                    
-                    // Premium Styling Port from vk_overlay.cpp
-                    ImGuiStyle& style = ImGui::GetStyle();
-                    style.WindowRounding = 8.0f * uiScale;
-                    style.FrameRounding = 4.0f * uiScale;
-                    style.WindowBorderSize = 1.0f;
-                    style.Colors[ImGuiCol_WindowBg] = ImVec4(0.06f, 0.06f, 0.08f, 0.75f);
-                    style.Colors[ImGuiCol_TitleBgActive] = ImVec4(0.16f, 0.29f, 0.48f, 0.90f);
-                    style.Colors[ImGuiCol_Border] = ImVec4(0.43f, 0.43f, 0.50f, 0.50f);
-
-                    ImGui::SetNextWindowPos(ImVec2(20.0f * uiScale, 20.0f * uiScale), ImGuiCond_FirstUseEver);
-                    ImGui::SetNextWindowSize(ImVec2(300.0f * uiScale, 150.0f * uiScale), ImGuiCond_Always);
-                    
-                    ImGui::Begin("GamePlug v0.1", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-                    
-                    Config::Get().RenderUI();
-                    bool pluginsEnabled = Config::Get().GetBool("PluginEnabled", true);
-
-                    if (pluginsEnabled) {
-                        ImGui::Spacing();
-                        ImGui::Separator();
-                        ImGui::Spacing();
-                    }
-
-                    DXUpscalerManager::Get().RenderUI(g_realFPS, width, height);
-
-                    if (pluginsEnabled && !PluginManager::Get().IsEmpty()) {
-                        ImGui::Spacing();
-                        ImGui::Separator();
-                        ImGui::Spacing();
-                        PluginManager::Get().RenderPlugins();
-                    }
-
-                    if (!DXUpscalerManager::Get().IsLoaded() && PluginManager::Get().IsEmpty()) {
-                        ImGui::Spacing();
-                        ImGui::TextDisabled("No modules or plugins loaded.");
-                    }
-
-                    ImGui::End();
+                    ImGuiOverlayShared::DrawUI(width, height);
                     ImGui::Render();
                     g_needsNewImGuiFrame = false;
                 }

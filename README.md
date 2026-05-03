@@ -1,14 +1,19 @@
 # 🚀 GamePlug: The Universal Plugin Layer
 
-GamePlug is a powerful, multi-API interception framework designed for modders. It provides a unified plugin system to inject custom ImGui UIs, upscaling tech (FSR/DLSS), and game logic across **Vulkan**, **DirectX 9**, and **DirectX 12**.
+GamePlug is a powerful, multi-API interception framework designed for modders. It provides a unified plugin system to inject custom ImGui UIs and game logic across **Vulkan**, **DirectX 9**, and **DirectX 12**.
 
 ## ✨ Key Features
 
 *   **Multi-API Support**: One framework to rule them all. Works seamlessly with Vulkan, D3D9, and D3D12.
 *   **Unified Plugin System**: Build plugins once using a clean C++ interface. No need to worry about the underlying rendering backend.
 *   **ImGui Integration**: Full support for Dear ImGui overlays with shared context between the host and plugins.
-*   **Performance Tech**: Built-in hooks for modern upscalers (FSR/DLSS/XeSS).
 *   **Cross-Architecture**: Supports both x32 (Legacy/DXVK titles) and x64 (Modern titles).
+
+## 📖 Documentation
+
+- [Plugin Development Guide](docs/PLUGIN_DEVELOPMENT.md) - Learn how to build your own plugins.
+- [Plugin Usage Guide](docs/PLUGIN_USAGE.md) - How to install and manage plugins.
+- [Changelog](CHANGELOG.md) - Track recent changes and updates.
 
 ## 🛠 Build Instructions
 
@@ -16,7 +21,7 @@ GamePlug supports both x32 (x86) and x64 builds. **x32 is often the primary targ
 
 ### Requirements
 - **CMake** (v3.20+)
-- **Visual Studio 2022** with C++ Desktop Development
+- **Visual Studio 2026** with C++ Desktop Development
 
 ### 1. Build x32 (Legacy Support)
 ```powershell
@@ -57,6 +62,10 @@ DirectX integration is simpler and uses a single universal proxy:
 1. Copy `dinput8.dll` into the game's executable directory.
 2. Launch the game normally.
 
+## 🤝 Contributing
 
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to report bugs, suggest features, and submit pull requests. All contributors are expected to follow our [Code of Conduct](CODE_OF_CONDUCT.md).
 
+## 📄 License
 
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

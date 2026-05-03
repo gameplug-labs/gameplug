@@ -3,8 +3,8 @@
 #include "logger.h"
 #include "dispatch.h"
 #include "plugin_manager.h"
-#include "upscaler_manager.h"
 #include "config.h"
+#include "imgui_overlay_shared.h"
 #include <iostream>
 #include <algorithm>
 #define WIN32_LEAN_AND_MEAN
@@ -112,9 +112,6 @@ void OverlayRenderer::SetupDevice(VkInstance instance, VkPhysicalDevice physical
     // Load Plugins
     PluginManager::Get().LoadPlugins();
 
-    // Initialize Upscaler
-    Logger::info("OverlayRenderer: Triggering UpscalerManager::LoadUpscaler");
-    UpscalerManager::Get().LoadUpscaler((uintptr_t)instance, (uintptr_t)physicalDevice, (uintptr_t)device);
 }
 
 void OverlayRenderer::SetupSwapchain(VkSwapchainKHR swapchain, VkFormat format, VkExtent2D extent, 
@@ -313,7 +310,6 @@ void OverlayRenderer::NewFrame() {
         Logger::info("OverlayRenderer: NewFrame started (Logged every 600 frames)");
     }
 
-    UpscalerManager::Get().NewFrame();
 
     // Toggle Visibility with HOME key
     bool keyCurrentlyPressed = (GetAsyncKeyState(VK_HOME) & 0x8000) != 0;
@@ -333,6 +329,8 @@ void OverlayRenderer::NewFrame() {
     io.DeltaTime = deltaTime > 0 ? deltaTime : 1.0f / 60.0f;
     io.DisplaySize = ImVec2((float)m_swapchainRes.extent.width, (float)m_swapchainRes.extent.height);
 
+    ImGui_ImplVulkan_NewFrame();
+    ImGui_ImplWin32_NewFrame();
     ImGui::NewFrame();
 }
 
@@ -359,66 +357,12 @@ void OverlayRenderer::Render(VkCommandBuffer cmd, VkImage source, VkImage target
     auto* dev_entry = DispatchManager::Get().GetDevice(m_device);
     if (!dev_entry) return;
 
-    // 1. Perform Upscaling (Source -> Target) if images are valid
-    if (source != VK_NULL_HANDLE && target != VK_NULL_HANDLE) {
-        UpscalerManager::Get().RenderFrame((uintptr_t)cmd, (uint64_t)source, (uint64_t)target, width, height);
-    }
 
     // 2. Draw GamePlug ImGui UI
     m_uiRendered = true;
     g_isRenderingOverlay = true;
 
-    ImGuiIO& io = ImGui::GetIO();
-    float uiScale = (std::max)(1.0f, (float)m_swapchainRes.extent.height / 720.0f);
-    io.FontGlobalScale = uiScale;
-
-    // Premium Styling
-    ImGuiStyle& style = ImGui::GetStyle();
-    style.WindowRounding = 8.0f * uiScale;
-    style.FrameRounding = 4.0f * uiScale;
-    style.WindowBorderSize = 1.0f;
-    style.Colors[ImGuiCol_WindowBg] = ImVec4(0.06f, 0.06f, 0.08f, 0.75f); 
-    style.Colors[ImGuiCol_TitleBgActive] = ImVec4(0.16f, 0.29f, 0.48f, 0.90f);
-    style.Colors[ImGuiCol_Border] = ImVec4(0.43f, 0.43f, 0.50f, 0.50f);
-
-    ImGui::SetNextWindowPos(ImVec2(20.0f * uiScale, 20.0f * uiScale), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(300.0f * uiScale, 150.0f * uiScale), ImGuiCond_FirstUseEver);
-
-    ImGui::Begin("GamePlug v0.1", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-    
-    // 1. Master Toggle (at the top)
-    Config::Get().RenderUI();
-
-    bool pluginsEnabled = Config::Get().GetBool("PluginEnabled", true);
-    bool hasUpscaler = UpscalerManager::Get().IsLoaded();
-    bool hasPlugins = pluginsEnabled && !PluginManager::Get().IsEmpty();
-
-    // 2. Render Upscaler UI (with its own separator if loaded)
-    if (hasUpscaler) {
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
-        UpscalerManager::Get().RenderUI(io.Framerate, m_swapchainRes.extent.width, m_swapchainRes.extent.height);
-    }
-
-    // 3. Render Plugins UI (with a separator if we already showed an upscaler or if we want one after config)
-    if (hasPlugins) {
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
-        PluginManager::Get().RenderPlugins();
-    }
- 
-    if (!hasUpscaler && !hasPlugins) {
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
-        ImGui::TextDisabled("No modules or plugins active.");
-    }
-
-
-
-    ImGui::End();
+    ImGuiOverlayShared::DrawUI(m_swapchainRes.extent.width, m_swapchainRes.extent.height);
     ImGui::Render();
 
     // Start a temporary render pass for our UI
@@ -502,6 +446,7 @@ void OverlayRenderer::Shutdown() {
     CleanupSwapchain();
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplWin32_Shutdown();
+    PluginManager::Get().UnloadPlugins();
     ImGui::DestroyContext();
     auto* dev_entry = DispatchManager::Get().GetDevice(m_device);
     if (m_commandPool) dev_entry->table.vkDestroyCommandPool(m_device, m_commandPool, nullptr);

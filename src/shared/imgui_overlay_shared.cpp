@@ -23,7 +23,7 @@ void ImGuiOverlayShared::DrawUI(uint32_t width, uint32_t height) {
     ImGui::SetNextWindowPos(ImVec2(20.0f * uiScale, 20.0f * uiScale), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(300.0f * uiScale, 150.0f * uiScale), ImGuiCond_FirstUseEver);
 
-    if (ImGui::Begin("GamePlug v0.1", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (ImGui::Begin("GamePlug", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         // 1. Master Toggle (at the top)
         Config::Get().RenderUI();
 

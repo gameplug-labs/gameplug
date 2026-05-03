@@ -10,13 +10,19 @@ GamePlug is a powerful, multi-API interception framework designed for modders. I
 *   **Performance Tech**: Built-in hooks for modern upscalers (FSR/DLSS/XeSS).
 *   **Cross-Architecture**: Supports both x32 (Legacy/DXVK titles) and x64 (Modern titles).
 
+## 📖 Documentation
+
+- [Plugin Development Guide](docs/PLUGIN_DEVELOPMENT.md) - Learn how to build your own plugins.
+- [Plugin Usage Guide](docs/PLUGIN_USAGE.md) - How to install and manage plugins.
+- [Changelog](CHANGELOG.md) - Track recent changes and updates.
+
 ## 🛠 Build Instructions
 
 GamePlug supports both x32 (x86) and x64 builds. **x32 is often the primary target** for older games utilizing DXVK.
 
 ### Requirements
 - **CMake** (v3.20+)
-- **Visual Studio 2022** with C++ Desktop Development
+- **Visual Studio 2026** with C++ Desktop Development
 
 ### 1. Build x32 (Legacy Support)
 ```powershell
@@ -57,6 +63,10 @@ DirectX integration is simpler and uses a single universal proxy:
 1. Copy `dinput8.dll` into the game's executable directory.
 2. Launch the game normally.
 
+## 🤝 Contributing
 
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to report bugs, suggest features, and submit pull requests. All contributors are expected to follow our [Code of Conduct](CODE_OF_CONDUCT.md).
 
+## 📄 License
 
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

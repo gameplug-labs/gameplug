@@ -17,6 +17,11 @@ jobs:
     strategy:
       matrix:
         arch: [Win32, x64]
+        include:
+          - arch: Win32
+            output_dir: x32
+          - arch: x64
+            output_dir: x64
 
     steps:
       - name: Checkout
@@ -35,3 +40,10 @@ jobs:
 
       - name: Build
         run: cmake --build build --config Release
+
+      - name: Upload Artifacts
+        if: github.event_name == 'push' && github.ref == 'refs/heads/upscaler'
+        uses: actions/upload-artifact@v4
+        with:
+          name: upscaler-${{ matrix.output_dir }}
+          path: bin/${{ matrix.output_dir }}

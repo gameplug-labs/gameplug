@@ -4,6 +4,7 @@
 #include "dispatch.h"
 #include "plugin_manager.h"
 #include "config.h"
+#include "imgui_overlay_shared.h"
 #include <iostream>
 #include <algorithm>
 #define WIN32_LEAN_AND_MEAN
@@ -328,6 +329,8 @@ void OverlayRenderer::NewFrame() {
     io.DeltaTime = deltaTime > 0 ? deltaTime : 1.0f / 60.0f;
     io.DisplaySize = ImVec2((float)m_swapchainRes.extent.width, (float)m_swapchainRes.extent.height);
 
+    ImGui_ImplVulkan_NewFrame();
+    ImGui_ImplWin32_NewFrame();
     ImGui::NewFrame();
 }
 
@@ -359,49 +362,7 @@ void OverlayRenderer::Render(VkCommandBuffer cmd, VkImage source, VkImage target
     m_uiRendered = true;
     g_isRenderingOverlay = true;
 
-    ImGuiIO& io = ImGui::GetIO();
-    float uiScale = (std::max)(1.0f, (float)m_swapchainRes.extent.height / 720.0f);
-    io.FontGlobalScale = uiScale;
-
-    // Premium Styling
-    ImGuiStyle& style = ImGui::GetStyle();
-    style.WindowRounding = 8.0f * uiScale;
-    style.FrameRounding = 4.0f * uiScale;
-    style.WindowBorderSize = 1.0f;
-    style.Colors[ImGuiCol_WindowBg] = ImVec4(0.06f, 0.06f, 0.08f, 0.75f); 
-    style.Colors[ImGuiCol_TitleBgActive] = ImVec4(0.16f, 0.29f, 0.48f, 0.90f);
-    style.Colors[ImGuiCol_Border] = ImVec4(0.43f, 0.43f, 0.50f, 0.50f);
-
-    ImGui::SetNextWindowPos(ImVec2(20.0f * uiScale, 20.0f * uiScale), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(300.0f * uiScale, 150.0f * uiScale), ImGuiCond_FirstUseEver);
-
-    ImGui::Begin("GamePlug v0.1", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-    
-    // 1. Master Toggle (at the top)
-    Config::Get().RenderUI();
-
-    bool pluginsEnabled = Config::Get().GetBool("PluginEnabled", true);
-    bool hasPlugins = pluginsEnabled && !PluginManager::Get().IsEmpty();
-
-
-    // 3. Render Plugins UI (with a separator if we already showed an upscaler or if we want one after config)
-    if (hasPlugins) {
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
-        PluginManager::Get().RenderPlugins();
-    }
- 
-    if (!hasPlugins) {
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
-        ImGui::TextDisabled("No modules or plugins active.");
-    }
-
-
-
-    ImGui::End();
+    ImGuiOverlayShared::DrawUI(m_swapchainRes.extent.width, m_swapchainRes.extent.height);
     ImGui::Render();
 
     // Start a temporary render pass for our UI
@@ -485,6 +446,7 @@ void OverlayRenderer::Shutdown() {
     CleanupSwapchain();
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplWin32_Shutdown();
+    PluginManager::Get().UnloadPlugins();
     ImGui::DestroyContext();
     auto* dev_entry = DispatchManager::Get().GetDevice(m_device);
     if (m_commandPool) dev_entry->table.vkDestroyCommandPool(m_device, m_commandPool, nullptr);

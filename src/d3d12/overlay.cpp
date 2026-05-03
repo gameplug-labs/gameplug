@@ -8,7 +8,7 @@
 #include "imgui_impl_dx12.h"
 #include "config.h"
 #include "plugin_manager.h"
-#include "plugin_manager.h"
+#include "imgui_overlay_shared.h"
 #include <mutex>
 #include <unordered_map>
 
@@ -197,11 +197,12 @@ void CleanupDX12(bool isResize) {
                 ImGui_ImplDX11_Shutdown();
             }
             ImGui_ImplWin32_Shutdown();
+            PluginManager::Get().UnloadPlugins();
             if (ImGui::GetCurrentContext()) {
                 ImGui::DestroyContext();
             }
             g_ImGuiInitialized = false;
-            Logger::info(" - ImGui Shutdown Complete");
+            Logger::info(" - ImGui Shutdown Complete (Plugins Unloaded)");
         }
 
         // Safe Resource Draining
@@ -460,15 +461,6 @@ bool InitImGuiDX12(IDXGISwapChain* pSwapChain, ID3D12CommandQueue* pQueue) {
     // Load Plugins
     PluginManager::Get().LoadPlugins();
 
-    // Premium Styling Port from vk_overlay.cpp
-    ImGuiStyle& style = ImGui::GetStyle();
-    style.WindowRounding = 8.0f;
-    style.FrameRounding = 4.0f;
-    style.WindowBorderSize = 1.0f;
-    style.Colors[ImGuiCol_WindowBg] = ImVec4(0.06f, 0.06f, 0.08f, 0.75f);
-    style.Colors[ImGuiCol_TitleBgActive] = ImVec4(0.16f, 0.29f, 0.48f, 0.90f);
-    style.Colors[ImGuiCol_Border] = ImVec4(0.43f, 0.43f, 0.50f, 0.50f);
-
     Logger::info("DX12 Init: Success");
     return true;
 }
@@ -701,46 +693,9 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
         ImGui_ImplDX11_NewFrame();
         ImGui_ImplWin32_NewFrame();
         ImGui::NewFrame();
-
-        float uiScale = (std::max)(1.0f, (float)desc.BufferDesc.Height / 720.0f);
         
-        // Premium Styling Port from vk_overlay.cpp
-        ImGuiStyle& style = ImGui::GetStyle();
-        style.WindowRounding = 8.0f * uiScale;
-        style.FrameRounding = 4.0f * uiScale;
-        style.WindowBorderSize = 1.0f;
-        style.Colors[ImGuiCol_WindowBg] = ImVec4(0.06f, 0.06f, 0.08f, 0.75f);
-        style.Colors[ImGuiCol_TitleBgActive] = ImVec4(0.16f, 0.29f, 0.48f, 0.90f);
-        style.Colors[ImGuiCol_Border] = ImVec4(0.43f, 0.43f, 0.50f, 0.50f);
+        ImGuiOverlayShared::DrawUI(desc.BufferDesc.Width, desc.BufferDesc.Height);
 
-        ImGui::SetNextWindowPos(ImVec2(20.0f * uiScale, 20.0f * uiScale), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize(ImVec2(300.0f * uiScale, 150.0f * uiScale), ImGuiCond_Always);
-
-        ImGui::Begin("GamePlug v0.1", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-        
-        Config::Get().RenderUI();
-        bool pluginsEnabled = Config::Get().GetBool("PluginEnabled", true);
-
-        if (pluginsEnabled) {
-            ImGui::Spacing();
-            ImGui::Separator();
-            ImGui::Spacing();
-        }
-        
-
-        if (pluginsEnabled && !PluginManager::Get().IsEmpty()) {
-            ImGui::Spacing();
-            ImGui::Separator();
-            ImGui::Spacing();
-            PluginManager::Get().RenderPlugins();
-        }
-
-        if (PluginManager::Get().IsEmpty()) {
-            ImGui::Spacing();
-            ImGui::TextDisabled("No modules or plugins loaded.");
-        }
-
-        ImGui::End();
         ImGui::Render();
         
         if (g_mainRenderTargetView) {
@@ -823,45 +778,7 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
                     ImGui_ImplWin32_NewFrame();
                     ImGui::NewFrame();
                     
-                    float uiScale = (std::max)(1.0f, (float)height / 720.0f);
-                    
-                    // Premium Styling Port from vk_overlay.cpp
-                    ImGuiStyle& style = ImGui::GetStyle();
-                    style.WindowRounding = 8.0f * uiScale;
-                    style.FrameRounding = 4.0f * uiScale;
-                    style.WindowBorderSize = 1.0f;
-                    style.Colors[ImGuiCol_WindowBg] = ImVec4(0.06f, 0.06f, 0.08f, 0.75f);
-                    style.Colors[ImGuiCol_TitleBgActive] = ImVec4(0.16f, 0.29f, 0.48f, 0.90f);
-                    style.Colors[ImGuiCol_Border] = ImVec4(0.43f, 0.43f, 0.50f, 0.50f);
-
-                    ImGui::SetNextWindowPos(ImVec2(20.0f * uiScale, 20.0f * uiScale), ImGuiCond_FirstUseEver);
-                    ImGui::SetNextWindowSize(ImVec2(300.0f * uiScale, 150.0f * uiScale), ImGuiCond_Always);
-                    
-                    ImGui::Begin("GamePlug v0.1", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-                    
-                    Config::Get().RenderUI();
-                    bool pluginsEnabled = Config::Get().GetBool("PluginEnabled", true);
-
-                    if (pluginsEnabled) {
-                        ImGui::Spacing();
-                        ImGui::Separator();
-                        ImGui::Spacing();
-                    }
-
-
-                    if (pluginsEnabled && !PluginManager::Get().IsEmpty()) {
-                        ImGui::Spacing();
-                        ImGui::Separator();
-                        ImGui::Spacing();
-                        PluginManager::Get().RenderPlugins();
-                    }
-
-                    if (PluginManager::Get().IsEmpty()) {
-                        ImGui::Spacing();
-                        ImGui::TextDisabled("No modules or plugins loaded.");
-                    }
-
-                    ImGui::End();
+                    ImGuiOverlayShared::DrawUI(width, height);
                     ImGui::Render();
                     g_needsNewImGuiFrame = false;
                 }

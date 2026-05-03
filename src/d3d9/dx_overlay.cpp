@@ -5,6 +5,7 @@
 #include "logger.h"
 #include "config.h"
 #include "plugin_manager.h"
+#include "imgui_overlay_shared.h"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -62,6 +63,7 @@ void OverlayRenderer::Shutdown() {
     
     ImGui_ImplDX9_Shutdown();
     ImGui_ImplWin32_Shutdown();
+    PluginManager::Get().UnloadPlugins();
     ImGui::DestroyContext();
     
     if (m_originalWndProc) {
@@ -128,7 +130,7 @@ void OverlayRenderer::Render(IDirect3DDevice9* device, uint32_t width, uint32_t 
         }
     }
 
-    DrawUI(width, height);
+    ImGuiOverlayShared::DrawUI(width, height);
 
     ImGui::Render();
     ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
@@ -136,42 +138,6 @@ void OverlayRenderer::Render(IDirect3DDevice9* device, uint32_t width, uint32_t 
     g_isRenderingOverlay = false;
 }
 
-void OverlayRenderer::DrawUI(uint32_t width, uint32_t height) {
-    ImGuiIO& io = ImGui::GetIO();
-    float uiScale = (std::max)(1.0f, (float)height / 720.0f);
-    io.FontGlobalScale = uiScale;
-
-    // Premium Styling
-    ImGuiStyle& style = ImGui::GetStyle();
-    style.WindowRounding = 8.0f * uiScale;
-    style.FrameRounding = 4.0f * uiScale;
-    style.WindowBorderSize = 1.0f;
-    style.Colors[ImGuiCol_WindowBg] = ImVec4(0.06f, 0.06f, 0.08f, 0.75f); 
-    style.Colors[ImGuiCol_TitleBgActive] = ImVec4(0.16f, 0.29f, 0.48f, 0.90f);
-    style.Colors[ImGuiCol_Border] = ImVec4(0.43f, 0.43f, 0.50f, 0.50f);
-
-    ImGui::SetNextWindowPos(ImVec2(20.0f * uiScale, 20.0f * uiScale), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(300.0f * uiScale, 150.0f * uiScale), ImGuiCond_FirstUseEver);
-
-    if (ImGui::Begin("GamePlug v0.1", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-        // 1. Master Toggle (at the top)
-        Config::Get().RenderUI();
-
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
-        
-        // 2. Render Upscaler UI
-
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
-
-        // 3. Render Plugins
-        PluginManager::Get().RenderPlugins();
-    }
-    ImGui::End();
-}
 
 LRESULT CALLBACK OverlayRenderer::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     auto& renderer = OverlayRenderer::Get();

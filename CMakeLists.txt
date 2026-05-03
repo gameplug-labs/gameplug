@@ -17,7 +17,7 @@ else()
     set(BIN_ARCH "x32")
 endif()
 
-set(BIN_OUTPUT_DIR "${CMAKE_SOURCE_DIR}/bin/${BIN_ARCH}")
+set(BIN_OUTPUT_DIR "${PROJECT_SOURCE_DIR}/bin/${BIN_ARCH}")
 file(MAKE_DIRECTORY ${BIN_OUTPUT_DIR})
 
 # External dependencies

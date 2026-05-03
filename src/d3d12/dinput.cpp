@@ -1,6 +1,5 @@
 #include <windows.h>
 #include <shlwapi.h>
-#include <string>
 
 #pragma comment(lib, "shlwapi.lib")
 
@@ -42,8 +41,6 @@ DWORD WINAPI InitThread(LPVOID lpParam) {
     OutputDebugStringA("[GamePlug] dinput8: Calling StartFramework...");
     StartFramework();
 
-    // Force load DXVK (d3d9.dll)
-    LoadLibraryA("d3d9.dll");
 
     return 0;
 }

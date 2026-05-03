@@ -1,4 +1,5 @@
 #pragma once
+#define GAMEPLUG_LOGGER_DEFINED
 
 #include <spdlog/spdlog.h>
 #include <spdlog/fmt/fmt.h>

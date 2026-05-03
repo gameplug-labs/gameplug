@@ -30,10 +30,10 @@ int wmain(int argc, wchar_t* argv[]) {
     wchar_t oldPath[4096];
     GetEnvironmentVariableW(L"PATH", oldPath, 4096);
     std::wstring newPath = selfDir + L";" + oldPath;
-    SetEnvironmentVariableW(L"PATH", newPath.c_str());
+        SetEnvironmentVariableW(L"PATH", newPath.c_str());
 
     // 3. Enable the layer
-    SetEnvironmentVariableW(L"VK_INSTANCE_LAYERS", L"VK_LAYER_GamePlug");
+    SetEnvironmentVariableW(L"VK_INSTANCE_LAYERS", L"VK_LAYER_GAMEPLUG");
 
 
     // 3. Rebuild the command line for the child process

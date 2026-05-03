@@ -479,14 +479,6 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdEndRenderPass(VkCommandBuffer comman
 
     VkFramebuffer fb = g_ActiveFBs[commandBuffer];
     if (fb != VK_NULL_HANDLE) {
-        // Draw GamePlug UI directly into the game's final pass if it's the swapchain
-        if (GamePlug::OverlayRenderer::Get().IsVisible() && GamePlug::ImageTracker::Get().IsSwapchainFramebuffer(fb)) {
-                VkImage source = GamePlug::ImageTracker::Get().GetLastSceneImage();
-                VkImage target = GamePlug::ImageTracker::Get().GetSwapchainImageFromFramebuffer(fb);
-                uint32_t sw = GamePlug::ImageTracker::Get().GetScreenWidth();
-                uint32_t sh = GamePlug::ImageTracker::Get().GetScreenHeight();
-                GamePlug::OverlayRenderer::Get().Render(commandBuffer, source, target, sw, sh);
-        }
     }
 
     dev_entry->table.vkCmdEndRenderPass(commandBuffer);

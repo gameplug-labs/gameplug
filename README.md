@@ -1,13 +1,12 @@
 # 🚀 GamePlug: The Universal Plugin Layer
 
-GamePlug is a powerful, multi-API interception framework designed for modders. It provides a unified plugin system to inject custom ImGui UIs, upscaling tech (FSR/DLSS), and game logic across **Vulkan**, **DirectX 9**, and **DirectX 12**.
+GamePlug is a powerful, multi-API interception framework designed for modders. It provides a unified plugin system to inject custom ImGui UIs and game logic across **Vulkan**, **DirectX 9**, and **DirectX 12**.
 
 ## ✨ Key Features
 
 *   **Multi-API Support**: One framework to rule them all. Works seamlessly with Vulkan, D3D9, and D3D12.
 *   **Unified Plugin System**: Build plugins once using a clean C++ interface. No need to worry about the underlying rendering backend.
 *   **ImGui Integration**: Full support for Dear ImGui overlays with shared context between the host and plugins.
-*   **Performance Tech**: Built-in hooks for modern upscalers (FSR/DLSS/XeSS).
 *   **Cross-Architecture**: Supports both x32 (Legacy/DXVK titles) and x64 (Modern titles).
 
 ## 📖 Documentation

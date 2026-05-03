@@ -26,7 +26,12 @@ add_subdirectory(external/minhook)
 
 # Framework and Vulkan Subprojects
 add_subdirectory(src)
-add_subdirectory(sub_projects/dxupscaler_core)
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/sub_projects/dxupscaler_core/CMakeLists.txt")
+    add_subdirectory(sub_projects/dxupscaler_core)
+else()
+    message(STATUS "dxupscaler_core not found, skipping upscaler_d3d9 build.")
+endif()
 
 
 

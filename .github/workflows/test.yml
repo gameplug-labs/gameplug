@@ -1,8 +1,10 @@
 name: Test Build
 
 on:
+  push:
+    branches: [ main, dev, upscaler ]
   pull_request:
-    types: [opened, synchronize, reopened]
+    branches: [ main, dev, upscaler ]
 
 jobs:
   test-build:

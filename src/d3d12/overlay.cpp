@@ -25,10 +25,12 @@ enum class DXVersion {
 
 static DXVersion g_DXVersion = DXVersion::Unknown;
 static bool g_ImGuiInitialized = false;
+static bool g_Visible = true;
+static bool g_ShowKeyWasPressed = false;
 static WNDPROC g_OriginalWndProc = nullptr;
 
 LRESULT CALLBACK HookedWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    if (g_ImGuiInitialized && ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
+    if (g_ImGuiInitialized && g_Visible && ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
         return true;
     return CallWindowProc(g_OriginalWndProc, hWnd, msg, wParam, lParam);
 }
@@ -519,6 +521,19 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
 
     g_frameCounter++;
     
+    // Toggle Visibility with Ctrl + HOME key
+    bool ctrlPressed = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+    bool homePressed = (GetAsyncKeyState(VK_HOME) & 0x8000) != 0;
+    bool keyCurrentlyPressed = ctrlPressed && homePressed;
+
+    if (keyCurrentlyPressed && !g_ShowKeyWasPressed) {
+        g_Visible = !g_Visible;
+        Logger::info("DX Overlay: Visibility toggled manually to: " + std::string(g_Visible ? "ON" : "OFF"));
+    }
+    g_ShowKeyWasPressed = keyCurrentlyPressed;
+    
+    if (!g_Visible) return;
+
     // RE Engine Stability: Ensure hooks are applied as soon as a SceneView is available
 
     g_needsNewImGuiFrame = true;

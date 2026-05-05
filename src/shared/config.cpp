@@ -6,6 +6,7 @@
 #include <windows.h>
 #include "imgui.h"
 #include "plugin_manager.h"
+#include "win32_hooks.h"
 
 namespace GamePlug {
 
@@ -56,9 +57,29 @@ void Config::Load(const std::string& filename) {
                 Logger::info("Config: ScreenResolution detected: " + std::to_string(m_targetWidth) + "x" + std::to_string(m_targetHeight));
             }
         }
+        if (key == "ExtraEnumeratedResolutions") {
+            m_extraResolutions.clear();
+            std::stringstream ss(value);
+            std::string item;
+            while (std::getline(ss, item, ',')) {
+                item = Trim(item);
+                size_t xPos = item.find('x');
+                if (xPos != std::string::npos) {
+                    try {
+                        Resolution res;
+                        res.width = (uint32_t)std::stoul(item.substr(0, xPos));
+                        res.height = (uint32_t)std::stoul(item.substr(xPos + 1));
+                        m_extraResolutions.push_back(res);
+                        Logger::info("Config: Extra resolution added: " + std::to_string(res.width) + "x" + std::to_string(res.height));
+                    } catch (...) {}
+                }
+            }
+        }
     }
 
     Logger::info("Config: Loaded " + std::to_string(m_settings.size()) + " settings from " + path);
+
+    InstallWin32Hooks();
 }
 
 void Config::Save(const std::string& filename) {

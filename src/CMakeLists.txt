@@ -3,6 +3,7 @@ set(SHARED_SOURCES
     shared/config.cpp
     shared/plugin_manager.cpp
     shared/imgui_overlay_shared.cpp
+    shared/win32_hooks.cpp
     ${PROJECT_SOURCE_DIR}/external/imgui/imgui.cpp
     ${PROJECT_SOURCE_DIR}/external/imgui/imgui_draw.cpp
     ${PROJECT_SOURCE_DIR}/external/imgui/imgui_tables.cpp

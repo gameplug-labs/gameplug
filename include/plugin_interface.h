@@ -1,3 +1,12 @@
+/**
+ * @file plugin_interface.h
+ * @brief Raw C-style interface for GamePlug plugins.
+ * 
+ * IMPORTANT: For C++ plugins, it is HIGHLY RECOMMENDED to include "plugin_helper.h" 
+ * instead of this file. The helper provides a clean C++ base class and 
+ * automatic initialization.
+ */
+
 #pragma once
 
 #ifdef _WIN32

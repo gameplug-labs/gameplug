@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-05-08
+
 ### Added
 - **C++ Plugin Helper**: Introduced `plugin_helper.h` with a `GamePlug::Plugin` base class and `REGISTER_GAMEPLUG_PLUGIN` macro to simplify C++ plugin development.
 - **Extra Resolution Enumeration**: Added `ExtraEnumeratedResolutions` support for **D3D9** and **Vulkan** (Win32) to allow custom resolutions in game settings.

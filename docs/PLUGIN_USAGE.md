@@ -24,7 +24,7 @@ Once a plugin is placed in the folder, GamePlug will attempt to load it automati
 
 ### The GamePlug Overlay
 1. Launch your game.
-2. Open the GamePlug overlay (usually via the **Home** or **Insert** key, depending on your configuration).
+2. Open the GamePlug overlay (usually via the **Ctrl + Home** key).
 3. Navigate to the **Plugins** tab.
 
 ### Enabling/Disabling Plugins

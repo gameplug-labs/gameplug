@@ -3,8 +3,14 @@
 #include <map>
 #include <mutex>
 #include "framework_export.h"
+#include <vector>
 
 namespace GamePlug {
+
+struct Resolution {
+    uint32_t width;
+    uint32_t height;
+};
 
 class FRAMEWORK_API Config {
 public:
@@ -29,6 +35,8 @@ public:
     uint32_t GetTargetWidth() const { return m_targetWidth; }
     uint32_t GetTargetHeight() const { return m_targetHeight; }
 
+    const std::vector<Resolution>& GetExtraResolutions() const { return m_extraResolutions; }
+
     // Plugin specific
     bool IsPluginEnabled(const std::string& pluginName);
     void SetPluginEnabled(const std::string& pluginName, bool enabled);
@@ -43,6 +51,7 @@ private:
     
     uint32_t m_targetWidth = 0;
     uint32_t m_targetHeight = 0;
+    std::vector<Resolution> m_extraResolutions;
 
     std::string Trim(const std::string& s);
 };

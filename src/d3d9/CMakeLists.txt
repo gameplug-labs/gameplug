@@ -8,6 +8,7 @@ add_library(d3d9_proxy_dll SHARED
     ${PROJECT_SOURCE_DIR}/src/shared/config.cpp
     ${PROJECT_SOURCE_DIR}/src/shared/plugin_manager.cpp
     ${PROJECT_SOURCE_DIR}/src/shared/imgui_overlay_shared.cpp
+    ${PROJECT_SOURCE_DIR}/src/shared/win32_hooks.cpp
     dx_overlay.cpp
     upscaler_manager.cpp
     ${PROJECT_SOURCE_DIR}/external/imgui/imgui.cpp

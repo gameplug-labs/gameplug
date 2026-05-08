@@ -1,51 +1,31 @@
-#include "plugin_interface.h"
-#include <cstdio>
+#include "plugin_helper.h"
 
-static int g_Counter = 0;
-
-const char* Extra_GetName() {
-    return "Extra Counter Plugin";
-}
-
-void Extra_OnInit(ImGuiContext* context, void (*LogFunc)(GamePlugPluginInterface::PluginLogLevel level, const char* message, void* context), void* logContext) {
-    ImGui::SetCurrentContext(context);
-    g_Counter = 0;
-}
-
-
-
-void Extra_OnImGuiRender() {
-    ImGui::Text("Counter: %d", g_Counter);
-    if (ImGui::Button("Increment")) {
-        g_Counter++;
+class ExtraPlugin : public GamePlug::Plugin {
+public:
+    const char* GetName() const override {
+        return "Extra Counter Plugin";
     }
-}
 
-static GamePlugPluginInterface::FieldDescriptor g_Fields[] = {
-    { "Counter Value", "Statistics", GamePlugPluginInterface::TYPE_INT, &g_Counter, 0, nullptr }
+    void OnImGuiRender() override {
+        ImGui::Text("Counter: %d", m_counter);
+        if (ImGui::Button("Increment")) {
+            m_counter++;
+        }
+    }
+
+    int GetFields(GamePlugPluginInterface::FieldDescriptor** outFields) override {
+        static GamePlugPluginInterface::FieldDescriptor fields[] = {
+            { "Counter Value", "Statistics", GamePlugPluginInterface::TYPE_INT, &m_counter, 0, nullptr }
+        };
+
+        if (outFields) {
+            *outFields = fields;
+        }
+        return sizeof(fields) / sizeof(fields[0]);
+    }
+
+private:
+    int m_counter = 0;
 };
 
-int Extra_GetFields(GamePlugPluginInterface::FieldDescriptor** outFields) {
-    if (outFields) {
-        *outFields = g_Fields;
-    }
-    return sizeof(g_Fields) / sizeof(g_Fields[0]);
-}
-
-static GamePlugPluginInterface g_Interface = {
-    8, // Version
-    Extra_GetName,
-    Extra_OnInit,
-    Extra_OnImGuiRender,
-    nullptr, // OnShutdown
-    nullptr, // OnFieldsChanged
-    Extra_GetFields
-};
-
-
-
-
-
-extern "C" GamePlug_PLUGIN_API GamePlugPluginInterface* GamePlug_GetPluginInterface() {
-    return &g_Interface;
-}
+REGISTER_GAMEPLUG_PLUGIN(ExtraPlugin)

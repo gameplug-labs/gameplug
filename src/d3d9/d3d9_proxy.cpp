@@ -348,8 +348,19 @@ public:
         
         int nativeW = Config::Get().GetTargetWidth();
         int nativeH = Config::Get().GetTargetHeight();
-        if (nativeW <= 0) nativeW = pPP->BackBufferWidth;
-        if (nativeH <= 0) nativeH = pPP->BackBufferHeight;
+        
+        // Fallback to desktop resolution if not specified, 
+        // especially important if the game requested an "extra" resolution that hardware doesn't support.
+        if (nativeW <= 0 || nativeH <= 0) {
+            D3DDISPLAYMODE dm;
+            if (SUCCEEDED(m_pReal->GetDisplayMode(0, &dm))) {
+                nativeW = dm.Width;
+                nativeH = dm.Height;
+            } else {
+                nativeW = pPP->BackBufferWidth;
+                nativeH = pPP->BackBufferHeight;
+            }
+        }
         
         D3DPRESENT_PARAMETERS realPP = *pPP;
         realPP.BackBufferWidth = nativeW;
@@ -749,8 +760,32 @@ public:
     STDMETHOD(RegisterSoftwareDevice)(void* pIF) override { return m_pReal->RegisterSoftwareDevice(pIF); }
     STDMETHOD_(UINT, GetAdapterCount)() override { return m_pReal->GetAdapterCount(); }
     STDMETHOD(GetAdapterIdentifier)(UINT A, DWORD F, D3DADAPTER_IDENTIFIER9* pI) override { return m_pReal->GetAdapterIdentifier(A, F, pI); }
-    STDMETHOD_(UINT, GetAdapterModeCount)(UINT A, D3DFORMAT F) override { return m_pReal->GetAdapterModeCount(A, F); }
-    STDMETHOD(EnumAdapterModes)(UINT A, D3DFORMAT F, UINT M, D3DDISPLAYMODE* pM) override { return m_pReal->EnumAdapterModes(A, F, M, pM); }
+    STDMETHOD_(UINT, GetAdapterModeCount)(UINT A, D3DFORMAT F) override { 
+        UINT realCount = m_pReal->GetAdapterModeCount(A, F);
+        if (realCount > 0) {
+            realCount += (UINT)Config::Get().GetExtraResolutions().size();
+        }
+        return realCount;
+    }
+    STDMETHOD(EnumAdapterModes)(UINT A, D3DFORMAT F, UINT M, D3DDISPLAYMODE* pM) override { 
+        UINT realCount = m_pReal->GetAdapterModeCount(A, F);
+        if (M < realCount) return m_pReal->EnumAdapterModes(A, F, M, pM);
+        
+        if (realCount == 0) return D3DERR_INVALIDCALL;
+
+        UINT extraIdx = M - realCount;
+        const auto& extra = Config::Get().GetExtraResolutions();
+        if (extraIdx < extra.size()) {
+            if (pM) {
+                pM->Width = extra[extraIdx].width;
+                pM->Height = extra[extraIdx].height;
+                pM->RefreshRate = 60;
+                pM->Format = F;
+            }
+            return S_OK;
+        }
+        return D3DERR_INVALIDCALL;
+    }
     STDMETHOD(GetAdapterDisplayMode)(UINT A, D3DDISPLAYMODE* pM) override { return m_pReal->GetAdapterDisplayMode(A, pM); }
     STDMETHOD(CheckDeviceType)(UINT A, D3DDEVTYPE DT, D3DFORMAT AF, D3DFORMAT BF, BOOL W) override { return m_pReal->CheckDeviceType(A, DT, AF, BF, W); }
     STDMETHOD(CheckDeviceFormat)(UINT A, D3DDEVTYPE DT, D3DFORMAT AF, DWORD U, D3DRESOURCETYPE RT, D3DFORMAT CF) override { return m_pReal->CheckDeviceFormat(A, DT, AF, U, RT, CF); }
@@ -769,8 +804,18 @@ public:
         
         int nativeW = Config::Get().GetTargetWidth();
         int nativeH = Config::Get().GetTargetHeight();
-        if (nativeW <= 0) nativeW = pPP->BackBufferWidth;
-        if (nativeH <= 0) nativeH = pPP->BackBufferHeight;
+
+        // Fallback to desktop resolution if not specified
+        if (nativeW <= 0 || nativeH <= 0) {
+            D3DDISPLAYMODE dm;
+            if (SUCCEEDED(m_pReal->GetAdapterDisplayMode(A, &dm))) {
+                nativeW = dm.Width;
+                nativeH = dm.Height;
+            } else {
+                nativeW = pPP->BackBufferWidth;
+                nativeH = pPP->BackBufferHeight;
+            }
+        }
         
         D3DPRESENT_PARAMETERS realPP = *pPP;
         realPP.BackBufferWidth = nativeW;
@@ -788,8 +833,36 @@ public:
     }
 
     // IDirect3D9Ex methods
-    STDMETHOD_(UINT, GetAdapterModeCountEx)(UINT A, CONST D3DDISPLAYMODEFILTER* pF) override { if (!m_pRealEx) return 0; return m_pRealEx->GetAdapterModeCountEx(A, pF); }
-    STDMETHOD(EnumAdapterModesEx)(UINT A, CONST D3DDISPLAYMODEFILTER* pF, UINT M, D3DDISPLAYMODEEX* pMode) override { if (!m_pRealEx) return E_NOTIMPL; return m_pRealEx->EnumAdapterModesEx(A, pF, M, pMode); }
+    STDMETHOD_(UINT, GetAdapterModeCountEx)(UINT A, CONST D3DDISPLAYMODEFILTER* pF) override { 
+        if (!m_pRealEx) return 0; 
+        UINT realCount = m_pRealEx->GetAdapterModeCountEx(A, pF);
+        if (realCount > 0) {
+            realCount += (UINT)Config::Get().GetExtraResolutions().size();
+        }
+        return realCount;
+    }
+    STDMETHOD(EnumAdapterModesEx)(UINT A, CONST D3DDISPLAYMODEFILTER* pF, UINT M, D3DDISPLAYMODEEX* pMode) override { 
+        if (!m_pRealEx) return E_NOTIMPL; 
+        UINT realCount = m_pRealEx->GetAdapterModeCountEx(A, pF);
+        if (M < realCount) return m_pRealEx->EnumAdapterModesEx(A, pF, M, pMode);
+
+        if (realCount == 0) return D3DERR_INVALIDCALL;
+
+        UINT extraIdx = M - realCount;
+        const auto& extra = Config::Get().GetExtraResolutions();
+        if (extraIdx < extra.size()) {
+            if (pMode) {
+                pMode->Size = sizeof(D3DDISPLAYMODEEX);
+                pMode->Width = extra[extraIdx].width;
+                pMode->Height = extra[extraIdx].height;
+                pMode->RefreshRate = 60;
+                pMode->Format = (pF ? pF->Format : D3DFMT_X8R8G8B8);
+                pMode->ScanLineOrdering = D3DSCANLINEORDERING_PROGRESSIVE;
+            }
+            return S_OK;
+        }
+        return D3DERR_INVALIDCALL;
+    }
     STDMETHOD(GetAdapterDisplayModeEx)(UINT A, D3DDISPLAYMODEEX* pM, D3DDISPLAYROTATION* pR) override { if (!m_pRealEx) return E_NOTIMPL; return m_pRealEx->GetAdapterDisplayModeEx(A, pM, pR); }
     STDMETHOD(CreateDeviceEx)(UINT A, D3DDEVTYPE DT, HWND hFW, DWORD BF, D3DPRESENT_PARAMETERS* pPP, D3DDISPLAYMODEEX* pFDM, IDirect3DDevice9Ex** ppRDI) override {
         if (!pPP) return D3DERR_INVALIDCALL;
@@ -801,8 +874,19 @@ public:
         
         int nativeW = Config::Get().GetTargetWidth();
         int nativeH = Config::Get().GetTargetHeight();
-        if (nativeW <= 0) nativeW = pPP->BackBufferWidth;
-        if (nativeH <= 0) nativeH = pPP->BackBufferHeight;
+        
+        // Fallback to desktop resolution if not specified
+        if (nativeW <= 0 || nativeH <= 0) {
+            D3DDISPLAYMODEEX mode;
+            mode.Size = sizeof(D3DDISPLAYMODEEX);
+            if (m_pRealEx && SUCCEEDED(m_pRealEx->GetAdapterDisplayModeEx(A, &mode, nullptr))) {
+                nativeW = mode.Width;
+                nativeH = mode.Height;
+            } else {
+                nativeW = pPP->BackBufferWidth;
+                nativeH = pPP->BackBufferHeight;
+            }
+        }
         
         D3DPRESENT_PARAMETERS realPP = *pPP;
         realPP.BackBufferWidth = nativeW;
@@ -852,7 +936,8 @@ void InitializeHooks() {
     static bool hooksInitialized = false;
     if (hooksInitialized) return;
     
-    if (MH_Initialize() != MH_OK) {
+    MH_STATUS status = MH_Initialize();
+    if (status != MH_OK && status != MH_ERROR_ALREADY_INITIALIZED) {
         Logger::error("InitializeHooks: MH_Initialize failed!");
         return;
     }

@@ -1,9 +1,8 @@
-#include "plugin_interface.h"
+#include "plugin_helper.h"
 #include <iostream>
 #include <fstream>
 #include <string>
 #include <vector>
-#include <map>
 
 // Typed config structure
 struct Config {
@@ -43,66 +42,45 @@ struct Config {
     }
 };
 
-static Config g_Config;
-
-const char* Sample_GetName() {
-    return "Sample Config Editor (Dropdown)";
-}
-
-void Sample_OnInit(ImGuiContext* context, void (*LogFunc)(GamePlugPluginInterface::PluginLogLevel level, const char* message, void* context), void* logContext) {
-    ImGui::SetCurrentContext(context);
-    
-    // Set the logger for the plugin helper class with context
-    GamePlug::Logger::set_log(LogFunc, logContext);
-    
-    g_Config.Load("sample.conf");
-    
-    GamePlug::Logger::info("Sample Plugin: Initialized with contextual logging");
-}
-
-
-
-
-void Sample_OnImGuiRender() {
-    // Custom UI still possible, but manual save is no longer needed
-    ImGui::TextDisabled("(Configuration is saved automatically)");
-}
-
-void Sample_OnFieldsChanged() {
-    g_Config.Save("sample.conf");
-}
-
-static GamePlugPluginInterface::FieldDescriptor g_Fields[] = {
-    { "Enable Feature A", "General", GamePlugPluginInterface::TYPE_BOOL, &g_Config.EnableFeatureA, 0, nullptr },
-    { "Sensitivity", "General", GamePlugPluginInterface::TYPE_FLOAT, &g_Config.Sensitivity, 0, nullptr },
-    { "Window Mode", "General", GamePlugPluginInterface::TYPE_ENUM, &g_Config.WindowMode, 0, "Windowed,Fullscreen,Borderless" },
-    { "User Alias", "User Profile", GamePlugPluginInterface::TYPE_STRING, g_Config.UserAlias, sizeof(g_Config.UserAlias), nullptr }
-};
-
-int Sample_GetFields(GamePlugPluginInterface::FieldDescriptor** outFields) {
-    if (outFields) {
-        *outFields = g_Fields;
+class SamplePlugin : public GamePlug::Plugin {
+public:
+    const char* GetName() const override {
+        return "Sample Config Editor (C++ Base)";
     }
-    return sizeof(g_Fields) / sizeof(g_Fields[0]);
-}
 
-static GamePlugPluginInterface g_Interface = {
-    8, // Version
-    Sample_GetName,
-    Sample_OnInit,
-    Sample_OnImGuiRender,
-    nullptr, // OnShutdown
-    Sample_OnFieldsChanged,
-    Sample_GetFields
+    void OnInit(ImGuiContext* context, void (*LogFunc)(GamePlugPluginInterface::PluginLogLevel, const char*, void*), void* logContext) override {
+        // Call base to set up ImGui and Logger
+        GamePlug::Plugin::OnInit(context, LogFunc, logContext);
+        
+        m_config.Load("sample.conf");
+        GamePlug::Logger::info("Sample Plugin: Initialized using C++ Helper Class");
+    }
+
+    void OnImGuiRender() override {
+        ImGui::TextDisabled("(Configuration is saved automatically)");
+    }
+
+    void OnFieldsChanged() override {
+        m_config.Save("sample.conf");
+    }
+
+    int GetFields(GamePlugPluginInterface::FieldDescriptor** outFields) override {
+        static GamePlugPluginInterface::FieldDescriptor fields[] = {
+            { "Enable Feature A", "General", GamePlugPluginInterface::TYPE_BOOL, &m_config.EnableFeatureA, 0, nullptr },
+            { "Sensitivity", "General", GamePlugPluginInterface::TYPE_FLOAT, &m_config.Sensitivity, 0, nullptr },
+            { "Window Mode", "General", GamePlugPluginInterface::TYPE_ENUM, &m_config.WindowMode, 0, "Windowed,Fullscreen,Borderless" },
+            { "User Alias", "User Profile", GamePlugPluginInterface::TYPE_STRING, m_config.UserAlias, sizeof(m_config.UserAlias), nullptr }
+        };
+
+        if (outFields) {
+            *outFields = fields;
+        }
+        return sizeof(fields) / sizeof(fields[0]);
+    }
+
+private:
+    Config m_config;
 };
 
-
-
-
-
-
-
-extern "C" GamePlug_PLUGIN_API GamePlugPluginInterface* GamePlug_GetPluginInterface() {
-    return &g_Interface;
-}
+REGISTER_GAMEPLUG_PLUGIN(SamplePlugin)
 

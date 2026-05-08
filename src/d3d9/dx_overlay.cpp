@@ -98,8 +98,11 @@ void OverlayRenderer::NewFrame() {
     ImGuiIO& io = ImGui::GetIO();
     io.DeltaTime = deltaTime > 0 ? deltaTime : 1.0f / 60.0f;
 
-    // Toggle Visibility with HOME key
-    bool keyCurrentlyPressed = (GetAsyncKeyState(VK_HOME) & 0x8000) != 0;
+    // Toggle Visibility with Ctrl + HOME key
+    bool ctrlPressed = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+    bool homePressed = (GetAsyncKeyState(VK_HOME) & 0x8000) != 0;
+    bool keyCurrentlyPressed = ctrlPressed && homePressed;
+
     if (keyCurrentlyPressed && !m_showKeyWasPressed) {
         m_visible = !m_visible;
         Logger::info("OverlayRenderer: Visibility toggled manually to: " + std::string(m_visible ? "ON" : "OFF"));

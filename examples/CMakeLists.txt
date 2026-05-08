@@ -46,3 +46,22 @@ add_custom_command(TARGET extra_plugin POST_BUILD
             "${BIN_OUTPUT_DIR}/GamePlug/plugins/extra.dll"
     COMMENT "Copying extra_plugin to bin/${BIN_ARCH}/GamePlug/plugins"
 )
+# 3. Minimal Plugin
+add_library(minimal_plugin SHARED 
+    minimal_plugin.cpp
+    ${IMGUI_SOURCES}
+)
+target_include_directories(minimal_plugin PRIVATE
+    ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/external/imgui
+)
+set_target_properties(minimal_plugin PROPERTIES OUTPUT_NAME "minimal" PREFIX "")
+
+# Copy minimal plugin to bin folder
+add_custom_command(TARGET minimal_plugin POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${BIN_OUTPUT_DIR}/GamePlug/plugins"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different 
+            "$<TARGET_FILE:minimal_plugin>" 
+            "${BIN_OUTPUT_DIR}/GamePlug/plugins/minimal.dll"
+    COMMENT "Copying minimal_plugin to bin/${BIN_ARCH}/GamePlug/plugins"
+)

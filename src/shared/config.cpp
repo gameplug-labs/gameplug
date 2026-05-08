@@ -79,7 +79,11 @@ void Config::Load(const std::string& filename) {
 
     Logger::info("Config: Loaded " + std::to_string(m_settings.size()) + " settings from " + path);
 
+#ifndef GAMEPLUG_DIRECTX
     InstallWin32Hooks();
+#else
+    Logger::info("Config: Skipping Win32 hooks for D3D12 backend");
+#endif
 }
 
 void Config::Save(const std::string& filename) {

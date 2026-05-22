@@ -1,9 +1,9 @@
 #pragma once
 
-#include <vector>
-#include <string>
-#include <windows.h>
 #include "plugin_interface.h"
+#include <string>
+#include <vector>
+#include <windows.h>
 
 #include "framework_export.h"
 
@@ -15,7 +15,9 @@ struct LoadedPlugin {
     HMODULE handle;
     GamePlugPluginInterface* pInterface;
 
-    LoadedPlugin() : handle(NULL), pInterface(nullptr) {}
+    LoadedPlugin()
+        : handle(NULL)
+        , pInterface(nullptr) {}
 };
 
 struct DiscoveredPlugin {
@@ -28,13 +30,13 @@ class FRAMEWORK_API PluginManager {
 public:
     static PluginManager& Get();
 
-    // Call once during engine/overlay initialization. 
+    // Call once during engine/overlay initialization.
     // Searches for plugins in (ExeDir)/GamePlug/plugins.
     void LoadPlugins();
 
     // Call during overlay rendering.
     void RenderPlugins();
-    
+
     bool IsEmpty() const;
     const std::vector<DiscoveredPlugin>& GetDiscoveredPlugins() const;
 

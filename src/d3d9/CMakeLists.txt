@@ -3,6 +3,11 @@ cmake_minimum_required(VERSION 3.20)
 # --- D3D9 Proxy Target ---
 add_library(d3d9_proxy_dll SHARED
     d3d9_proxy.cpp
+    d3d9.cpp
+    d3d9_proxy_surface.cpp
+    d3d9_proxy_swapchain.cpp
+    d3d9_proxy_device.cpp
+    d3d9_proxy_d3d9.cpp
     d3d9.def
     ${PROJECT_SOURCE_DIR}/src/shared/logger.cpp
     ${PROJECT_SOURCE_DIR}/src/shared/config.cpp

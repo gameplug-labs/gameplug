@@ -1,10 +1,10 @@
-#include <windows.h>
 #include <shlwapi.h>
+#include <windows.h>
 
 #pragma comment(lib, "shlwapi.lib")
 
 // Typedef for the original DirectInput8Create
-typedef HRESULT (WINAPI *PFN_DirectInput8Create)(HINSTANCE hinst, DWORD dwVersion, REFIID riidltf, LPVOID *ppvOut, LPUNKNOWN punkOuter);
+typedef HRESULT(WINAPI* PFN_DirectInput8Create)(HINSTANCE hinst, DWORD dwVersion, REFIID riidltf, LPVOID* ppvOut, LPUNKNOWN punkOuter);
 
 static PFN_DirectInput8Create g_realDirectInput8Create = nullptr;
 static HMODULE g_frameworkModule = nullptr;
@@ -13,7 +13,8 @@ static HMODULE g_frameworkModule = nullptr;
 extern "C" void StartFramework();
 
 void InitializeProxy() {
-    if (g_realDirectInput8Create) return;
+    if (g_realDirectInput8Create)
+        return;
 
     char path[MAX_PATH];
     GetSystemDirectoryA(path, MAX_PATH);
@@ -25,7 +26,7 @@ void InitializeProxy() {
     }
 }
 
-extern "C" HRESULT WINAPI DirectInput8Create(HINSTANCE hinst, DWORD dwVersion, REFIID riidltf, LPVOID *ppvOut, LPUNKNOWN punkOuter) {
+extern "C" HRESULT WINAPI DirectInput8Create(HINSTANCE hinst, DWORD dwVersion, REFIID riidltf, LPVOID* ppvOut, LPUNKNOWN punkOuter) {
     InitializeProxy();
     if (g_realDirectInput8Create) {
         return g_realDirectInput8Create(hinst, dwVersion, riidltf, ppvOut, punkOuter);
@@ -40,7 +41,6 @@ DWORD WINAPI InitThread(LPVOID lpParam) {
     // Call StartFramework directly since it's now statically linked
     OutputDebugStringA("[GamePlug] dinput8: Calling StartFramework...");
     StartFramework();
-
 
     return 0;
 }

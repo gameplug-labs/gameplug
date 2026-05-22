@@ -1,7 +1,7 @@
 #pragma once
+#include "framework_export.h"
 #include <cstdint>
 #include <functional>
-#include "framework_export.h"
 
 namespace GamePlug {
 
@@ -12,7 +12,8 @@ public:
      * @param width Viewport width.
      * @param height Viewport height (used for UI scaling).
      */
-    static void DrawUI(uint32_t width, uint32_t height, std::function<void()> apiSpecificUI = nullptr);
+    static void DrawUI(
+        uint32_t width, uint32_t height, std::function<void()> apiSpecificUI = nullptr, bool showResolutionEnumeration = true);
 };
 
 } // namespace GamePlug

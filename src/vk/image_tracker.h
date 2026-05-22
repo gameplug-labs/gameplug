@@ -1,11 +1,11 @@
 #pragma once
-#include <vulkan/vulkan.h>
-#include <set>
+#include "framework_export.h"
 #include <map>
 #include <mutex>
+#include <set>
 #include <string>
 #include <vector>
-#include "framework_export.h"
+#include <vulkan/vulkan.h>
 
 namespace GamePlug {
 
@@ -68,7 +68,8 @@ public:
         std::lock_guard<std::recursive_mutex> lock(m_mutex);
         if (w > 0 && h > 0) {
             uint64_t key = ((uint64_t)w << 32) | h;
-            if (m_bestDepthPerRes.find(key) != m_bestDepthPerRes.end()) return m_bestDepthPerRes.at(key);
+            if (m_bestDepthPerRes.find(key) != m_bestDepthPerRes.end())
+                return m_bestDepthPerRes.at(key);
         }
         return m_currentDepthBuffer;
     }
@@ -82,7 +83,8 @@ public:
         std::lock_guard<std::recursive_mutex> lock(m_mutex);
         if (w > 0 && h > 0) {
             uint64_t key = ((uint64_t)w << 32) | h;
-            if (m_bestMVPerRes.find(key) != m_bestMVPerRes.end()) return m_bestMVPerRes.at(key);
+            if (m_bestMVPerRes.find(key) != m_bestMVPerRes.end())
+                return m_bestMVPerRes.at(key);
         }
         return m_currentMVBuffer;
     }
@@ -90,14 +92,16 @@ public:
     ImageInfo GetCurrentDepthInfo(uint32_t w = 0, uint32_t h = 0) {
         std::lock_guard<std::recursive_mutex> lock(m_mutex);
         VkImage img = GetCurrentDepthBuffer(w, h);
-        if (img != VK_NULL_HANDLE) return m_images[img];
+        if (img != VK_NULL_HANDLE)
+            return m_images[img];
         return {};
     }
 
     ImageInfo GetCurrentMVInfo(uint32_t w = 0, uint32_t h = 0) {
         std::lock_guard<std::recursive_mutex> lock(m_mutex);
         VkImage img = GetCurrentMotionVectors(w, h);
-        if (img != VK_NULL_HANDLE) return m_images[img];
+        if (img != VK_NULL_HANDLE)
+            return m_images[img];
         return {};
     }
 
@@ -124,7 +128,6 @@ public:
         return VK_NULL_HANDLE;
     }
 
-
     // Resolves all images associated with a framebuffer
     std::vector<VkImage> GetFramebufferAttachments(VkFramebuffer fb) {
         std::lock_guard<std::recursive_mutex> lock(m_mutex);
@@ -133,7 +136,6 @@ public:
         }
         return {};
     }
-
 
     bool IsSceneFramebuffer(VkFramebuffer fb, uint32_t renderW, uint32_t renderH);
     bool IsSwapchainFramebuffer(VkFramebuffer fb);
@@ -149,7 +151,7 @@ public:
         std::lock_guard<std::recursive_mutex> lock(m_mutex);
         m_lastSceneSource = image;
     }
-    
+
     VkImage GetLastSceneImage() const {
         std::lock_guard<std::recursive_mutex> lock(m_mutex);
         return m_lastSceneSource;
@@ -179,9 +181,7 @@ private:
     uint32_t m_screenHeight = 0;
     mutable std::recursive_mutex m_mutex;
 
-    uint64_t GetResKey(uint32_t w, uint32_t h) const {
-        return ((uint64_t)w << 32) | h;
-    }
+    uint64_t GetResKey(uint32_t w, uint32_t h) const { return ((uint64_t)w << 32) | h; }
 };
 
 } // namespace GamePlug

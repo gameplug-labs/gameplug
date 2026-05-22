@@ -1,8 +1,8 @@
 #pragma once
 
-#include <windows.h>
-#include <d3d9.h>
 #include <chrono>
+#include <d3d9.h>
+#include <windows.h>
 
 namespace GamePlug {
 
@@ -38,7 +38,7 @@ private:
     bool m_visible = true;
     bool m_showKeyWasPressed = false;
     bool m_uiRendered = false;
-    
+
     std::chrono::steady_clock::time_point m_lastTime;
 };
 

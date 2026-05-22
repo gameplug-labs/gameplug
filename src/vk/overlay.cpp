@@ -1,34 +1,39 @@
 #include "overlay.h"
-#include "image_tracker.h"
-#include "logger.h"
-#include "dispatch.h"
-#include "plugin_manager.h"
 #include "config.h"
+#include "dispatch.h"
+#include "image_tracker.h"
 #include "imgui_overlay_shared.h"
-#include <iostream>
+#include "logger.h"
+#include "plugin_manager.h"
 #include <algorithm>
+#include <iostream>
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
-#include <windows.h>
 #include "imgui_impl_win32.h"
+#include <windows.h>
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 namespace GamePlug {
 
 static thread_local bool g_isRenderingOverlay = false;
 
-bool OverlayRenderer::IsRenderingOverlay() { return g_isRenderingOverlay; }
-void OverlayRenderer::SetIsRenderingOverlay(bool val) { g_isRenderingOverlay = val; }
+bool OverlayRenderer::IsRenderingOverlay() {
+    return g_isRenderingOverlay;
+}
+void OverlayRenderer::SetIsRenderingOverlay(bool val) {
+    g_isRenderingOverlay = val;
+}
 
 OverlayRenderer& OverlayRenderer::Get() {
     static OverlayRenderer instance;
     return instance;
 }
 
-void OverlayRenderer::SetupDevice(VkInstance instance, VkPhysicalDevice physicalDevice, VkDevice device, 
-                                uint32_t queueFamily, VkQueue queue) {
-    if (m_deviceSetup) return;
-    
+void OverlayRenderer::SetupDevice(
+    VkInstance instance, VkPhysicalDevice physicalDevice, VkDevice device, uint32_t queueFamily, VkQueue queue) {
+    if (m_deviceSetup)
+        return;
+
     Logger::info("OverlayRenderer: SetupDevice started");
     m_instance = instance;
     m_physDevice = physicalDevice;
@@ -49,19 +54,11 @@ void OverlayRenderer::SetupDevice(VkInstance instance, VkPhysicalDevice physical
     m_loaderContext.nextGIPA = inst_entry->pfnNextGetInstanceProcAddr;
 
     // Create Descriptor Pool for ImGui
-    VkDescriptorPoolSize pool_sizes[] = {
-        { VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
-        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
-        { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
-        { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
-        { VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
-        { VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
-        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
-        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
-        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
-        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
-        { VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 }
-    };
+    VkDescriptorPoolSize pool_sizes[] = {{VK_DESCRIPTOR_TYPE_SAMPLER, 1000}, {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000},
+        {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000}, {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000}, {VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000},
+        {VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000}, {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000},
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000}, {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000},
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000}, {VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000}};
     VkDescriptorPoolCreateInfo pool_info = {};
     pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
@@ -90,14 +87,19 @@ void OverlayRenderer::SetupDevice(VkInstance instance, VkPhysicalDevice physical
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
     // ImGui Vulkan Load Functions - Using m_loaderContext to prevent recursion
-    ImGui_ImplVulkan_LoadFunctions(VK_API_VERSION_1_1, [](const char* function_name, void* user_data) {
-        auto* ctx = (LoaderContext*)user_data;
-        auto* dev_entry = DispatchManager::Get().GetDevice(ctx->device);
-        PFN_vkVoidFunction func = nullptr;
-        if (dev_entry) func = dev_entry->pfnNextGetDeviceProcAddr(ctx->device, function_name);
-        if (!func) func = ctx->nextGIPA(ctx->instance, function_name);
-        return func;
-    }, &m_loaderContext);
+    ImGui_ImplVulkan_LoadFunctions(
+        VK_API_VERSION_1_1,
+        [](const char* function_name, void* user_data) {
+            auto* ctx = (LoaderContext*)user_data;
+            auto* dev_entry = DispatchManager::Get().GetDevice(ctx->device);
+            PFN_vkVoidFunction func = nullptr;
+            if (dev_entry)
+                func = dev_entry->pfnNextGetDeviceProcAddr(ctx->device, function_name);
+            if (!func)
+                func = ctx->nextGIPA(ctx->instance, function_name);
+            return func;
+        },
+        &m_loaderContext);
 
     m_lastTime = std::chrono::steady_clock::now();
 
@@ -111,11 +113,10 @@ void OverlayRenderer::SetupDevice(VkInstance instance, VkPhysicalDevice physical
 
     // Load Plugins
     PluginManager::Get().LoadPlugins();
-
 }
 
-void OverlayRenderer::SetupSwapchain(VkSwapchainKHR swapchain, VkFormat format, VkExtent2D extent, 
-                                     uint32_t imageCount, const std::vector<VkImage>& images) {
+void OverlayRenderer::SetupSwapchain(
+    VkSwapchainKHR swapchain, VkFormat format, VkExtent2D extent, uint32_t imageCount, const std::vector<VkImage>& images) {
     if (!m_deviceSetup) {
         Logger::error("OverlayRenderer: Attempted swapchain setup without device setup");
         return;
@@ -144,12 +145,12 @@ void OverlayRenderer::SetupSwapchain(VkSwapchainKHR swapchain, VkFormat format, 
     init_info.QueueFamily = m_queueFamily;
     init_info.Queue = m_queue;
     init_info.DescriptorPool = m_descriptorPool;
-    init_info.MinImageCount = 2; 
+    init_info.MinImageCount = 2;
     init_info.ImageCount = imageCount;
     init_info.PipelineInfoMain.RenderPass = m_swapchainRes.renderPass;
     init_info.PipelineInfoMain.Subpass = 0;
     init_info.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-    
+
     if (m_initialized) {
         Logger::info("OverlayRenderer: Re-initializing ImGui Vulkan backend...");
         ImGui_ImplVulkan_Shutdown();
@@ -194,11 +195,11 @@ void OverlayRenderer::CreateRenderPass(VkFormat format) {
     VkAttachmentDescription attachment = {};
     attachment.format = format;
     attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-    attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD; 
+    attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
     attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachment.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; 
+    attachment.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     attachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
     VkAttachmentReference color_attachment = {};
@@ -260,20 +261,24 @@ void OverlayRenderer::CreateFramebuffers() {
 }
 
 void OverlayRenderer::CleanupSwapchain() {
-    if (!m_deviceSetup) return;
+    if (!m_deviceSetup)
+        return;
     auto* dev_entry = DispatchManager::Get().GetDevice(m_device);
-    if (!dev_entry) return;
-    
+    if (!dev_entry)
+        return;
+
     // 🔥 MANDATORY SYNC
     dev_entry->table.vkDeviceWaitIdle(m_device);
-    
+
     for (auto fb : m_swapchainRes.framebuffers) {
-        if (fb != VK_NULL_HANDLE) dev_entry->table.vkDestroyFramebuffer(m_device, fb, nullptr);
+        if (fb != VK_NULL_HANDLE)
+            dev_entry->table.vkDestroyFramebuffer(m_device, fb, nullptr);
     }
     m_swapchainRes.framebuffers.clear();
 
     for (auto iv : m_swapchainRes.imageViews) {
-        if (iv != VK_NULL_HANDLE) dev_entry->table.vkDestroyImageView(m_device, iv, nullptr);
+        if (iv != VK_NULL_HANDLE)
+            dev_entry->table.vkDestroyImageView(m_device, iv, nullptr);
     }
     m_swapchainRes.imageViews.clear();
 
@@ -284,7 +289,7 @@ void OverlayRenderer::CleanupSwapchain() {
 
     m_swapchainRes.swapchain = VK_NULL_HANDLE;
     m_swapchainRes.images.clear();
-    
+
     if (!m_commandBuffers.empty()) {
         dev_entry->table.vkFreeCommandBuffers(m_device, m_commandPool, (uint32_t)m_commandBuffers.size(), m_commandBuffers.data());
         m_commandBuffers.clear();
@@ -292,14 +297,16 @@ void OverlayRenderer::CleanupSwapchain() {
 
     if (!m_renderCompleteSemaphores.empty()) {
         for (auto sem : m_renderCompleteSemaphores) {
-            if (sem != VK_NULL_HANDLE) dev_entry->table.vkDestroySemaphore(m_device, sem, nullptr);
+            if (sem != VK_NULL_HANDLE)
+                dev_entry->table.vkDestroySemaphore(m_device, sem, nullptr);
         }
         m_renderCompleteSemaphores.clear();
     }
 }
 
 void OverlayRenderer::NewFrame() {
-    if (!m_initialized || m_frameStarted) return;
+    if (!m_initialized || m_frameStarted)
+        return;
 
     std::lock_guard<std::mutex> lock(m_renderMtx);
     m_frameStarted = true;
@@ -309,7 +316,6 @@ void OverlayRenderer::NewFrame() {
     if (frameCount++ % 600 == 0) {
         Logger::info("OverlayRenderer: NewFrame started (Logged every 600 frames)");
     }
-
 
     // Toggle Visibility with Ctrl + HOME key
     bool ctrlPressed = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
@@ -322,7 +328,8 @@ void OverlayRenderer::NewFrame() {
     }
     m_showKeyWasPressed = keyCurrentlyPressed;
 
-    if (!m_visible) return;
+    if (!m_visible)
+        return;
 
     auto currentTime = std::chrono::steady_clock::now();
     float deltaTime = std::chrono::duration<float, std::ratio<1, 1>>(currentTime - m_lastTime).count();
@@ -344,8 +351,9 @@ void OverlayRenderer::EndFrame() {
 }
 
 void OverlayRenderer::Render(VkCommandBuffer cmd, VkImage source, VkImage target, uint32_t width, uint32_t height) {
-    if (!m_initialized || !m_visible || m_uiRendered) return;
-    
+    if (!m_initialized || !m_visible || m_uiRendered)
+        return;
+
     if (!m_frameStarted) {
         NewFrame();
     }
@@ -358,8 +366,8 @@ void OverlayRenderer::Render(VkCommandBuffer cmd, VkImage source, VkImage target
     std::lock_guard<std::mutex> lock(m_renderMtx);
 
     auto* dev_entry = DispatchManager::Get().GetDevice(m_device);
-    if (!dev_entry) return;
-
+    if (!dev_entry)
+        return;
 
     // 2. Draw GamePlug ImGui UI
     m_uiRendered = true;
@@ -373,7 +381,7 @@ void OverlayRenderer::Render(VkCommandBuffer cmd, VkImage source, VkImage target
     VkRenderPassBeginInfo rp_begin = {};
     rp_begin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     rp_begin.renderPass = m_swapchainRes.renderPass;
-    
+
     // Find correctly matching framebuffer for the target image
     uint32_t imageIndex = 0;
     for (uint32_t i = 0; i < m_swapchainRes.images.size(); ++i) {
@@ -382,10 +390,10 @@ void OverlayRenderer::Render(VkCommandBuffer cmd, VkImage source, VkImage target
             break;
         }
     }
-    
+
     rp_begin.framebuffer = m_swapchainRes.framebuffers[imageIndex];
     rp_begin.renderArea.extent = m_swapchainRes.extent;
-    
+
     dev_entry->table.vkCmdBeginRenderPass(cmd, &rp_begin, VK_SUBPASS_CONTENTS_INLINE);
     ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
     dev_entry->table.vkCmdEndRenderPass(cmd);
@@ -394,7 +402,8 @@ void OverlayRenderer::Render(VkCommandBuffer cmd, VkImage source, VkImage target
 }
 
 void OverlayRenderer::RenderStandalone(VkImage target, uint32_t width, uint32_t height) {
-    if (!m_initialized || !m_visible || m_uiRendered) return;
+    if (!m_initialized || !m_visible || m_uiRendered)
+        return;
 
     static uint32_t standaloneCount = 0;
     if (standaloneCount++ % 600 == 0) {
@@ -402,14 +411,16 @@ void OverlayRenderer::RenderStandalone(VkImage target, uint32_t width, uint32_t 
     }
 
     auto* dev_entry = DispatchManager::Get().GetDevice(m_device);
-    if (!dev_entry) return;
+    if (!dev_entry)
+        return;
 
     VkCommandBuffer cmd = m_commandBuffers[m_currentSwapchainImage];
-    
-    VkCommandBufferBeginInfo begin_info = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+
+    VkCommandBufferBeginInfo begin_info = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    
-    if (dev_entry->table.vkBeginCommandBuffer(cmd, &begin_info) != VK_SUCCESS) return;
+
+    if (dev_entry->table.vkBeginCommandBuffer(cmd, &begin_info) != VK_SUCCESS)
+        return;
 
     // Transition image to COLOR_ATTACHMENT_OPTIMAL for rendering
     VkImageMemoryBarrier barrier = {};
@@ -422,7 +433,8 @@ void OverlayRenderer::RenderStandalone(VkImage target, uint32_t width, uint32_t 
     barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     barrier.subresourceRange.levelCount = 1;
     barrier.subresourceRange.layerCount = 1;
-    dev_entry->table.vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+    dev_entry->table.vkCmdPipelineBarrier(
+        cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
 
     // Call shared render logic
     Render(cmd, VK_NULL_HANDLE, target, width, height);
@@ -432,28 +444,32 @@ void OverlayRenderer::RenderStandalone(VkImage target, uint32_t width, uint32_t 
     barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
     barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
     barrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
-    dev_entry->table.vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+    dev_entry->table.vkCmdPipelineBarrier(
+        cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
 
     dev_entry->table.vkEndCommandBuffer(cmd);
 
     // Submit standalone command buffer
-    VkSubmitInfo submit = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
+    VkSubmitInfo submit = {VK_STRUCTURE_TYPE_SUBMIT_INFO};
     submit.commandBufferCount = 1;
     submit.pCommandBuffers = &cmd;
-    
+
     dev_entry->table.vkQueueSubmit(m_queue, 1, &submit, VK_NULL_HANDLE);
 }
 
 void OverlayRenderer::Shutdown() {
-    if (!m_deviceSetup) return;
+    if (!m_deviceSetup)
+        return;
     CleanupSwapchain();
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplWin32_Shutdown();
     PluginManager::Get().UnloadPlugins();
     ImGui::DestroyContext();
     auto* dev_entry = DispatchManager::Get().GetDevice(m_device);
-    if (m_commandPool) dev_entry->table.vkDestroyCommandPool(m_device, m_commandPool, nullptr);
-    if (m_descriptorPool) dev_entry->table.vkDestroyDescriptorPool(m_device, m_descriptorPool, nullptr);
+    if (m_commandPool)
+        dev_entry->table.vkDestroyCommandPool(m_device, m_commandPool, nullptr);
+    if (m_descriptorPool)
+        dev_entry->table.vkDestroyDescriptorPool(m_device, m_descriptorPool, nullptr);
     m_deviceSetup = false;
     m_initialized = false;
 
@@ -468,7 +484,8 @@ void OnFrame() {
 }
 
 void OverlayRenderer::SetWindow(HWND hWnd) {
-    if (m_hWnd == hWnd) return;
+    if (m_hWnd == hWnd)
+        return;
     m_hWnd = hWnd;
     if (m_deviceSetup && m_hWnd) {
         ImGui_ImplWin32_Init(m_hWnd);
@@ -478,11 +495,11 @@ void OverlayRenderer::SetWindow(HWND hWnd) {
 
 LRESULT CALLBACK OverlayRenderer::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     auto& renderer = OverlayRenderer::Get();
-    
+
     if (renderer.m_visible) {
         if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
             return 1;
-        
+
         // Handle cursor visibility/capture
         if (ImGui::GetIO().WantCaptureMouse) {
             // ImGui handles the cursor when capturing mouse
@@ -493,10 +510,12 @@ LRESULT CALLBACK OverlayRenderer::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LP
 }
 
 VkDescriptorSet OverlayRenderer::RegisterDebugImage(VkImageView view, VkImageLayout layout) {
-    if (!m_initialized) return VK_NULL_HANDLE;
+    if (!m_initialized)
+        return VK_NULL_HANDLE;
 
     auto* dev_entry = DispatchManager::Get().GetDevice(m_device);
-    if (!dev_entry) return VK_NULL_HANDLE;
+    if (!dev_entry)
+        return VK_NULL_HANDLE;
 
     VkSamplerCreateInfo sampler_info = {};
     sampler_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
@@ -509,19 +528,20 @@ VkDescriptorSet OverlayRenderer::RegisterDebugImage(VkImageView view, VkImageLay
     sampler_info.minLod = -1000;
     sampler_info.maxLod = 1000;
     sampler_info.maxAnisotropy = 1.0f;
-    
+
     VkSampler sampler;
     if (dev_entry->table.vkCreateSampler(m_device, &sampler_info, nullptr, &sampler) != VK_SUCCESS)
         return VK_NULL_HANDLE;
-    
+
     VkDescriptorSet ds = ImGui_ImplVulkan_AddTexture(sampler, view, layout);
     m_debugSamplers[ds] = sampler;
     return ds;
 }
 
 void OverlayRenderer::UnregisterDebugImage(VkDescriptorSet set) {
-    if (!m_initialized) return;
-    
+    if (!m_initialized)
+        return;
+
     auto it = m_debugSamplers.find(set);
     if (it != m_debugSamplers.end()) {
         auto* dev_entry = DispatchManager::Get().GetDevice(m_device);

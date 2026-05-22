@@ -1,7 +1,7 @@
 #include "jitter_helper.h"
+#include "logger.h"
 #include <cmath>
 #include <string>
-#include "logger.h"
 
 namespace GamePlug {
 
@@ -15,10 +15,11 @@ void JitterHelper::Update(uint32_t width, uint32_t height) {
     // Halton sequence for jitter
     // Increment the index each frame
     m_index++;
-    
+
     // FSR2 recommends a phase count based on resolution
     // Standard phase count is 128 for most cases.
-    if (m_index > 128) m_index = 1;
+    if (m_index > 128)
+        m_index = 1;
 
     // Use custom bases (default 2, 3)
     m_jitterX = Halton(m_index, m_baseX) - 0.5f;

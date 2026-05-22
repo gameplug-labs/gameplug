@@ -1,12 +1,11 @@
 #include "plugin_manager.h"
+#include "config.h"
 #include "logger.h"
 #include <filesystem>
-#include <windows.h>
 #include <map>
-#include <vector>
 #include <string>
-#include "config.h"
-
+#include <vector>
+#include <windows.h>
 
 namespace GamePlug {
 
@@ -26,20 +25,29 @@ void PluginLogBridge(GamePlugPluginInterface::PluginLogLevel level, const char* 
     std::string formattedMsg = (pluginName ? "[" + std::string(pluginName) + "] " : "") + message;
 
     switch (level) {
-        case GamePlugPluginInterface::LOG_INFO:  Logger::info(formattedMsg); break;
-        case GamePlugPluginInterface::LOG_WARN:  Logger::warn(formattedMsg); break;
-        case GamePlugPluginInterface::LOG_ERROR: Logger::error(formattedMsg); break;
-        case GamePlugPluginInterface::LOG_DEBUG: Logger::debug(formattedMsg); break;
+    case GamePlugPluginInterface::LOG_INFO:
+        Logger::info(formattedMsg);
+        break;
+    case GamePlugPluginInterface::LOG_WARN:
+        Logger::warn(formattedMsg);
+        break;
+    case GamePlugPluginInterface::LOG_ERROR:
+        Logger::error(formattedMsg);
+        break;
+    case GamePlugPluginInterface::LOG_DEBUG:
+        Logger::debug(formattedMsg);
+        break;
     }
 }
 
 void PluginManager::LoadPlugins() {
-    if (m_searchDone) return;
+    if (m_searchDone)
+        return;
 
     if (!Config::Get().GetBool("PluginEnabled", true)) {
         return;
     }
-    
+
     // Try Game EXE Directory first
     char buf[MAX_PATH];
     GetModuleFileNameA(NULL, buf, MAX_PATH);
@@ -49,7 +57,8 @@ void PluginManager::LoadPlugins() {
     // Try DLL Directory as fallback
     if (!std::filesystem::exists(pluginsPath)) {
         HMODULE hSelf = NULL;
-        GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, (LPCSTR)&GamePlug::PluginManager::Get, &hSelf);
+        GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            (LPCSTR)&GamePlug::PluginManager::Get, &hSelf);
         if (hSelf) {
             GetModuleFileNameA(hSelf, buf, MAX_PATH);
             std::filesystem::path dllPath = std::filesystem::path(buf).parent_path();
@@ -79,7 +88,7 @@ void PluginManager::LoadPlugins() {
                     GamePlugPluginInterface* pInterface = getInterface();
                     if (pInterface) {
                         std::string pluginName = pInterface->GetName();
-                        
+
                         DiscoveredPlugin dp;
                         dp.filename = entry.path().filename().string();
                         dp.name = pluginName;
@@ -92,20 +101,21 @@ void PluginManager::LoadPlugins() {
                             continue;
                         }
 
-                        Logger::info("PluginManager: Loaded plugin '" + pluginName + "' from " + dp.filename + " (v" + std::to_string(pInterface->InterfaceVersion) + ")");
-                        
+                        Logger::info("PluginManager: Loaded plugin '" + pluginName + "' from " + dp.filename + " (v" +
+                                     std::to_string(pInterface->InterfaceVersion) + ")");
+
                         LoadedPlugin plugin;
                         plugin.filename = dp.filename;
                         plugin.name = pluginName;
                         plugin.handle = hModule;
                         plugin.pInterface = pInterface;
-                        
+
                         if (plugin.pInterface->OnInit) {
                             Logger::info("PluginManager: Calling OnInit for plugin " + std::string(pInterface->GetName()));
                             plugin.pInterface->OnInit(ImGui::GetCurrentContext(), PluginLogBridge, (void*)pInterface->GetName());
                             Logger::info("PluginManager: OnInit complete for plugin " + std::string(pInterface->GetName()));
                         }
-                        
+
                         m_plugins.push_back(plugin);
                         dp.isLoaded = true;
                         m_discoveredPlugins.push_back(dp);
@@ -126,11 +136,8 @@ void PluginManager::LoadPlugins() {
 
     Logger::info("PluginManager: Load complete. " + std::to_string(loadedCount) + " plugins loaded.");
 
-
     m_searchDone = true;
 }
-
-
 
 void PluginManager::RenderPlugins() {
     bool enabled = Config::Get().GetBool("PluginEnabled", true);
@@ -207,7 +214,9 @@ void PluginManager::RenderPlugins() {
                                         items.push_back(options.substr(start));
 
                                         int* current_item = (int*)f->Data;
-                                        const char* preview_value = (*current_item >= 0 && *current_item < (int)items.size()) ? items[*current_item].c_str() : "Unknown";
+                                        const char* preview_value = (*current_item >= 0 && *current_item < (int)items.size())
+                                                                        ? items[*current_item].c_str()
+                                                                        : "Unknown";
 
                                         if (ImGui::BeginCombo(f->Name, preview_value)) {
                                             for (int n = 0; n < (int)items.size(); n++) {
@@ -235,7 +244,8 @@ void PluginManager::RenderPlugins() {
                         }
                     }
 
-                    if (plugin.pInterface->OnImGuiRender) ImGui::Separator();
+                    if (plugin.pInterface->OnImGuiRender)
+                        ImGui::Separator();
                 }
             }
 
@@ -247,8 +257,6 @@ void PluginManager::RenderPlugins() {
             ImGui::PopID();
         }
     }
-
-
 }
 
 void PluginManager::UnloadPlugins() {
@@ -279,4 +287,3 @@ void PluginManager::UnloadIndividualPlugin(const std::string& name) {
 }
 
 } // namespace GamePlug
-

@@ -1,12 +1,12 @@
 #pragma once
 
-#include "volk.h"
-#include <vulkan/vulkan.h>
-#include <vulkan/vk_layer.h>
-#include <unordered_map>
-#include <mutex>
-#include "logger.h"
 #include "framework_export.h"
+#include "logger.h"
+#include "volk.h"
+#include <mutex>
+#include <unordered_map>
+#include <vulkan/vk_layer.h>
+#include <vulkan/vulkan.h>
 
 namespace GamePlug {
 
@@ -29,24 +29,24 @@ public:
 
     void AddInstance(VkInstance instance, PFN_vkGetInstanceProcAddr nextGIPA) {
         std::lock_guard<std::recursive_mutex> lock(m_mutex);
-        InstanceDispatch dispatch = { nextGIPA, {}, instance };
-        
+        InstanceDispatch dispatch = {nextGIPA, {}, instance};
+
         // We need to set the global volk pointer so volkLoadInstanceTable uses it
         // Since we are in a DLL, these are private to our DLL.
         ::vkGetInstanceProcAddr = nextGIPA;
         volkLoadInstanceTable(&dispatch.table, instance);
-        
+
         m_instances[instance] = dispatch;
     }
 
     void AddDevice(VkDevice device, PFN_vkGetDeviceProcAddr nextGDPA) {
         std::lock_guard<std::recursive_mutex> lock(m_mutex);
-        DeviceDispatch dispatch = { nextGDPA, {}, device };
-        
+        DeviceDispatch dispatch = {nextGDPA, {}, device};
+
         // Similarly for device pointers
         ::vkGetDeviceProcAddr = nextGDPA;
         volkLoadDeviceTable(&dispatch.table, device);
-        
+
         m_devices[device] = dispatch;
     }
 

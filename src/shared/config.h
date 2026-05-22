@@ -1,8 +1,8 @@
 #pragma once
-#include <string>
+#include "framework_export.h"
 #include <map>
 #include <mutex>
-#include "framework_export.h"
+#include <string>
 #include <vector>
 
 namespace GamePlug {
@@ -31,7 +31,7 @@ public:
     void SetInt(const std::string& key, int value);
     void SetFloat(const std::string& key, float value);
     void SetString(const std::string& key, const std::string& value);
-    
+
     uint32_t GetTargetWidth() const { return m_targetWidth; }
     uint32_t GetTargetHeight() const { return m_targetHeight; }
 
@@ -48,7 +48,7 @@ private:
     std::map<std::string, std::string> m_settings;
     std::mutex m_mtx;
     std::string m_lastFilename = "GamePlug.conf";
-    
+
     uint32_t m_targetWidth = 0;
     uint32_t m_targetHeight = 0;
     std::vector<Resolution> m_extraResolutions;

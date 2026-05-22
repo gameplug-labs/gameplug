@@ -54,6 +54,9 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 8)
         d3d12/framework.cpp
         d3d12/overlay.cpp
         d3d12/hooks.cpp
+        d3d12/hooks_d3d12.cpp
+        d3d12/hooks_d3d11.cpp
+        d3d12/hooks_dxgi.cpp
         ${PROJECT_SOURCE_DIR}/external/imgui/backends/imgui_impl_dx11.cpp
         ${PROJECT_SOURCE_DIR}/external/imgui/backends/imgui_impl_dx12.cpp
     )
@@ -137,6 +140,10 @@ add_custom_command(TARGET GAMEPLUG POST_BUILD
 # --- Vulkan Layer ---
 add_library(vklayer SHARED
     vk/vk_layer_exports.cpp
+    vk/vk_layer_lifecycle.cpp
+    vk/vk_layer_resources.cpp
+    vk/vk_layer_commands.cpp
+    vk/vk_layer_exports.h
     vk/vklayer.def
 )
 

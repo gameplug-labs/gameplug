@@ -1,12 +1,12 @@
 #include "config.h"
-#include "logger.h"
-#include <fstream>
-#include <sstream>
-#include <algorithm>
-#include <windows.h>
 #include "imgui.h"
+#include "logger.h"
 #include "plugin_manager.h"
 #include "win32_hooks.h"
+#include <algorithm>
+#include <fstream>
+#include <sstream>
+#include <windows.h>
 
 namespace GamePlug {
 
@@ -40,10 +40,12 @@ void Config::Load(const std::string& filename) {
     std::string line;
     while (std::getline(f, line)) {
         line = Trim(line);
-        if (line.empty() || line[0] == '#' || line[0] == ';') continue;
+        if (line.empty() || line[0] == '#' || line[0] == ';')
+            continue;
 
         size_t pos = line.find('=');
-        if (pos == std::string::npos) continue;
+        if (pos == std::string::npos)
+            continue;
 
         std::string key = Trim(line.substr(0, pos));
         std::string value = Trim(line.substr(pos + 1));
@@ -71,7 +73,8 @@ void Config::Load(const std::string& filename) {
                         res.height = (uint32_t)std::stoul(item.substr(xPos + 1));
                         m_extraResolutions.push_back(res);
                         Logger::info("Config: Extra resolution added: " + std::to_string(res.width) + "x" + std::to_string(res.height));
-                    } catch (...) {}
+                    } catch (...) {
+                    }
                 }
             }
         }
@@ -88,7 +91,7 @@ void Config::Load(const std::string& filename) {
 
 void Config::Save(const std::string& filename) {
     std::lock_guard<std::mutex> lock(m_mtx);
-    
+
     char buf[MAX_PATH];
     GetModuleFileNameA(NULL, buf, MAX_PATH);
     std::string path = std::string(buf);
@@ -113,17 +116,20 @@ void Config::Save(const std::string& filename) {
 }
 
 bool Config::GetBool(const std::string& key, bool defaultValue) {
-    if (key == "PluginEnabled") return true;
+    if (key == "PluginEnabled")
+        return true;
     std::lock_guard<std::mutex> lock(m_mtx);
     auto it = m_settings.find(key);
-    if (it == m_settings.end()) return defaultValue;
+    if (it == m_settings.end())
+        return defaultValue;
     return (it->second == "true" || it->second == "1" || it->second == "on");
 }
 
 int Config::GetInt(const std::string& key, int defaultValue) {
     std::lock_guard<std::mutex> lock(m_mtx);
     auto it = m_settings.find(key);
-    if (it == m_settings.end()) return defaultValue;
+    if (it == m_settings.end())
+        return defaultValue;
     try {
         return std::stoi(it->second);
     } catch (...) {
@@ -134,7 +140,8 @@ int Config::GetInt(const std::string& key, int defaultValue) {
 float Config::GetFloat(const std::string& key, float defaultValue) {
     std::lock_guard<std::mutex> lock(m_mtx);
     auto it = m_settings.find(key);
-    if (it == m_settings.end()) return defaultValue;
+    if (it == m_settings.end())
+        return defaultValue;
     try {
         return std::stof(it->second);
     } catch (...) {
@@ -145,7 +152,8 @@ float Config::GetFloat(const std::string& key, float defaultValue) {
 std::string Config::GetString(const std::string& key, const std::string& defaultValue) {
     std::lock_guard<std::mutex> lock(m_mtx);
     auto it = m_settings.find(key);
-    if (it == m_settings.end()) return defaultValue;
+    if (it == m_settings.end())
+        return defaultValue;
     return it->second;
 }
 
@@ -179,12 +187,8 @@ void Config::SetPluginEnabled(const std::string& pluginName, bool enabled) {
 
 std::string Config::Trim(const std::string& s) {
     std::string res = s;
-    res.erase(res.begin(), std::find_if(res.begin(), res.end(), [](unsigned char ch) {
-        return !std::isspace(ch);
-    }));
-    res.erase(std::find_if(res.rbegin(), res.rend(), [](unsigned char ch) {
-        return !std::isspace(ch);
-    }).base(), res.end());
+    res.erase(res.begin(), std::find_if(res.begin(), res.end(), [](unsigned char ch) { return !std::isspace(ch); }));
+    res.erase(std::find_if(res.rbegin(), res.rend(), [](unsigned char ch) { return !std::isspace(ch); }).base(), res.end());
     return res;
 }
 

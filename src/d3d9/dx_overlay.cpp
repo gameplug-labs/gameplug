@@ -1,11 +1,11 @@
 #include "dx_overlay.h"
+#include "config.h"
 #include "imgui.h"
 #include "imgui_impl_dx9.h"
 #include "imgui_impl_win32.h"
-#include "logger.h"
-#include "config.h"
-#include "plugin_manager.h"
 #include "imgui_overlay_shared.h"
+#include "logger.h"
+#include "plugin_manager.h"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -13,8 +13,12 @@ namespace GamePlug {
 
 static thread_local bool g_isRenderingOverlay = false;
 
-bool OverlayRenderer::IsRenderingOverlay() { return g_isRenderingOverlay; }
-void OverlayRenderer::SetIsRenderingOverlay(bool val) { g_isRenderingOverlay = val; }
+bool OverlayRenderer::IsRenderingOverlay() {
+    return g_isRenderingOverlay;
+}
+void OverlayRenderer::SetIsRenderingOverlay(bool val) {
+    g_isRenderingOverlay = val;
+}
 
 OverlayRenderer& OverlayRenderer::Get() {
     static OverlayRenderer instance;
@@ -22,16 +26,17 @@ OverlayRenderer& OverlayRenderer::Get() {
 }
 
 void OverlayRenderer::Init(IDirect3DDevice9* device) {
-    if (m_initialized) return;
+    if (m_initialized)
+        return;
     m_pDevice = device;
-    
+
     Logger::info("OverlayRenderer::Init: Entry (device={:p})", (void*)device);
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    
+
     ImGui::StyleColorsDark();
 
     Logger::info("OverlayRenderer::Init: Calling ImGui_ImplWin32_Init for HWND {:p}...", (void*)m_hWnd);
@@ -53,41 +58,45 @@ void OverlayRenderer::Init(IDirect3DDevice9* device) {
     m_lastTime = std::chrono::steady_clock::now();
     m_initialized = true;
     Logger::info("OverlayRenderer: Initialized Successfully. Loading plugins...");
-    
+
     PluginManager::Get().LoadPlugins();
 }
 
 void OverlayRenderer::Shutdown() {
-    if (!m_initialized) return;
+    if (!m_initialized)
+        return;
     Logger::info("OverlayRenderer::Shutdown: Starting teardown...");
-    
+
     ImGui_ImplDX9_Shutdown();
     ImGui_ImplWin32_Shutdown();
     PluginManager::Get().UnloadPlugins();
     ImGui::DestroyContext();
-    
+
     if (m_originalWndProc) {
         SetWindowLongPtr(m_hWnd, GWLP_WNDPROC, (LONG_PTR)m_originalWndProc);
     }
-    
+
     m_initialized = false;
     Logger::info("OverlayRenderer::Shutdown: Done.");
 }
 
 void OverlayRenderer::OnReset() {
-    if (!m_initialized) return;
+    if (!m_initialized)
+        return;
     Logger::info("OverlayRenderer::OnReset: Invalidating device objects...");
     ImGui_ImplDX9_InvalidateDeviceObjects();
 }
 
 void OverlayRenderer::OnPostReset() {
-    if (!m_initialized) return;
+    if (!m_initialized)
+        return;
     Logger::info("OverlayRenderer::OnPostReset: Creating device objects...");
     ImGui_ImplDX9_CreateDeviceObjects();
 }
 
 void OverlayRenderer::NewFrame() {
-    if (!m_initialized) return;
+    if (!m_initialized)
+        return;
     m_uiRendered = false;
 
     auto currentTime = std::chrono::steady_clock::now();
@@ -114,8 +123,9 @@ void OverlayRenderer::NewFrame() {
 }
 
 void OverlayRenderer::Render(IDirect3DDevice9* device, uint32_t width, uint32_t height) {
-    if (!m_initialized || !m_visible || m_uiRendered) return;
-    
+    if (!m_initialized || !m_visible || m_uiRendered)
+        return;
+
     static uint32_t renderCount = 0;
     if (renderCount++ % 600 == 0) {
         Logger::info("OverlayRenderer::Render called (Logged every 600 frames)");
@@ -137,14 +147,13 @@ void OverlayRenderer::Render(IDirect3DDevice9* device, uint32_t width, uint32_t 
 
     ImGui::Render();
     ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
-    
+
     g_isRenderingOverlay = false;
 }
 
-
 LRESULT CALLBACK OverlayRenderer::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     auto& renderer = OverlayRenderer::Get();
-    
+
     if (renderer.m_visible) {
         if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
             return 1;

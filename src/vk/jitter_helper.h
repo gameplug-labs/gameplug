@@ -16,12 +16,22 @@ public:
     float GetJitterY() const { return m_jitterY * m_scale; }
 
     void SetScale(float scale) { m_scale = scale; }
-    void SetBase(uint32_t baseX, uint32_t baseY) { m_baseX = baseX; m_baseY = baseY; }
+    void SetBase(uint32_t baseX, uint32_t baseY) {
+        m_baseX = baseX;
+        m_baseY = baseY;
+    }
 
 private:
-    JitterHelper() : m_jitterX(0.0f), m_jitterY(0.0f), m_index(0), m_scale(1.0f), m_baseX(2), m_baseY(3), m_width(0), m_height(0) {}
+    JitterHelper()
+        : m_jitterX(0.0f)
+        , m_jitterY(0.0f)
+        , m_index(0)
+        , m_scale(1.0f)
+        , m_baseX(2)
+        , m_baseY(3)
+        , m_width(0)
+        , m_height(0) {}
 
-    
     float Halton(uint32_t index, uint32_t base) {
         float f = 1.0f;
         float r = 0.0f;
@@ -42,6 +52,5 @@ private:
     uint32_t m_width;
     uint32_t m_height;
 };
-
 
 } // namespace GamePlug

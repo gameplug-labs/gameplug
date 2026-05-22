@@ -1,5 +1,5 @@
 #pragma once
 
 namespace GamePlug {
-    void InstallWin32Hooks();
+void InstallWin32Hooks();
 }

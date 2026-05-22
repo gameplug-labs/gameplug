@@ -1,9 +1,10 @@
 #include "imgui_overlay_shared.h"
-#include "imgui.h"
 #include "config.h"
+#include "imgui.h"
 #include "plugin_manager.h"
 #include <algorithm>
 #include <cstring>
+#include <functional>
 
 namespace GamePlug {
 
@@ -17,7 +18,7 @@ void ImGuiOverlayShared::DrawUI(uint32_t width, uint32_t height, std::function<v
     style.WindowRounding = 8.0f * uiScale;
     style.FrameRounding = 4.0f * uiScale;
     style.WindowBorderSize = 1.0f;
-    style.Colors[ImGuiCol_WindowBg] = ImVec4(0.06f, 0.06f, 0.08f, 0.75f); 
+    style.Colors[ImGuiCol_WindowBg] = ImVec4(0.06f, 0.06f, 0.08f, 0.75f);
     style.Colors[ImGuiCol_TitleBgActive] = ImVec4(0.16f, 0.29f, 0.48f, 0.90f);
     style.Colors[ImGuiCol_Border] = ImVec4(0.43f, 0.43f, 0.50f, 0.50f);
 
@@ -33,7 +34,7 @@ void ImGuiOverlayShared::DrawUI(uint32_t width, uint32_t height, std::function<v
             ImGui::Spacing();
             ImGui::Separator();
             ImGui::Spacing();
-            
+
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.2f, 0.7f, 1.0f, 1.0f));
             ImGui::Text("Resolution Enumeration");
             ImGui::PopStyleColor();
@@ -51,7 +52,7 @@ void ImGuiOverlayShared::DrawUI(uint32_t width, uint32_t height, std::function<v
             if (ImGui::InputTextWithHint("##ExtraRes", "Example: 2560x1440, 3840x2160", resBuffer, sizeof(resBuffer))) {
                 Config::Get().SetString("ExtraEnumeratedResolutions", resBuffer);
             }
-            
+
             if (ImGui::IsItemDeactivatedAfterEdit()) {
                 Config::Get().Save();
                 Config::Get().Load(); // Refresh internal m_extraResolutions
@@ -69,7 +70,7 @@ void ImGuiOverlayShared::DrawUI(uint32_t width, uint32_t height, std::function<v
             ImGui::Spacing();
             PluginManager::Get().RenderPlugins();
         }
-     
+
         if (!hasPlugins) {
             ImGui::Spacing();
             ImGui::Separator();

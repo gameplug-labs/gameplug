@@ -8,6 +8,8 @@ add_library(d3d9_proxy_dll SHARED
     d3d9_proxy_swapchain.cpp
     d3d9_proxy_device.cpp
     d3d9_proxy_d3d9.cpp
+    d3d9_proxy_texture.cpp
+    texture_replacer.cpp
     d3d9.def
     ${PROJECT_SOURCE_DIR}/src/shared/logger.cpp
     ${PROJECT_SOURCE_DIR}/src/shared/config.cpp

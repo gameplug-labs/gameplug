@@ -18,7 +18,7 @@ HRESULT STDMETHODCALLTYPE HookedCreateTexture2D(
         uint32_t renderH = desc.Height;
 
         if (renderW > 0 && renderH > 0) {
-            Logger::info("FSR1: Override DX11 RT " + std::to_string(desc.Width) + "x" + std::to_string(desc.Height) + " -> " +
+            Logger::info("Override DX11 RT " + std::to_string(desc.Width) + "x" + std::to_string(desc.Height) + " -> " +
                          std::to_string(renderW) + "x" + std::to_string(renderH));
             desc.Width = renderW;
             desc.Height = renderH;

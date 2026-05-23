@@ -17,7 +17,7 @@ PFN_RSSetScissorRects g_OriginalRSSetScissorRects = nullptr;
 PFN_OMSetRenderTargets g_OriginalOMSetRenderTargets = nullptr;
 PFN_CreateCommittedResource g_OriginalCreateCommittedResource = nullptr;
 PFN_CreatePlacedResource g_OriginalCreatePlacedResource = nullptr;
-PFN_CreateTexture2D g_OriginalCreateTexture2D = nullptr;
+
 PFN_CreateSwapChain g_OriginalCreateSwapChain = nullptr;
 PFN_CreateSwapChainForHwnd g_OriginalCreateSwapChainForHwnd = nullptr;
 PFN_CreateSwapChainForComposition g_OriginalCreateSwapChainForComposition = nullptr;
@@ -67,15 +67,7 @@ void InstallDXGIHooks() {
         // Don't goto cleanup yet, we might still want DX11
     }
 
-    ID3D11Device* d3d11Device = nullptr;
-    ID3D11DeviceContext* d3d11Context = nullptr;
-    D3D_FEATURE_LEVEL featureLevel;
-    hr = D3D11CreateDevice(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, 0, NULL, 0, D3D11_SDK_VERSION, &d3d11Device, &featureLevel, &d3d11Context);
-    if (FAILED(hr)) {
-        Logger::error("DX Hooks: D3D11CreateDevice failed");
-    }
-
-    if (!d3d12Device && !d3d11Device)
+    if (!d3d12Device)
         goto cleanup;
 
     {
@@ -161,12 +153,6 @@ void InstallDXGIHooks() {
                     "DX Hooks: Hook ID3D12Device::CreateCommittedResource(27), CreatePlacedResource(8), CreateRenderTargetView(7)");
             }
 
-            if (d3d11Device) {
-                void** pDevice11VTable = *(void***)d3d11Device;
-                MH_CreateHook(pDevice11VTable[5], (LPVOID)HookedCreateTexture2D, (LPVOID*)&g_OriginalCreateTexture2D);
-                Logger::info("DX Hooks: Hook ID3D11Device::CreateTexture2D (IDX 5): MH_OK");
-            }
-
             MH_EnableHook(MH_ALL_HOOKS);
         }
     }
@@ -186,10 +172,7 @@ cleanup:
         commandQueue->Release();
     if (d3d12Device)
         d3d12Device->Release();
-    if (d3d11Context)
-        d3d11Context->Release();
-    if (d3d11Device)
-        d3d11Device->Release();
+
     DestroyWindow(hwnd);
     UnregisterClass("GamePlugDummy", wc.hInstance);
     Logger::info("InstallDXGIHooks: End");

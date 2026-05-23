@@ -2,7 +2,6 @@
 #include "common.h"
 #include "config.h"
 #include "minhook.h"
-#include <d3d11.h>
 #include <d3d12.h>
 #include <dxgi1_5.h>
 #include <map>
@@ -42,9 +41,6 @@ typedef HRESULT(STDMETHODCALLTYPE* PFN_CreatePlacedResource)(ID3D12Device* pDevi
     const D3D12_RESOURCE_DESC* pDesc, D3D12_RESOURCE_STATES InitialResourceState, const D3D12_CLEAR_VALUE* pOptimizedClearValue,
     REFIID riidResource, void** ppvResource);
 
-typedef HRESULT(STDMETHODCALLTYPE* PFN_CreateTexture2D)(
-    ID3D11Device* pDevice, const D3D11_TEXTURE2D_DESC* pDesc, const D3D11_SUBRESOURCE_DATA* pInitialData, ID3D11Texture2D** ppTexture2D);
-
 typedef HRESULT(STDMETHODCALLTYPE* PFN_CreateSwapChain)(
     IDXGIFactory* pFactory, IUnknown* pDevice, DXGI_SWAP_CHAIN_DESC* pDesc, IDXGISwapChain** ppSwapChain);
 typedef HRESULT(STDMETHODCALLTYPE* PFN_CreateSwapChainForHwnd)(IDXGIFactory2* pFactory, IUnknown* pDevice, HWND hWnd,
@@ -74,7 +70,7 @@ extern PFN_RSSetScissorRects g_OriginalRSSetScissorRects;
 extern PFN_OMSetRenderTargets g_OriginalOMSetRenderTargets;
 extern PFN_CreateCommittedResource g_OriginalCreateCommittedResource;
 extern PFN_CreatePlacedResource g_OriginalCreatePlacedResource;
-extern PFN_CreateTexture2D g_OriginalCreateTexture2D;
+
 extern PFN_CreateSwapChain g_OriginalCreateSwapChain;
 extern PFN_CreateSwapChainForHwnd g_OriginalCreateSwapChainForHwnd;
 extern PFN_CreateSwapChainForComposition g_OriginalCreateSwapChainForComposition;
@@ -138,9 +134,7 @@ HRESULT STDMETHODCALLTYPE HookedCreateCommittedResource(ID3D12Device* pDevice, c
 HRESULT STDMETHODCALLTYPE HookedCreatePlacedResource(ID3D12Device* pDevice, ID3D12Heap* pHeap, UINT64 HeapOffset,
     const D3D12_RESOURCE_DESC* pDesc, D3D12_RESOURCE_STATES InitialResourceState, const D3D12_CLEAR_VALUE* pOptimizedClearValue,
     REFIID riidResource, void** ppvResource);
-bool ShouldOverrideD3D11(const D3D11_TEXTURE2D_DESC& desc);
-HRESULT STDMETHODCALLTYPE HookedCreateTexture2D(
-    ID3D11Device* pDevice, const D3D11_TEXTURE2D_DESC* pDesc, const D3D11_SUBRESOURCE_DATA* pInitialData, ID3D11Texture2D** ppTexture2D);
+
 HRESULT STDMETHODCALLTYPE HookedQueryInterface(IUnknown* pUnk, REFIID riid, void** ppvObject);
 HRESULT STDMETHODCALLTYPE HookedPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT Flags);
 HRESULT STDMETHODCALLTYPE HookedPresent1(

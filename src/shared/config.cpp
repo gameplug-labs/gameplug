@@ -4,6 +4,7 @@
 #include "plugin_manager.h"
 #include "win32_hooks.h"
 #include <algorithm>
+#include <cstring>
 #include <fstream>
 #include <sstream>
 #include <windows.h>
@@ -192,15 +193,40 @@ std::string Config::Trim(const std::string& s) {
     return res;
 }
 
-void Config::RenderUI() {
-    /*
-    bool pluginEnabled = GetBool("PluginEnabled", true);
-    if (ImGui::Checkbox("Enable Plugins", &pluginEnabled)) {
-        SetBool("PluginEnabled", pluginEnabled);
-        Save(); // Always save for the master toggle
-        Logger::info("Config: Plugin master state changed to: " + std::string(pluginEnabled ? "ENABLED" : "DISABLED"));
+void Config::RenderUI(bool showResolutionEnumeration) {
+#ifdef GAMEPLUG_DIRECTX
+    showResolutionEnumeration = false;
+#endif
+    if (showResolutionEnumeration) {
+        // Extra Resolutions
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.2f, 0.7f, 1.0f, 1.0f));
+        ImGui::Text("Resolution Enumeration");
+        ImGui::PopStyleColor();
+        ImGui::SameLine();
+
+        static char resBuffer[512] = "";
+        static bool resInit = false;
+        if (!resInit) {
+            std::string current = GetString("ExtraEnumeratedResolutions");
+            strncpy(resBuffer, current.c_str(), sizeof(resBuffer) - 1);
+            resInit = true;
+        }
+
+        ImGui::SetNextItemWidth(-1.0f);
+        if (ImGui::InputTextWithHint("##ExtraRes", "Example: 2560x1440, 3840x2160", resBuffer, sizeof(resBuffer))) {
+            SetString("ExtraEnumeratedResolutions", resBuffer);
+        }
+
+        if (ImGui::IsItemDeactivatedAfterEdit()) {
+            Save();
+            Load(); // Refresh internal m_extraResolutions
+        }
+        ImGui::TextDisabled("Add custom resolutions separated by commas (restart required).");
     }
-    */
 }
 
 } // namespace GamePlug

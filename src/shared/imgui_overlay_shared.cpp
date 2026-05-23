@@ -8,7 +8,7 @@
 
 namespace GamePlug {
 
-void ImGuiOverlayShared::DrawUI(uint32_t width, uint32_t height, std::function<void()> apiSpecificUI, bool showResolutionEnumeration) {
+void ImGuiOverlayShared::DrawUI(uint32_t width, uint32_t height, std::function<void()> apiSpecificUI) {
     ImGuiIO& io = ImGui::GetIO();
     float uiScale = (std::max)(1.0f, (float)height / 720.0f);
     io.FontGlobalScale = uiScale;
@@ -34,37 +34,6 @@ void ImGuiOverlayShared::DrawUI(uint32_t width, uint32_t height, std::function<v
             ImGui::Separator();
             ImGui::Spacing();
             apiSpecificUI();
-        }
-
-        if (showResolutionEnumeration) {
-            // 2. Extra Resolutions
-            ImGui::Spacing();
-            ImGui::Separator();
-            ImGui::Spacing();
-
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.2f, 0.7f, 1.0f, 1.0f));
-            ImGui::Text("Resolution Enumeration");
-            ImGui::PopStyleColor();
-            ImGui::SameLine();
-
-            static char resBuffer[512] = "";
-            static bool resInit = false;
-            if (!resInit) {
-                std::string current = Config::Get().GetString("ExtraEnumeratedResolutions");
-                strncpy(resBuffer, current.c_str(), sizeof(resBuffer) - 1);
-                resInit = true;
-            }
-
-            ImGui::SetNextItemWidth(-1.0f);
-            if (ImGui::InputTextWithHint("##ExtraRes", "Example: 2560x1440, 3840x2160", resBuffer, sizeof(resBuffer))) {
-                Config::Get().SetString("ExtraEnumeratedResolutions", resBuffer);
-            }
-
-            if (ImGui::IsItemDeactivatedAfterEdit()) {
-                Config::Get().Save();
-                Config::Get().Load(); // Refresh internal m_extraResolutions
-            }
-            ImGui::TextDisabled("Add custom resolutions separated by commas.");
         }
 
         bool pluginsEnabled = Config::Get().GetBool("PluginEnabled", true);

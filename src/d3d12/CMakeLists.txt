@@ -1,9 +1,9 @@
-add_library(dinput8 SHARED
+add_library(dinput8_d3d12 SHARED
     dinput.cpp
     dinput.def
 )
 
-target_include_directories(dinput8 PRIVATE
+target_include_directories(dinput8_d3d12 PRIVATE
     ${PROJECT_SOURCE_DIR}/include
     ${PROJECT_SOURCE_DIR}/src/d3d12
     ${PROJECT_SOURCE_DIR}/src/shared
@@ -14,17 +14,15 @@ target_include_directories(dinput8 PRIVATE
     ${PROJECT_SOURCE_DIR}/external/safetyhook/include
 )
 
-target_compile_definitions(dinput8 PRIVATE 
-    GamePlug_DIRECTX
+target_compile_definitions(dinput8_d3d12 PRIVATE 
     RE4 REENGINE_PACKED REENGINE_AT
 )
 
 # Standard Windows libraries + Framework
-target_link_libraries(dinput8 PRIVATE
+target_link_libraries(dinput8_d3d12 PRIVATE
     shlwapi
-    framework
+    framework_d3d12
     minhook
-    d3d11
     d3d12
     dxgi
     d3dcompiler
@@ -32,14 +30,14 @@ target_link_libraries(dinput8 PRIVATE
 )
 
 if(MSVC)
-    set_target_properties(dinput8 PROPERTIES 
+    set_target_properties(dinput8_d3d12 PROPERTIES 
         PREFIX ""
         SUFFIX ".dll"
         OUTPUT_NAME "dinput8"
-        LINK_FLAGS "/DELAYLOAD:d3d11.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3dcompiler_47.dll"
+        LINK_FLAGS "/DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3dcompiler_47.dll"
     )
 else()
-    set_target_properties(dinput8 PROPERTIES
+    set_target_properties(dinput8_d3d12 PROPERTIES
         PREFIX ""
         SUFFIX ".dll"
         OUTPUT_NAME "dinput8"
@@ -47,9 +45,10 @@ else()
 endif()
 
 # Post-build copy to root bin folder
-add_custom_command(TARGET dinput8 POST_BUILD
+add_custom_command(TARGET dinput8_d3d12 POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${PROJECT_SOURCE_DIR}/bin/${BIN_ARCH}/d3d12"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "$<TARGET_FILE:dinput8>"
-            "${BIN_OUTPUT_DIR}/$<TARGET_FILE_NAME:dinput8>"
-    COMMENT "Copying dinput8.dll proxy to bin folder"
+            "$<TARGET_FILE:dinput8_d3d12>"
+            "${PROJECT_SOURCE_DIR}/bin/${BIN_ARCH}/d3d12/$<TARGET_FILE_NAME:dinput8_d3d12>"
+    COMMENT "Copying dinput8.dll proxy to bin/d3d12 folder"
 )

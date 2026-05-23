@@ -11,7 +11,7 @@ FRAMEWORK_API void Init();
 
 class FRAMEWORK_API Logger {
 public:
-    static void Init(const std::string& filename = "GamePlug.log");
+    static void Init(const std::string& filename = "gameplug.log");
     static void SetupCrashHandler();
 
     template <typename... Args> static void info(fmt::format_string<Args...> fmt, Args&&... args) {

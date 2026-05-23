@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
+## [0.1.2] - 2026-05-23
+
+### Added
+- Separated D3D11 and D3D12 codebases & build
+
+## [0.1.1] - 2026-05-22
+
 - Disabled `ExtraEnumeratedResolutions` in D3D12.
 - Format and refactor code
 

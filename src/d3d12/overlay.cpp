@@ -1,12 +1,9 @@
-#include "common.h"
-#include "config.h"
+#include "hooks_common.h"
 #include "imgui.h"
-#include "imgui_impl_dx11.h"
 #include "imgui_impl_dx12.h"
 #include "imgui_impl_win32.h"
 #include "imgui_overlay_shared.h"
 #include "plugin_manager.h"
-#include <d3d11.h>
 #include <d3d12.h>
 #include <dxgi1_4.h>
 #include <mutex>
@@ -17,7 +14,7 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg
 namespace GamePlug {
 std::unordered_map<ID3D12Resource*, D3D12_RESOURCE_STATES> g_ResourceStates;
 
-enum class DXVersion { Unknown, DX11, DX12 };
+enum class DXVersion { Unknown, DX12 };
 
 static DXVersion g_DXVersion = DXVersion::Unknown;
 static bool g_ImGuiInitialized = false;
@@ -38,11 +35,6 @@ static int g_confidenceCounter = 0;
 static uint64_t g_totalPresentCalls = 0;
 static uint64_t g_totalExecuteCalls = 0;
 static std::recursive_mutex g_DXMtx;
-
-// DX11 Resources
-static ID3D11Device* g_pd3dDevice = nullptr;
-static ID3D11DeviceContext* g_pd3dDeviceContext = nullptr;
-static ID3D11RenderTargetView* g_mainRenderTargetView = nullptr;
 
 // DX12 Resources
 struct FrameContext {
@@ -70,18 +62,12 @@ static uint64_t g_frameCounter = 0;
 static float g_realFPS = 0.0f;
 static bool g_needsNewImGuiFrame = true;
 static uint64_t g_lastInjectionFrame = 0xFFFFFFFFFFFFFFFF;
-static bool g_InHook = false;
 static uint32_t g_CommandQueueOffset = 0;
 static bool g_pendingResize = false;
 static uint64_t g_bestArea = 0;
 static std::recursive_mutex g_TargetMtx;
 
 static bool g_CleaningUp = false;
-
-struct ScopedRecursionGuard {
-    ScopedRecursionGuard() { g_InHook = true; }
-    ~ScopedRecursionGuard() { g_InHook = false; }
-};
 
 static void LogDeviceRemovedReason(ID3D12Device* device, HRESULT hr) {
     if (hr != DXGI_ERROR_DEVICE_REMOVED && hr != DXGI_ERROR_DEVICE_RESET)
@@ -97,9 +83,6 @@ static void LogDeviceRemovedReason(ID3D12Device* device, HRESULT hr) {
         break;
     case DXGI_ERROR_DEVICE_RESET:
         reasonStr = "DXGI_ERROR_DEVICE_RESET";
-        break;
-    case DXGI_ERROR_DRIVER_INTERNAL_ERROR:
-        reasonStr = "DXGI_ERROR_DRIVER_INTERNAL_ERROR";
         break;
     case DXGI_ERROR_INVALID_CALL:
         reasonStr = "DXGI_ERROR_INVALID_CALL";
@@ -186,7 +169,7 @@ void CleanupDX12(bool isResize) {
     if (g_CleaningUp)
         return;
     g_CleaningUp = true;
-    Logger::info("CleanupDX12: Start (Safen Mode) - isResize: " + std::to_string(isResize));
+    Logger::info("CleanupDX12: Start (Safe Mode) - isResize: " + std::to_string(isResize));
 
     try {
         // Ensure all engine queues are idle only if device is still valid
@@ -203,11 +186,7 @@ void CleanupDX12(bool isResize) {
         }
 
         if (g_ImGuiInitialized) {
-            if (g_DXVersion == DXVersion::DX12) {
-                ImGui_ImplDX12_Shutdown();
-            } else if (g_DXVersion == DXVersion::DX11) {
-                ImGui_ImplDX11_Shutdown();
-            }
+            ImGui_ImplDX12_Shutdown();
             ImGui_ImplWin32_Shutdown();
             PluginManager::Get().UnloadPlugins();
             if (ImGui::GetCurrentContext()) {
@@ -218,6 +197,18 @@ void CleanupDX12(bool isResize) {
         }
 
         // Safe Resource Draining
+        for (int i = 0; i < 8; i++) {
+            if (g_backBuffers[i]) {
+                g_backBuffers[i]->Release();
+                g_backBuffers[i] = nullptr;
+            }
+        }
+
+        if (g_OriginalWndProc && g_currentHWND) {
+            SetWindowLongPtr(g_currentHWND, GWLP_WNDPROC, (LONG_PTR)g_OriginalWndProc);
+            g_OriginalWndProc = nullptr;
+        }
+
         if (g_pd3dCommandList) {
             g_pd3dCommandList->Release();
             g_pd3dCommandList = nullptr;
@@ -250,17 +241,11 @@ void CleanupDX12(bool isResize) {
                     g_frameContext[i].CommandAllocator->Release();
                     g_frameContext[i].CommandAllocator = nullptr;
                 }
-                if (g_backBuffers[i]) {
-                    g_backBuffers[i]->Release();
-                    g_backBuffers[i] = nullptr;
-                }
             }
             delete[] g_frameContext;
             g_frameContext = nullptr;
         }
 
-        // If we're just resizing, do NOT release the device. The engine is still using it.
-        // We only release it on absolute detachment or if we know for sure it's dead.
         if (g_pd3dCommandQueue) {
             g_pd3dCommandQueue = nullptr;
         }
@@ -279,66 +264,6 @@ void CleanupDX12(bool isResize) {
     ClearActiveQueues();
     g_CleaningUp = false;
     Logger::info("CleanupDX12: End");
-}
-
-void CleanupDX11() {
-    Logger::info("CleanupDX11: Start");
-    if (g_mainRenderTargetView) {
-        g_mainRenderTargetView->Release();
-        g_mainRenderTargetView = nullptr;
-        Logger::info("CleanupDX11: -> Released RTV");
-    }
-    Logger::info("CleanupDX11: End");
-}
-
-bool InitImGuiDX11(IDXGISwapChain* pSwapChain) {
-    Logger::info("DX11 Init: Step 1 - GetDevice");
-    if (FAILED(pSwapChain->GetDevice(__uuidof(ID3D11Device), (void**)&g_pd3dDevice))) {
-        Logger::error("DX11 Init: GetDevice failed");
-        return false;
-    }
-
-    Logger::info("DX11 Init: Step 2 - GetImmediateContext");
-    g_pd3dDevice->GetImmediateContext(&g_pd3dDeviceContext);
-
-    DXGI_SWAP_CHAIN_DESC sd;
-    pSwapChain->GetDesc(&sd);
-    HWND hWnd = sd.OutputWindow;
-
-    Logger::info("DX11 Init: Step 3 - Creating ImGui Context (HWND=" + std::to_string((uintptr_t)hWnd) + ")");
-    ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO();
-    io.IniFilename = nullptr; // Disable imgui.ini
-
-    Logger::info("DX11 Init: Step 4 - ImGui_ImplWin32_Init");
-    if (!ImGui_ImplWin32_Init(hWnd)) {
-        Logger::error("DX11 Init: ImGui_ImplWin32_Init failed");
-        return false;
-    }
-
-    Logger::info("DX11 Init: Step 5 - ImGui_ImplDX11_Init");
-    if (!ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext)) {
-        Logger::error("DX11 Init: ImGui_ImplDX11_Init failed");
-        return false;
-    }
-
-    Logger::info("DX11 Init: Step 6 - Creating BackBuffer RTV");
-    ID3D11Texture2D* pBackBuffer = nullptr;
-    if (SUCCEEDED(pSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (LPVOID*)&pBackBuffer))) {
-        Logger::info("DX11 Init:   - GetBuffer(0) succeeded");
-        if (SUCCEEDED(g_pd3dDevice->CreateRenderTargetView(pBackBuffer, NULL, &g_mainRenderTargetView))) {
-            Logger::info("DX11 Init:   - CreateRenderTargetView succeeded");
-        } else {
-            Logger::error("DX11 Init:   - CreateRenderTargetView FAILED");
-        }
-        pBackBuffer->Release();
-    } else {
-        Logger::error("DX11 Init:   - GetBuffer(0) failed");
-        return false;
-    }
-
-    Logger::info("DX11 Init: Success");
-    return true;
 }
 
 bool InitImGuiDX12(IDXGISwapChain* pSwapChain, ID3D12CommandQueue* pQueue) {
@@ -377,7 +302,7 @@ bool InitImGuiDX12(IDXGISwapChain* pSwapChain, ID3D12CommandQueue* pQueue) {
         desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
         desc.NumDescriptors = g_bufferCount;
         desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-        desc.NodeMask = 0; // Fix: Use 0 for single-GPU or default node
+        desc.NodeMask = 0;
 
         hr = g_pd3d12Device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&g_pd3dRtvDescHeap));
         if (FAILED(hr)) {
@@ -507,15 +432,9 @@ void OnDXResize(IDXGISwapChain* pSwapChain) {
         return;
     }
 
-    if (g_DXVersion == DXVersion::DX11) {
-        Logger::info(" - Invalidating DX11 objects");
-        ImGui_ImplDX11_InvalidateDeviceObjects();
-        CleanupDX11();
-    } else if (g_DXVersion == DXVersion::DX12) {
-        Logger::info(" - Invalidating DX12 objects (Minimalist Resize)");
-        ImGui_ImplDX12_InvalidateDeviceObjects();
-        CleanupDX12(true);
-    }
+    Logger::info(" - Invalidating DX12 objects (Minimalist Resize)");
+    ImGui_ImplDX12_InvalidateDeviceObjects();
+    CleanupDX12(true);
     g_ImGuiInitialized = false;
     Logger::info("OnDXResize: Status reset to uninitialized");
 }
@@ -526,10 +445,6 @@ IDXGISwapChain* GetCurrentDXSwapChain() {
 }
 
 void OnDXPresent(IDXGISwapChain* pSwapChain) {
-    if (g_InHook)
-        return;
-    ScopedRecursionGuard guard;
-
     {
         std::lock_guard<std::recursive_mutex> lock(g_TargetMtx);
         g_bestArea = 0; // Reset capture threshold for new frame
@@ -566,8 +481,6 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
 
     if (!g_Visible)
         return;
-
-    // RE Engine Stability: Ensure hooks are applied as soon as a SceneView is available
 
     g_needsNewImGuiFrame = true;
     g_totalPresentCalls++;
@@ -608,13 +521,8 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
     if (g_currentSwapChain != pSwapChain || g_currentHWND != desc.OutputWindow) {
         if (g_ImGuiInitialized) {
             Logger::info("DX: Hot-swap detected! Re-locking to new rendering target...");
-            if (g_DXVersion == DXVersion::DX11) {
-                ImGui_ImplDX11_InvalidateDeviceObjects();
-                CleanupDX11();
-            } else if (g_DXVersion == DXVersion::DX12) {
-                ImGui_ImplDX12_InvalidateDeviceObjects();
-                CleanupDX12(false); // Hot-swap needs FULL cleanup
-            }
+            ImGui_ImplDX12_InvalidateDeviceObjects();
+            CleanupDX12(false); // Hot-swap needs FULL cleanup
             g_ImGuiInitialized = false;
         }
 
@@ -641,9 +549,8 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
 
         // Detect DX Version (PRIORITIZE DX12)
         ID3D12Device* d3d12Device = nullptr;
-        ID3D11Device* d3d11Device = nullptr;
 
-        Logger::info("DX Init Check: Step A - Testing DX12...");
+        Logger::info("DX Init Check: Testing DX12...");
         if (SUCCEEDED(pSwapChain->GetDevice(__uuidof(ID3D12Device), (void**)&d3d12Device))) {
             Logger::info("DX Init Check: SUCCESS (DX12). Registration starting...");
             g_DXVersion = DXVersion::DX12;
@@ -666,20 +573,7 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
 
             d3d12Device->Release();
         } else {
-            Logger::info("DX Init Check: Step B - Testing DX11...");
-            if (SUCCEEDED(pSwapChain->GetDevice(__uuidof(ID3D11Device), (void**)&d3d11Device))) {
-                Logger::info("DX Init Check: SUCCESS (DX11). Starting ImGui Setup...");
-                g_DXVersion = DXVersion::DX11;
-                d3d11Device->Release();
-                if (InitImGuiDX11(pSwapChain)) {
-                    g_ImGuiInitialized = true;
-                    Logger::info("DX Init Check: FINAL SUCCESS (DX11)");
-                } else {
-                    Logger::error("DX Init Check: FINAL FAILURE (DX11 Init Failed)");
-                }
-            } else {
-                Logger::error("DX Init Check: Step C - FAILURE. No supported DX API detected on this SwapChain.");
-            }
+            Logger::error("DX Init Check: FAILURE. No supported DX12 API detected on this SwapChain.");
         }
     }
 
@@ -703,13 +597,8 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
 
             if (changed) {
                 Logger::info("DX Adapt: Re-initializing renderer due to engine property shift");
-                if (g_DXVersion == DXVersion::DX11) {
-                    ImGui_ImplDX11_InvalidateDeviceObjects();
-                    CleanupDX11();
-                } else if (g_DXVersion == DXVersion::DX12) {
-                    ImGui_ImplDX12_InvalidateDeviceObjects();
-                    CleanupDX12(false); // Property shift needs FULL cleanup
-                }
+                ImGui_ImplDX12_InvalidateDeviceObjects();
+                CleanupDX12(false); // Property shift needs FULL cleanup
                 g_ImGuiInitialized = false;
                 g_confidenceCounter = 0;
                 return;
@@ -724,204 +613,163 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
     if (!g_ImGuiInitialized)
         return;
 
-    // DX11 BackBuffer Safety
-    if (g_DXVersion == DXVersion::DX11 && !g_mainRenderTargetView) {
-        Logger::info("DX11 Present: Re-creating missing RTV");
-        ID3D11Texture2D* pBackBuffer;
-        if (SUCCEEDED(pSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (LPVOID*)&pBackBuffer))) {
-            g_pd3dDevice->CreateRenderTargetView(pBackBuffer, NULL, &g_mainRenderTargetView);
-            pBackBuffer->Release();
-            Logger::info("DX11 Present: RTV re-created successfully");
-        }
-    }
-
-    // Rendering Paths
+    // Rendering Path
     try {
-        if (g_DXVersion == DXVersion::DX11) {
-            static int frameCount11 = 0;
-            bool shouldLog = (frameCount11 < 5);
-            if (shouldLog)
-                Logger::info("DX11 Frame " + std::to_string(frameCount11));
+        // REFramework-style Discovery Refinement
+        ID3D12CommandQueue* pQueue = nullptr;
+        if (g_CommandQueueOffset != 0) {
+            pQueue = *(ID3D12CommandQueue**)((uintptr_t)pSwapChain + g_CommandQueueOffset);
+        }
+        if (!pQueue)
+            pQueue = g_pd3dCommandQueue;
 
-            ImGui_ImplDX11_NewFrame();
-            ImGui_ImplWin32_NewFrame();
-            ImGui::NewFrame();
+        if (!g_ImGuiInitialized || !g_currentSwapChain || !pQueue)
+            return;
 
-            ImGuiOverlayShared::DrawUI(desc.BufferDesc.Width, desc.BufferDesc.Height);
+        // Ensure we always have the queue set for RenderUI etc
+        if (pQueue)
+            SetDX12CommandQueue(pQueue);
 
-            ImGui::Render();
+        g_needsNewImGuiFrame = true;
 
-            if (g_mainRenderTargetView) {
-                if (shouldLog)
-                    Logger::info("DX11 Frame Trace: Entry Render Objects");
-                // Diagnostic: Attempt upscaling. Note: sourceSRV is currently nullptr in DX11.
+        IDXGISwapChain3* sc3 = nullptr;
+        if (SUCCEEDED(pSwapChain->QueryInterface(__uuidof(IDXGISwapChain3), (void**)&sc3))) {
+            UINT backBufferIdx = sc3->GetCurrentBackBufferIndex();
+            sc3->Release();
 
-                g_pd3dDeviceContext->OMSetRenderTargets(1, &g_mainRenderTargetView, NULL);
-                ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-                if (shouldLog)
-                    Logger::info("DX11 Frame Trace: RenderDrawData Complete");
-            } else if (shouldLog) {
-                Logger::error("DX11 Frame Trace: RTV IS NULL, Skipping draw!");
-            }
+            if (backBufferIdx < g_bufferCount) {
+                FrameContext& ctx = g_frameContext[backBufferIdx];
+                if (!ctx.CommandAllocator)
+                    return;
 
-            frameCount11++;
-        } else if (g_DXVersion == DXVersion::DX12) {
-            // REFramework-style Discovery Refinement
-            ID3D12CommandQueue* pQueue = nullptr;
-            if (g_CommandQueueOffset != 0) {
-                pQueue = *(ID3D12CommandQueue**)((uintptr_t)pSwapChain + g_CommandQueueOffset);
-            }
-            if (!pQueue)
-                pQueue = g_pd3dCommandQueue;
-
-            if (!g_ImGuiInitialized || !g_currentSwapChain || !pQueue)
-                return;
-
-            // Ensure we always have the queue set for RenderUI etc
-            if (pQueue)
-                SetDX12CommandQueue(pQueue);
-
-            g_needsNewImGuiFrame = true;
-
-            IDXGISwapChain3* sc3 = nullptr;
-            if (SUCCEEDED(pSwapChain->QueryInterface(__uuidof(IDXGISwapChain3), (void**)&sc3))) {
-                UINT backBufferIdx = sc3->GetCurrentBackBufferIndex();
-                sc3->Release();
-
-                if (backBufferIdx < g_bufferCount) {
-                    FrameContext& ctx = g_frameContext[backBufferIdx];
-                    if (!ctx.CommandAllocator)
+                // Use cached backbuffer
+                ID3D12Resource* pBackBuffer = g_backBuffers[backBufferIdx];
+                if (!pBackBuffer) {
+                    // Fallback to GetBuffer if not cached (should not happen with stable init)
+                    if (FAILED(pSwapChain->GetBuffer(backBufferIdx, IID_PPV_ARGS(&pBackBuffer))))
                         return;
+                    g_backBuffers[backBufferIdx] = pBackBuffer;
+                }
 
-                    // Use cached backbuffer
-                    ID3D12Resource* pBackBuffer = g_backBuffers[backBufferIdx];
-                    if (!pBackBuffer) {
-                        // Fallback to GetBuffer if not cached (should not happen with stable init)
-                        if (FAILED(pSwapChain->GetBuffer(backBufferIdx, IID_PPV_ARGS(&pBackBuffer))))
-                            return;
-                        g_backBuffers[backBufferIdx] = pBackBuffer;
-                    }
+                // Step 4: Debug
+                if (g_frameCounter % 600 == 0) {
+                    Logger::info("Backbuffer Index: " + std::to_string(backBufferIdx));
+                    Logger::info("Backbuffer Ptr: " + std::to_string((uintptr_t)pBackBuffer));
+                }
 
-                    // Step 4: Debug
-                    if (g_frameCounter % 600 == 0) {
-                        Logger::info("Backbuffer Index: " + std::to_string(backBufferIdx));
-                        Logger::info("Backbuffer Ptr: " + std::to_string((uintptr_t)pBackBuffer));
-                    }
+                D3D12_RESOURCE_DESC desc = pBackBuffer->GetDesc();
+                uint32_t width = (uint32_t)desc.Width;
+                uint32_t height = (uint32_t)desc.Height;
 
-                    D3D12_RESOURCE_DESC desc = pBackBuffer->GetDesc();
-                    uint32_t width = (uint32_t)desc.Width;
-                    uint32_t height = (uint32_t)desc.Height;
+                ctx.CommandAllocator->Reset();
+                g_pd3dCommandList->Reset(ctx.CommandAllocator, NULL);
 
-                    ctx.CommandAllocator->Reset();
-                    g_pd3dCommandList->Reset(ctx.CommandAllocator, NULL);
+                // In DX12, the SwapChain back buffer MUST be in D3D12_RESOURCE_STATE_PRESENT
+                // state when Present() is called. We can safely assume StateBefore is PRESENT.
+                D3D12_RESOURCE_STATES currentBBState = D3D12_RESOURCE_STATE_PRESENT;
 
-                    // In DX12, the SwapChain back buffer MUST be in D3D12_RESOURCE_STATE_PRESENT
-                    // state when Present() is called. We can safely assume StateBefore is PRESENT.
-                    D3D12_RESOURCE_STATES currentBBState = D3D12_RESOURCE_STATE_PRESENT;
+                D3D12_RESOURCE_BARRIER beginBarrier = {};
+                beginBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+                beginBarrier.Transition.pResource = pBackBuffer;
+                beginBarrier.Transition.StateBefore = currentBBState;
+                beginBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+                beginBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+                g_pd3dCommandList->ResourceBarrier(1, &beginBarrier);
 
-                    D3D12_RESOURCE_BARRIER beginBarrier = {};
-                    beginBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-                    beginBarrier.Transition.pResource = pBackBuffer;
-                    beginBarrier.Transition.StateBefore = currentBBState;
-                    beginBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-                    beginBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-                    g_pd3dCommandList->ResourceBarrier(1, &beginBarrier);
+                currentBBState = D3D12_RESOURCE_STATE_RENDER_TARGET;
+
+                g_pd3dCommandList->OMSetRenderTargets(1, &ctx.RtvHandle, FALSE, NULL);
+                g_pd3dCommandList->SetDescriptorHeaps(1, &g_pd3dSrvDescHeap);
+
+                // UI Logic
+                if (g_needsNewImGuiFrame) {
+                    ImGui_ImplDX12_NewFrame();
+                    ImGui_ImplWin32_NewFrame();
+                    ImGui::NewFrame();
+
+                    ImGuiOverlayShared::DrawUI(width, height);
+                    ImGui::Render();
+                    g_needsNewImGuiFrame = false;
+                }
+
+                // FSR pass now occurs in ExecuteCommandLists hook
+
+                // Overlay Draw - Ensure heaps and targets are set immediately before draw
+                g_pd3dCommandList->SetDescriptorHeaps(1, &g_pd3dSrvDescHeap);
+
+                // FORCE TRANSITION: Ensure backbuffer is RENDER_TARGET before ImGui
+                if (currentBBState != D3D12_RESOURCE_STATE_RENDER_TARGET) {
+                    D3D12_RESOURCE_BARRIER barrier = {};
+                    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+                    barrier.Transition.pResource = pBackBuffer;
+                    barrier.Transition.StateBefore = currentBBState;
+                    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+                    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
+                    g_pd3dCommandList->ResourceBarrier(1, &barrier);
 
                     currentBBState = D3D12_RESOURCE_STATE_RENDER_TARGET;
-
-                    g_pd3dCommandList->OMSetRenderTargets(1, &ctx.RtvHandle, FALSE, NULL);
-                    g_pd3dCommandList->SetDescriptorHeaps(1, &g_pd3dSrvDescHeap);
-
-                    // UI Logic
-                    if (g_needsNewImGuiFrame) {
-                        ImGui_ImplDX12_NewFrame();
-                        ImGui_ImplWin32_NewFrame();
-                        ImGui::NewFrame();
-
-                        ImGuiOverlayShared::DrawUI(width, height);
-                        ImGui::Render();
-                        g_needsNewImGuiFrame = false;
-                    }
-
-                    // FSR pass now occurs in ExecuteCommandLists hook
-
-                    // Overlay Draw - Ensure heaps and targets are set immediately before draw
-                    g_pd3dCommandList->SetDescriptorHeaps(1, &g_pd3dSrvDescHeap);
-
-                    // FORCE TRANSITION: Ensure backbuffer is RENDER_TARGET before ImGui
-                    if (currentBBState != D3D12_RESOURCE_STATE_RENDER_TARGET) {
-                        D3D12_RESOURCE_BARRIER barrier = {};
-                        barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-                        barrier.Transition.pResource = pBackBuffer;
-                        barrier.Transition.StateBefore = currentBBState;
-                        barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-                        barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-
-                        g_pd3dCommandList->ResourceBarrier(1, &barrier);
-
-                        currentBBState = D3D12_RESOURCE_STATE_RENDER_TARGET;
-                        g_ResourceStates[pBackBuffer] = currentBBState;
-                    }
-
-                    g_pd3dCommandList->OMSetRenderTargets(1, &ctx.RtvHandle, FALSE, NULL);
-
-                    ImDrawData* drawData = ImGui::GetDrawData();
-                    if (drawData && drawData->CmdListsCount > 0) {
-                        D3D12_VIEWPORT vp = {0.0f, 0.0f, (float)width, (float)height, 0.0f, 1.0f};
-                        D3D12_RECT sr = {0, 0, (LONG)width, (LONG)height};
-                        g_pd3dCommandList->RSSetViewports(1, &vp);
-                        g_pd3dCommandList->RSSetScissorRects(1, &sr);
-                        ImGui_ImplDX12_RenderDrawData(drawData, g_pd3dCommandList);
-                    } else if (g_frameCounter % 60 == 0) {
-                        Logger::info("DX12: No ImGui DrawData for frame " + std::to_string(g_frameCounter));
-                    }
-
-                    if (currentBBState != D3D12_RESOURCE_STATE_PRESENT) {
-                        D3D12_RESOURCE_BARRIER barrier = {};
-                        barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-                        barrier.Transition.pResource = pBackBuffer;
-                        barrier.Transition.StateBefore = currentBBState;
-                        barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
-                        barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-
-                        g_pd3dCommandList->ResourceBarrier(1, &barrier);
-
-                        currentBBState = D3D12_RESOURCE_STATE_PRESENT;
-                        g_ResourceStates[pBackBuffer] = currentBBState;
-                    }
-
-                    // DX12 FSR1 Fix: Force full-screen viewport reset before present
-                    D3D12_VIEWPORT fullVp = {};
-                    fullVp.TopLeftX = 0;
-                    fullVp.TopLeftY = 0;
-                    fullVp.Width = (float)width;
-                    fullVp.Height = (float)height;
-                    fullVp.MinDepth = 0.0f;
-                    fullVp.MaxDepth = 1.0f;
-                    g_pd3dCommandList->RSSetViewports(1, &fullVp);
-
-                    D3D12_RECT fullScissor = {};
-                    fullScissor.left = 0;
-                    fullScissor.top = 0;
-                    fullScissor.right = (LONG)width;
-                    fullScissor.bottom = (LONG)height;
-                    g_pd3dCommandList->RSSetScissorRects(1, &fullScissor);
-
-                    g_pd3dCommandList->Close();
-
-                    ID3D12CommandList* lists[] = {g_pd3dCommandList};
-                    g_pd3dCommandQueue->ExecuteCommandLists(1, lists);
-
-                    // Sync to avoid race conditions with next frame
-                    SyncDX12Capture(g_pd3dCommandQueue);
-
-                    // Finalize Frame Capture: No Release needed for cached backbuffer
-                    if (g_lastEngineRenderTarget == pBackBuffer) {
-                        SetLastEngineRenderTarget(nullptr);
-                    }
-
-                    g_lastInjectionFrame = g_frameCounter;
+                    g_ResourceStates[pBackBuffer] = currentBBState;
                 }
+
+                g_pd3dCommandList->OMSetRenderTargets(1, &ctx.RtvHandle, FALSE, NULL);
+
+                ImDrawData* drawData = ImGui::GetDrawData();
+                if (drawData && drawData->CmdListsCount > 0) {
+                    D3D12_VIEWPORT vp = {0.0f, 0.0f, (float)width, (float)height, 0.0f, 1.0f};
+                    D3D12_RECT sr = {0, 0, (LONG)width, (LONG)height};
+                    g_pd3dCommandList->RSSetViewports(1, &vp);
+                    g_pd3dCommandList->RSSetScissorRects(1, &sr);
+                    ImGui_ImplDX12_RenderDrawData(drawData, g_pd3dCommandList);
+                } else if (g_frameCounter % 60 == 0) {
+                    Logger::info("DX12: No ImGui DrawData for frame " + std::to_string(g_frameCounter));
+                }
+
+                if (currentBBState != D3D12_RESOURCE_STATE_PRESENT) {
+                    D3D12_RESOURCE_BARRIER barrier = {};
+                    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+                    barrier.Transition.pResource = pBackBuffer;
+                    barrier.Transition.StateBefore = currentBBState;
+                    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+                    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
+                    g_pd3dCommandList->ResourceBarrier(1, &barrier);
+
+                    currentBBState = D3D12_RESOURCE_STATE_PRESENT;
+                    g_ResourceStates[pBackBuffer] = currentBBState;
+                }
+
+                // DX12 FSR1 Fix: Force full-screen viewport reset before present
+                D3D12_VIEWPORT fullVp = {};
+                fullVp.TopLeftX = 0;
+                fullVp.TopLeftY = 0;
+                fullVp.Width = (float)width;
+                fullVp.Height = (float)height;
+                fullVp.MinDepth = 0.0f;
+                fullVp.MaxDepth = 1.0f;
+                g_pd3dCommandList->RSSetViewports(1, &fullVp);
+
+                D3D12_RECT fullScissor = {};
+                fullScissor.left = 0;
+                fullScissor.top = 0;
+                fullScissor.right = (LONG)width;
+                fullScissor.bottom = (LONG)height;
+                g_pd3dCommandList->RSSetScissorRects(1, &fullScissor);
+
+                g_pd3dCommandList->Close();
+
+                ID3D12CommandList* lists[] = {g_pd3dCommandList};
+                g_pd3dCommandQueue->ExecuteCommandLists(1, lists);
+
+                // Sync to avoid race conditions with next frame
+                SyncDX12Capture(g_pd3dCommandQueue);
+
+                // Finalize Frame Capture: No Release needed for cached backbuffer
+                if (g_lastEngineRenderTarget == pBackBuffer) {
+                    SetLastEngineRenderTarget(nullptr);
+                }
+
+                g_lastInjectionFrame = g_frameCounter;
             }
         }
     } catch (const std::exception& e) {
@@ -931,7 +779,6 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
     }
 }
 
-// Fallback: Command-Stream Injection (The "Lurker" Strategy)
 // Fallback: Command-Stream Injection (The "Lurker" Strategy)
 ID3D12CommandList* OnDXExecute(ID3D12CommandQueue* pQueue, bool isSignal) {
     uint64_t currentCall = g_totalExecuteCalls++;
@@ -947,7 +794,6 @@ ID3D12CommandList* OnDXExecute(ID3D12CommandQueue* pQueue, bool isSignal) {
 
     // Unified Initialization: Handle start-up stable init from Signal thread
     if (!g_ImGuiInitialized) {
-        // Hybrid Detection: If we have a swapchain but version is still unknown, promote to DX12
         if (g_currentSwapChain && g_DXVersion == DXVersion::Unknown) {
             Logger::info(
                 "DX12 Init: Promoting Unknown version to DX12 via Signal pulse [SC=" + std::to_string((uintptr_t)g_currentSwapChain) + "]");
@@ -1017,5 +863,4 @@ void SyncDX12Capture(ID3D12CommandQueue* pQueue) {
         }
     }
 }
-
 } // namespace GamePlug

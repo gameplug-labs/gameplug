@@ -71,16 +71,13 @@ static void EnsureRealDllLoaded() {
 
 extern "C" {
 HRESULT WINAPI DirectInput8Create(HINSTANCE hinst, DWORD dwVersion, REFIID riidltf, LPVOID* ppvOut, LPUNKNOWN punkOuter) {
-    Logger::Init();
     EnsureRealDInput8Loaded();
-    InitializeHooks();
     if (!Real_DirectInput8Create)
         return E_FAIL;
     return Real_DirectInput8Create(hinst, dwVersion, riidltf, ppvOut, punkOuter);
 }
 
 IDirect3D9* WINAPI Direct3DCreate9(UINT SDKVersion) {
-    Logger::Init();
     EnsureRealDllLoaded();
     if (!Real_Direct3DCreate9)
         return NULL;
@@ -91,7 +88,6 @@ IDirect3D9* WINAPI Direct3DCreate9(UINT SDKVersion) {
 }
 
 HRESULT WINAPI Direct3DCreate9Ex(UINT SDKVersion, IDirect3D9Ex** ppDirect3D9Ex) {
-    Logger::Init();
     EnsureRealDllLoaded();
     if (!Real_Direct3DCreate9Ex)
         return D3DERR_INVALIDCALL;
@@ -157,12 +153,13 @@ void WINAPI PSGPSampleTexture(void* a, UINT b, float (*const c)[4], UINT d, floa
 }
 }
 
+extern "C" void StartFramework();
+
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
     if (fdwReason == DLL_PROCESS_ATTACH) {
-        Logger::Init();
-        Config::Get().Load();
-        InitializeHooks();
-        Logger::info("--- Proxy Loaded (D3D9/DInput8) ---");
+        OutputDebugStringA("[GamePlug] d3d9/dinput8.dll: DLL_PROCESS_ATTACH");
+        DisableThreadLibraryCalls(hinstDLL);
+        StartFramework();
     } else if (fdwReason == DLL_PROCESS_DETACH) {
         Logger::info("--- Proxy Unloaded ---");
     }

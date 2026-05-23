@@ -72,9 +72,13 @@ jobs:
           # The file is in bin/x32/d3d9/dinput8.dll
           zip -j assets/d3d9.zip bin/x32/d3d9/dinput8.dll
           
+          # d3d11.zip (x64 only)
+          # The file is in bin/x64/d3d11/dinput8.dll
+          zip -j assets/d3d11.zip bin/x64/d3d11/dinput8.dll
+          
           # d3d12.zip (x64 only)
-          # The file is in bin/x64/dinput8.dll
-          zip -j assets/d3d12.zip bin/x64/dinput8.dll
+          # The file is in bin/x64/d3d12/dinput8.dll
+          zip -j assets/d3d12.zip bin/x64/d3d12/dinput8.dll
           
           # vk.zip (Both x32 and x64)
           mkdir -p vk_package/x32 vk_package/x64

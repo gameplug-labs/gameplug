@@ -9,6 +9,9 @@
 namespace GamePlug {
 
 void ImGuiOverlayShared::DrawUI(uint32_t width, uint32_t height, std::function<void()> apiSpecificUI, bool showResolutionEnumeration) {
+#ifdef GAMEPLUG_DIRECTX
+    showResolutionEnumeration = false;
+#endif
     ImGuiIO& io = ImGui::GetIO();
     float uiScale = (std::max)(1.0f, (float)height / 720.0f);
     io.FontGlobalScale = uiScale;

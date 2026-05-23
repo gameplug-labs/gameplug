@@ -13,10 +13,6 @@ target_include_directories(dinput8_d3d11 PRIVATE
     ${PROJECT_SOURCE_DIR}/external/imgui/backends
 )
 
-target_compile_definitions(dinput8_d3d11 PRIVATE 
-    GamePlug_DIRECTX
-)
-
 # Standard Windows libraries + Framework
 target_link_libraries(dinput8_d3d11 PRIVATE
     shlwapi

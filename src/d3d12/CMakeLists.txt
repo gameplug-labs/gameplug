@@ -15,7 +15,6 @@ target_include_directories(dinput8_d3d12 PRIVATE
 )
 
 target_compile_definitions(dinput8_d3d12 PRIVATE 
-    GamePlug_DIRECTX
     RE4 REENGINE_PACKED REENGINE_AT
 )
 

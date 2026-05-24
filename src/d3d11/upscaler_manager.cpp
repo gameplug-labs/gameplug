@@ -211,62 +211,62 @@ void DXUpscalerManager::RenderUI(float fps, uint32_t width, uint32_t height) {
         ImGui::Separator();
         ImGui::Spacing();
 
-        ImGui::TextColored(ImVec4(0.0f, 0.9f, 1.0f, 1.0f), "[ DX SYSTEM ACTIVE ]");
-        ImGui::SameLine();
-        float availW = ImGui::GetContentRegionAvail().x;
-        float textW = ImGui::CalcTextSize("120 FPS").x;
-        if (availW > textW)
-            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + availW - textW);
-        ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.4f, 1.0f), "%.0f FPS", fps);
+        // ImGui::TextColored(ImVec4(0.0f, 0.9f, 1.0f, 1.0f), "[ DX SYSTEM ACTIVE ]");
+        // ImGui::SameLine();
+        // float availW = ImGui::GetContentRegionAvail().x;
+        // float textW = ImGui::CalcTextSize("120 FPS").x;
+        // if (availW > textW)
+        //     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + availW - textW);
+        // ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.4f, 1.0f), "%.0f FPS", fps);
 
-        ImGui::TextDisabled("PIPELINE RESOLUTION:");
-        ImGui::Text("  Target: %d x %d", width, height);
-        ImGui::Text("  Render: %d x %d", m_renderWidth, m_renderHeight);
-        float scale = (float)width / (float)m_renderWidth;
-        ImGui::SameLine();
-        ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "(%.2fx)", scale);
+        // ImGui::TextDisabled("PIPELINE RESOLUTION:");
+        // ImGui::Text("  Target: %d x %d", width, height);
+        // ImGui::Text("  Render: %d x %d", m_renderWidth, m_renderHeight);
+        // float scale = (float)width / (float)m_renderWidth;
+        // ImGui::SameLine();
+        // ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "(%.2fx)", scale);
     }
 
-    if (IsShowDebugImageEnabled()) {
-        bool show = true;
-        ImGui::Begin("Upscaler Debug View", &show);
-        if (!show) {
-            SetShowDebugImageEnabled(false);
-        }
+    // if (IsShowDebugImageEnabled()) {
+    //     bool show = true;
+    //     ImGui::Begin("Upscaler Debug View", &show);
+    //     if (!show) {
+    //         SetShowDebugImageEnabled(false);
+    //     }
 
-        uint32_t dw = m_renderWidth;
-        uint32_t dh = m_renderHeight;
-        ID3D11ShaderResourceView* debugSRV = m_fakeBackBufferSRV;
+    //     uint32_t dw = m_renderWidth;
+    //     uint32_t dh = m_renderHeight;
+    //     ID3D11ShaderResourceView* debugSRV = m_fakeBackBufferSRV;
 
-        if (debugSRV && dw > 0 && dh > 0) {
-            ImGui::Text("Source Resource: %u x %u", dw, dh);
+    //     if (debugSRV && dw > 0 && dh > 0) {
+    //         ImGui::Text("Source Resource: %u x %u", dw, dh);
 
-            float windowWidth = ImGui::GetContentRegionAvail().x;
-            float windowHeight = ImGui::GetContentRegionAvail().y - 30.0f;
-            float aspect = (float)dh / (float)dw;
+    //         float windowWidth = ImGui::GetContentRegionAvail().x;
+    //         float windowHeight = ImGui::GetContentRegionAvail().y - 30.0f;
+    //         float aspect = (float)dh / (float)dw;
 
-            float imgWidth = windowWidth;
-            float imgHeight = windowWidth * aspect;
+    //         float imgWidth = windowWidth;
+    //         float imgHeight = windowWidth * aspect;
 
-            if (imgHeight > windowHeight) {
-                imgHeight = windowHeight;
-                imgWidth = windowHeight / aspect;
-            }
+    //         if (imgHeight > windowHeight) {
+    //             imgHeight = windowHeight;
+    //             imgWidth = windowHeight / aspect;
+    //         }
 
-            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (windowWidth - imgWidth) * 0.5f);
-            ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (windowHeight - imgHeight) * 0.5f);
+    //         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (windowWidth - imgWidth) * 0.5f);
+    //         ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (windowHeight - imgHeight) * 0.5f);
 
-            ImGui::Image((ImTextureID)debugSRV, ImVec2(imgWidth, imgHeight));
-        } else {
-            ImGui::Text("Debug image not available.");
-        }
+    //         ImGui::Image((ImTextureID)debugSRV, ImVec2(imgWidth, imgHeight));
+    //     } else {
+    //         ImGui::Text("Debug image not available.");
+    //     }
 
-        ImGui::SetCursorPosY(ImGui::GetWindowHeight() - 25.0f);
-        if (ImGui::Button("Close")) {
-            SetShowDebugImageEnabled(false);
-        }
-        ImGui::End();
-    }
+    //     ImGui::SetCursorPosY(ImGui::GetWindowHeight() - 25.0f);
+    //     if (ImGui::Button("Close")) {
+    //         SetShowDebugImageEnabled(false);
+    //     }
+    //     ImGui::End();
+    // }
 }
 
 void DXUpscalerManager::UpdateDimensions(uint32_t width, uint32_t height) {

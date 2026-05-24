@@ -9,7 +9,12 @@ PFN_Present g_OriginalPresent = nullptr;
 PFN_Present1 g_OriginalPresent1 = nullptr;
 PFN_ResizeBuffers g_OriginalResizeBuffers = nullptr;
 PFN_ResizeBuffers1 g_OriginalResizeBuffers1 = nullptr;
+PFN_GetBuffer g_OriginalGetBuffer = nullptr;
 PFN_CreateTexture2D g_OriginalCreateTexture2D = nullptr;
+PFN_RSSetViewports g_OriginalRSSetViewports = nullptr;
+PFN_RSSetScissorRects g_OriginalRSSetScissorRects = nullptr;
+PFN_CreateDeferredContext g_OriginalCreateDeferredContext = nullptr;
+PFN_GetImmediateContext g_OriginalGetImmediateContext = nullptr;
 PFN_CreateSwapChain g_OriginalCreateSwapChain = nullptr;
 PFN_CreateSwapChainForHwnd g_OriginalCreateSwapChainForHwnd = nullptr;
 PFN_CreateSwapChainForComposition g_OriginalCreateSwapChainForComposition = nullptr;
@@ -89,6 +94,17 @@ void InstallDXGIHooks() {
                 void** pDevice11VTable = *(void***)d3d11Device;
                 MH_CreateHook(pDevice11VTable[5], (LPVOID)HookedCreateTexture2D, (LPVOID*)&g_OriginalCreateTexture2D);
                 Logger::info("DX Hooks D3D11: Hook ID3D11Device::CreateTexture2D (IDX 5): MH_OK");
+
+                MH_CreateHook(pDevice11VTable[27], (LPVOID)HookedCreateDeferredContext, (LPVOID*)&g_OriginalCreateDeferredContext);
+                Logger::info("DX Hooks D3D11: Hook ID3D11Device::CreateDeferredContext (IDX 27): MH_OK");
+
+                MH_CreateHook(pDevice11VTable[40], (LPVOID)HookedGetImmediateContext, (LPVOID*)&g_OriginalGetImmediateContext);
+                Logger::info("DX Hooks D3D11: Hook ID3D11Device::GetImmediateContext (IDX 40): MH_OK");
+            }
+
+            if (d3d11Context) {
+                // Apply VTable patching directly to pre-initialize variables on the dummy context
+                PatchDeviceContextVTable(d3d11Context);
             }
 
             MH_EnableHook(MH_ALL_HOOKS);

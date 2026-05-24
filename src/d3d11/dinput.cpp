@@ -35,8 +35,6 @@ extern "C" HRESULT WINAPI DirectInput8Create(HINSTANCE hinst, DWORD dwVersion, R
 }
 
 DWORD WINAPI InitThread(LPVOID lpParam) {
-    // Wait for the game to stabilize (increased to 3s for better compatibility)
-    Sleep(3000);
 
     // Call StartFramework directly since it's now statically linked
     OutputDebugStringA("[GamePlug] dinput8: Calling StartFramework...");

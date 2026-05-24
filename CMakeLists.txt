@@ -45,7 +45,9 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 8)
     set(REF_BUILD_RE4_SDK ON CACHE BOOL "" FORCE)
     set(REF_BUILD_FRAMEWORK OFF CACHE BOOL "" FORCE)
     set(REF_BUILD_DEPENDENCIES ON CACHE BOOL "" FORCE)
-
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/sub_projects/dxupscaler/CMakeLists.txt")
+        add_subdirectory(sub_projects/dxupscaler)
+    endif()
 endif()
 
 

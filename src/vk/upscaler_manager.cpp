@@ -302,15 +302,16 @@ void UpscalerManager::GetTargetResolution(uint32_t width, uint32_t height, uint3
         for (int i = 0; i < count; i++) {
             if (fields[i].Name && std::string(fields[i].Name) == "Upscale Quality") {
                 int quality = *(int*)fields[i].Data;
-                float ratio = 1.0f;
-                if (quality == 0) ratio = 1.3f; // Ultra Quality
-                else if (quality == 1) ratio = 1.5f; // Quality
-                else if (quality == 2) ratio = 1.7f; // Balanced
-                else if (quality == 3) ratio = 2.0f; // Performance
-                else if (quality == 4) ratio = 3.0f; // Ultra Performance
+                if (quality == 0) ratio = 1.2f; // Ultra Ultra Quality
+                else if (quality == 1) ratio = 1.3f; // Ultra Quality
+                else if (quality == 2) ratio = 1.5f; // Quality
+                else if (quality == 3) ratio = 1.7f; // Balanced
+                else if (quality == 4) ratio = 2.0f; // Performance
+                else if (quality == 5) ratio = 3.0f; // Ultra Performance
+                else ratio = 1.3f;
 
-                outW = (uint32_t)((float)width / ratio);
-                outH = (uint32_t)((float)height / ratio);
+                outW = (uint32_t)((float)width / ratio + 0.5f);
+                outH = (uint32_t)((float)height / ratio + 0.5f);
 
                 static uint32_t lastReportedW = 0, lastReportedH = 0;
                 static int lastReportedQ = -1;

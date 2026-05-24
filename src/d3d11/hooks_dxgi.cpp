@@ -1,4 +1,9 @@
 #include "hooks_common.h"
+#include "upscaler_manager.h"
+#include <iomanip>
+#include <psapi.h>
+#include <sstream>
+#include <string>
 
 namespace GamePlug {
 
@@ -98,6 +103,7 @@ HRESULT STDMETHODCALLTYPE HookedResizeBuffers(
         vtable[0] = (void*)g_OriginalQueryInterface;
         vtable[2] = (void*)g_OriginalRelease;
         vtable[8] = (void*)g_OriginalPresent;
+        vtable[9] = (void*)g_OriginalGetBuffer;
         vtable[13] = (void*)g_OriginalResizeBuffers;
         vtable[21] = (void*)g_OriginalPresent1;
         vtable[22] = (void*)g_OriginalPresent1;
@@ -111,6 +117,7 @@ HRESULT STDMETHODCALLTYPE HookedResizeBuffers(
         vtable[0] = (void*)HookedQueryInterface;
         vtable[2] = (void*)HookedRelease;
         vtable[8] = (void*)HookedPresent;
+        vtable[9] = (void*)HookedGetBuffer;
         vtable[13] = (void*)HookedResizeBuffers;
         vtable[21] = (void*)HookedPresent1;
         vtable[22] = (void*)HookedPresent1;
@@ -149,6 +156,7 @@ HRESULT STDMETHODCALLTYPE HookedResizeBuffers1(IDXGISwapChain3* pSwapChain, UINT
         vtable[0] = (void*)g_OriginalQueryInterface;
         vtable[2] = (void*)g_OriginalRelease;
         vtable[8] = (void*)g_OriginalPresent;
+        vtable[9] = (void*)g_OriginalGetBuffer;
         vtable[13] = (void*)g_OriginalResizeBuffers;
         vtable[21] = (void*)g_OriginalPresent1;
         vtable[22] = (void*)g_OriginalPresent1;
@@ -162,6 +170,7 @@ HRESULT STDMETHODCALLTYPE HookedResizeBuffers1(IDXGISwapChain3* pSwapChain, UINT
         vtable[0] = (void*)HookedQueryInterface;
         vtable[2] = (void*)HookedRelease;
         vtable[8] = (void*)HookedPresent;
+        vtable[9] = (void*)HookedGetBuffer;
         vtable[13] = (void*)HookedResizeBuffers;
         vtable[21] = (void*)HookedPresent1;
         vtable[22] = (void*)HookedPresent1;
@@ -182,10 +191,96 @@ HRESULT STDMETHODCALLTYPE HookedResizeBuffers1(IDXGISwapChain3* pSwapChain, UINT
     return hr;
 }
 
+void LogVTable(void* pObject, int numEntries) {
+    void** pVTable = *(void***)pObject;
+    Logger::info("--- SwapChain VTable Log ---");
+    for (int i = 0; i < numEntries; ++i) {
+        void* pFunc = pVTable[i];
+        char moduleName[MAX_PATH] = "Unknown";
+        DWORD_PTR offset = 0;
+
+        HMODULE hMod = NULL;
+        if (GetModuleHandleExA(
+                GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, (LPCSTR)pFunc, &hMod)) {
+            GetModuleFileNameA(hMod, moduleName, MAX_PATH);
+            char* pLastSlash = strrchr(moduleName, '\\');
+            std::string modStr = pLastSlash ? (pLastSlash + 1) : moduleName;
+            offset = (DWORD_PTR)pFunc - (DWORD_PTR)hMod;
+            std::stringstream ss;
+            ss << "  Index " << i << ": " << pFunc << " (" << modStr << "+0x" << std::hex << offset << ")";
+            Logger::info(ss.str());
+        } else {
+            std::stringstream ss;
+            ss << "  Index " << i << ": " << pFunc << " (Unknown Module)";
+            Logger::info(ss.str());
+        }
+    }
+    Logger::info("----------------------------");
+}
+
+HRESULT STDMETHODCALLTYPE HookedGetBuffer(IDXGISwapChain* pSwapChain, UINT Buffer, REFIID riid, void** ppSurface) {
+    if (g_InHook)
+        return g_OriginalGetBuffer(pSwapChain, Buffer, riid, ppSurface);
+    ScopedRecursionGuard guard;
+
+    if (Buffer == 0) {
+        Logger::info("HookedGetBuffer: Buffer=0 requested.");
+        if (!DXUpscalerManager::Get().GetDevice()) {
+            Logger::info("HookedGetBuffer: Device is NULL, initializing...");
+            ID3D11Device* device = nullptr;
+            HRESULT hrDev = pSwapChain->GetDevice(__uuidof(ID3D11Device), (void**)&device);
+            if (SUCCEEDED(hrDev) && device) {
+                Logger::info("HookedGetBuffer: GetDevice succeeded. Getting context...");
+                ID3D11DeviceContext* context = nullptr;
+                device->GetImmediateContext(&context);
+                if (context) {
+                    Logger::info("HookedGetBuffer: GetImmediateContext succeeded. Calling InitDX11...");
+                    DXUpscalerManager::Get().InitDX11(device, context);
+                    context->Release();
+                } else {
+                    Logger::warn("HookedGetBuffer: GetImmediateContext FAILED!");
+                }
+                device->Release();
+            } else {
+                Logger::warn("HookedGetBuffer: GetDevice FAILED with hr=" + std::to_string(hrDev));
+            }
+        }
+
+        Logger::info("HookedGetBuffer: IsUpscalingEnabled=" + std::to_string(DXUpscalerManager::Get().IsUpscalingEnabled()));
+
+        if (DXUpscalerManager::Get().IsUpscalingEnabled()) {
+            if (!DXUpscalerManager::Get().GetFakeBackBuffer()) {
+                Logger::info("HookedGetBuffer: Fake BackBuffer is NULL, creating...");
+                DXUpscalerManager::Get().CreateFakeBackBuffer(pSwapChain);
+            }
+            ID3D11Texture2D* fakeBuffer = DXUpscalerManager::Get().GetFakeBackBuffer();
+            if (fakeBuffer) {
+                HRESULT hr = fakeBuffer->QueryInterface(riid, ppSurface);
+                if (SUCCEEDED(hr)) {
+                    static uint64_t s_logCount = 0;
+                    if (s_logCount++ % 100 == 0) {
+                        Logger::info(
+                            "DX Hooks D3D11: Redirected GetBuffer(0) to Fake BackBuffer (" + std::to_string((uintptr_t)*ppSurface) + ")");
+                    }
+                    return S_OK;
+                } else {
+                    Logger::warn("HookedGetBuffer: QueryInterface on Fake BackBuffer FAILED with hr=" + std::to_string(hr));
+                }
+            } else {
+                Logger::warn("HookedGetBuffer: GetFakeBackBuffer returned NULL!");
+            }
+        }
+    }
+
+    return g_OriginalGetBuffer(pSwapChain, Buffer, riid, ppSurface);
+}
+
 void ApplySwapChainHooks(void* pSwapChain) {
     std::lock_guard<std::mutex> lock(g_HookMtx);
     if (g_HookedVTables.count(pSwapChain))
         return;
+
+    LogVTable(pSwapChain, 40);
 
     void** pVTable = *(void***)pSwapChain;
     Logger::info("DX Hooks D3D11: Patching Instance VTable for SC=" + std::to_string((uintptr_t)pSwapChain) +
@@ -204,6 +299,8 @@ void ApplySwapChainHooks(void* pSwapChain) {
         g_OriginalRelease = (PFN_Release)pVTable[2];
     if (!g_OriginalPresent)
         g_OriginalPresent = (PFN_Present)pVTable[8];
+    if (!g_OriginalGetBuffer)
+        g_OriginalGetBuffer = (PFN_GetBuffer)pVTable[9];
     if (!g_OriginalResizeBuffers)
         g_OriginalResizeBuffers = (PFN_ResizeBuffers)pVTable[13];
     if (!g_OriginalPresent1)
@@ -217,6 +314,7 @@ void ApplySwapChainHooks(void* pSwapChain) {
         pVTable[0] = (void*)HookedQueryInterface;
         pVTable[2] = (void*)HookedRelease;
         pVTable[8] = (void*)HookedPresent;
+        pVTable[9] = (void*)HookedGetBuffer;
         pVTable[13] = (void*)HookedResizeBuffers;
         pVTable[21] = (void*)HookedPresent1;
         pVTable[22] = (void*)HookedPresent1;

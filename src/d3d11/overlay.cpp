@@ -4,6 +4,7 @@
 #include "imgui_impl_win32.h"
 #include "imgui_overlay_shared.h"
 #include "plugin_manager.h"
+#include "upscaler_manager.h"
 #include <d3d11.h>
 #include <mutex>
 
@@ -39,6 +40,7 @@ static bool g_pendingResize = false;
 
 void CleanupDX11() {
     Logger::info("CleanupDX11: Start");
+    DXUpscalerManager::Get().UnloadUpscaler();
     if (g_mainRenderTargetView) {
         g_mainRenderTargetView->Release();
         g_mainRenderTargetView = nullptr;
@@ -88,6 +90,7 @@ bool InitImGuiDX11(IDXGISwapChain* pSwapChain) {
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     io.IniFilename = nullptr; // Disable imgui.ini
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
     Logger::info("DX11 Init: Step 4 - ImGui_ImplWin32_Init");
     if (!ImGui_ImplWin32_Init(hWnd)) {
@@ -103,7 +106,7 @@ bool InitImGuiDX11(IDXGISwapChain* pSwapChain) {
 
     Logger::info("DX11 Init: Step 6 - Creating BackBuffer RTV");
     ID3D11Texture2D* pBackBuffer = nullptr;
-    if (SUCCEEDED(pSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (LPVOID*)&pBackBuffer))) {
+    if (SUCCEEDED(g_OriginalGetBuffer(pSwapChain, 0, __uuidof(ID3D11Texture2D), (LPVOID*)&pBackBuffer))) {
         Logger::info("DX11 Init:   - GetBuffer(0) succeeded");
         if (SUCCEEDED(g_pd3dDevice->CreateRenderTargetView(pBackBuffer, NULL, &g_mainRenderTargetView))) {
             Logger::info("DX11 Init:   - CreateRenderTargetView succeeded");
@@ -125,6 +128,8 @@ bool InitImGuiDX11(IDXGISwapChain* pSwapChain) {
 
     // Load Plugins
     PluginManager::Get().LoadPlugins();
+    DXUpscalerManager::Get().InitDX11(g_pd3dDevice, g_pd3dDeviceContext);
+    DXUpscalerManager::Get().CreateFakeBackBuffer(pSwapChain);
 
     Logger::info("DX11 Init: Success");
     return true;
@@ -153,6 +158,7 @@ IDXGISwapChain* GetCurrentDXSwapChain() {
 
 void OnDXPresent(IDXGISwapChain* pSwapChain) {
     std::lock_guard<std::recursive_mutex> lock(g_DXMtx);
+    DXUpscalerManager::Get().NewFrame();
     if (g_pendingResize) {
         Logger::info("DX11: Handling deferred resize safely");
         g_ImGuiInitialized = false;
@@ -284,11 +290,24 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
         if (shouldLog)
             Logger::info("DX11 Frame " + std::to_string(frameCount11));
 
+        ImGuiIO& io = ImGui::GetIO();
+
         ImGui_ImplDX11_NewFrame();
         ImGui_ImplWin32_NewFrame();
+
+        // Override ImGui display size to match the real swap chain backbuffer.
+        // ImGui_ImplWin32_NewFrame() sets DisplaySize from the window client rect,
+        // which reflects the render resolution (e.g. 1280x720). Our RTV targets
+        // the real backbuffer (e.g. 1920x1080), so we must correct it here to ensure
+        // the overlay is positioned and scaled correctly on the full output surface.
+        io.DisplaySize = ImVec2((float)desc.BufferDesc.Width, (float)desc.BufferDesc.Height);
+
         ImGui::NewFrame();
 
-        ImGuiOverlayShared::DrawUI(desc.BufferDesc.Width, desc.BufferDesc.Height);
+        if (g_Visible) {
+            ImGuiOverlayShared::DrawUI(desc.BufferDesc.Width, desc.BufferDesc.Height,
+                [desc]() { DXUpscalerManager::Get().RenderUI(g_realFPS, desc.BufferDesc.Width, desc.BufferDesc.Height); });
+        }
 
         ImGui::Render();
 
@@ -296,8 +315,41 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
             if (shouldLog)
                 Logger::info("DX11 Frame Trace: Entry Render Objects");
 
+            bool upscaled = false;
+            if (DXUpscalerManager::Get().IsUpscalingEnabled()) {
+                ID3D11ShaderResourceView* srcSRV = DXUpscalerManager::Get().GetFakeBackBufferSRV();
+                if (srcSRV) {
+                    DXUpscalerManager::Get().RenderFrameDX11(
+                        g_pd3dDeviceContext, srcSRV, g_mainRenderTargetView, desc.BufferDesc.Width, desc.BufferDesc.Height);
+                    upscaled = true;
+                }
+            }
+            if (!upscaled) {
+                ID3D11Texture2D* fakeBuffer = DXUpscalerManager::Get().GetFakeBackBuffer();
+                if (fakeBuffer) {
+                    ID3D11Texture2D* realBuffer = nullptr;
+                    if (SUCCEEDED(g_OriginalGetBuffer(pSwapChain, 0, __uuidof(ID3D11Texture2D), (void**)&realBuffer))) {
+                        D3D11_TEXTURE2D_DESC fakeDesc, realDesc;
+                        fakeBuffer->GetDesc(&fakeDesc);
+                        realBuffer->GetDesc(&realDesc);
+                        if (fakeDesc.Width == realDesc.Width && fakeDesc.Height == realDesc.Height) {
+                            g_pd3dDeviceContext->CopyResource(realBuffer, fakeBuffer);
+                        } else {
+                            static uint64_t s_warnCount = 0;
+                            if (s_warnCount++ % 60 == 0) {
+                                Logger::warn("DX11 Present: Cannot copy fake backbuffer, size mismatch (" + std::to_string(fakeDesc.Width) +
+                                             "x" + std::to_string(fakeDesc.Height) + " vs " + std::to_string(realDesc.Width) + "x" +
+                                             std::to_string(realDesc.Height) + ")");
+                            }
+                        }
+                        realBuffer->Release();
+                    }
+                }
+            }
             g_pd3dDeviceContext->OMSetRenderTargets(1, &g_mainRenderTargetView, NULL);
-            ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+            if (g_Visible) {
+                ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+            }
             if (shouldLog)
                 Logger::info("DX11 Frame Trace: RenderDrawData Complete");
         } else if (shouldLog) {

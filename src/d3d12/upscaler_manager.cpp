@@ -326,11 +326,12 @@ void DXUpscalerManager::GetTargetResolution(uint32_t width, uint32_t height, uin
             if (fields[i].Name && std::string(fields[i].Name) == "Upscale Quality") {
                 int quality = *(int*)fields[i].Data;
                 float ratio = 1.0f;
-                float ratios[] = { 1.3f, 1.5f, 1.7f, 2.0f, 3.0f };
-                if (quality >= 0 && quality < 5) ratio = ratios[quality];
+                float ratios[] = { 1.2f, 1.3f, 1.5f, 1.7f, 2.0f, 3.0f };
+                if (quality >= 0 && quality < 6) ratio = ratios[quality];
+                else ratio = 1.3f;
 
-                outW = (uint32_t)((float)width / ratio);
-                outH = (uint32_t)((float)height / ratio);
+                outW = (uint32_t)((float)width / ratio + 0.5f);
+                outH = (uint32_t)((float)height / ratio + 0.5f);
                 return;
             }
         }

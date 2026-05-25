@@ -47,7 +47,7 @@ void ImGuiOverlayShared::DrawUI(uint32_t width, uint32_t height, std::function<v
             PluginManager::Get().RenderPlugins();
         }
 
-        if (!hasPlugins) {
+        if (!hasPlugins && !apiSpecificUI) {
             ImGui::Spacing();
             ImGui::Separator();
             ImGui::Spacing();

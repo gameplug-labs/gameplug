@@ -18,8 +18,10 @@ static bool g_ShowKeyWasPressed = false;
 static WNDPROC g_OriginalWndProc = nullptr;
 
 LRESULT CALLBACK HookedWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    if (g_ImGuiInitialized && g_Visible && ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
-        return true;
+    if (g_ImGuiInitialized && g_Visible) {
+        if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
+            return true;
+    }
     return CallWindowProc(g_OriginalWndProc, hWnd, msg, wParam, lParam);
 }
 
@@ -186,9 +188,6 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
     }
     g_ShowKeyWasPressed = keyCurrentlyPressed;
 
-    if (!g_Visible)
-        return;
-
     g_needsNewImGuiFrame = true;
     g_totalPresentCalls++;
 
@@ -301,6 +300,11 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
         // the real backbuffer (e.g. 1920x1080), so we must correct it here to ensure
         // the overlay is positioned and scaled correctly on the full output surface.
         io.DisplaySize = ImVec2((float)desc.BufferDesc.Width, (float)desc.BufferDesc.Height);
+
+        // io.MouseDrawCursor = g_Visible;
+        if (!g_Visible) {
+            io.ClearInputKeys();
+        }
 
         ImGui::NewFrame();
 

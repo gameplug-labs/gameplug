@@ -207,9 +207,9 @@ void DXUpscalerManager::RenderUI(float fps, uint32_t width, uint32_t height) {
         if (m_pInterface->OnImGuiRender)
             m_pInterface->OnImGuiRender();
 
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
+        // ImGui::Spacing();
+        // ImGui::Separator();
+        // ImGui::Spacing();
 
         // ImGui::TextColored(ImVec4(0.0f, 0.9f, 1.0f, 1.0f), "[ DX SYSTEM ACTIVE ]");
         // ImGui::SameLine();

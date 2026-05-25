@@ -6,9 +6,10 @@
 class ProxyDirect3DSwapChain9 : public IDirect3DSwapChain9 {
     IDirect3DSwapChain9* m_pReal;
     IDirect3DDevice9* m_pProxyDevice;
+    UINT m_swapChainIndex;
 
 public:
-    ProxyDirect3DSwapChain9(IDirect3DSwapChain9* pReal, IDirect3DDevice9* pProxyDevice);
+    ProxyDirect3DSwapChain9(IDirect3DSwapChain9* pReal, IDirect3DDevice9* pProxyDevice, UINT swapChainIndex);
 
     STDMETHOD(QueryInterface)(REFIID riid, void** ppvObj) override;
     STDMETHOD_(ULONG, AddRef)() override;

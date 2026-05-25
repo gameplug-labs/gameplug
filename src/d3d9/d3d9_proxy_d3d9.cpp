@@ -1,5 +1,6 @@
 #include "d3d9_proxy_d3d9.h"
 #include "d3d9_proxy_device.h"
+#include "upscaler_manager.h"
 
 ProxyDirect3D9::ProxyDirect3D9(IDirect3D9* pReal)
     : m_pReal(pReal)
@@ -119,9 +120,11 @@ STDMETHODIMP ProxyDirect3D9::CreateDevice(UINT A, D3DDEVTYPE DT, HWND hFW, DWORD
         return D3DERR_INVALIDCALL;
     OverlayRenderer::Get().SetWindow(hFW);
 
-    int scaledW = pPP->BackBufferWidth;
-    int scaledH = pPP->BackBufferHeight;
-    GetScaledResolution(scaledW, scaledH);
+    // Load the upscaler plugin early so GetScaledResolution can check its status correctly
+    UpscalerManager::Get().LoadUpscaler();
+
+    int requestedW = pPP->BackBufferWidth;
+    int requestedH = pPP->BackBufferHeight;
 
     int nativeW = Config::Get().GetTargetWidth();
     int nativeH = Config::Get().GetTargetHeight();
@@ -133,17 +136,21 @@ STDMETHODIMP ProxyDirect3D9::CreateDevice(UINT A, D3DDEVTYPE DT, HWND hFW, DWORD
             nativeW = dm.Width;
             nativeH = dm.Height;
         } else {
-            nativeW = pPP->BackBufferWidth;
-            nativeH = pPP->BackBufferHeight;
+            nativeW = requestedW;
+            nativeH = requestedH;
         }
     }
+
+    int scaledW = nativeW;
+    int scaledH = nativeH;
+    GetScaledResolution(scaledW, scaledH);
 
     D3DPRESENT_PARAMETERS realPP = *pPP;
     realPP.BackBufferWidth = nativeW;
     realPP.BackBufferHeight = nativeH;
 
-    Logger::info("CreateDevice: Game requested {}x{}, Proxy creating device at {}x{}, Game will see {}x{}", pPP->BackBufferWidth,
-        pPP->BackBufferHeight, nativeW, nativeH, scaledW, scaledH);
+    Logger::info("CreateDevice: Game requested {}x{}, Proxy creating device at {}x{}, Game will see {}x{}", requestedW, requestedH, nativeW,
+        nativeH, scaledW, scaledH);
 
     HRESULT hr = m_pReal->CreateDevice(A, DT, hFW, BF, &realPP, ppRDI);
     if (SUCCEEDED(hr) && ppRDI && *ppRDI) {
@@ -203,9 +210,11 @@ STDMETHODIMP ProxyDirect3D9::CreateDeviceEx(
         return D3DERR_INVALIDCALL;
     OverlayRenderer::Get().SetWindow(hFW);
 
-    int scaledW = pPP->BackBufferWidth;
-    int scaledH = pPP->BackBufferHeight;
-    GetScaledResolution(scaledW, scaledH);
+    // Load the upscaler plugin early so GetScaledResolution can check its status correctly
+    UpscalerManager::Get().LoadUpscaler();
+
+    int requestedW = pPP->BackBufferWidth;
+    int requestedH = pPP->BackBufferHeight;
 
     int nativeW = Config::Get().GetTargetWidth();
     int nativeH = Config::Get().GetTargetHeight();
@@ -218,10 +227,14 @@ STDMETHODIMP ProxyDirect3D9::CreateDeviceEx(
             nativeW = mode.Width;
             nativeH = mode.Height;
         } else {
-            nativeW = pPP->BackBufferWidth;
-            nativeH = pPP->BackBufferHeight;
+            nativeW = requestedW;
+            nativeH = requestedH;
         }
     }
+
+    int scaledW = nativeW;
+    int scaledH = nativeH;
+    GetScaledResolution(scaledW, scaledH);
 
     D3DPRESENT_PARAMETERS realPP = *pPP;
     realPP.BackBufferWidth = nativeW;

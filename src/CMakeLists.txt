@@ -144,6 +144,54 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 8)
 endif()
 
 
+# --- D3D9 Skyrim Support (x32 only) ---
+if(CMAKE_SIZEOF_VOID_P EQUAL 4)
+    # --- D3D9 Framework ---
+    add_library(framework_skyrim STATIC
+        ${SHARED_SOURCES}
+        d3d9/framework.cpp
+        d3d9/d3d9_proxy.cpp
+        d3d9/d3d9_proxy_d3d9.cpp
+        d3d9/d3d9_proxy_device.cpp
+        d3d9/d3d9_proxy_surface.cpp
+        d3d9/d3d9_proxy_swapchain.cpp
+        d3d9/dx_overlay.cpp
+        d3d9/upscaler_manager.cpp
+        ${PROJECT_SOURCE_DIR}/external/imgui/backends/imgui_impl_dx9.cpp
+    )
+
+    set_target_properties(framework_skyrim PROPERTIES OUTPUT_NAME "framework_skyrim")
+
+    target_compile_definitions(framework_skyrim PRIVATE 
+        GAMEPLUG_DIRECTX
+        FRAMEWORK_EXPORTS
+        GamePlug_INTERNAL_LOGGER
+    )
+    target_include_directories(framework_skyrim PUBLIC
+        ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/src/d3d9
+        ${PROJECT_SOURCE_DIR}/src/shared
+        ${PROJECT_SOURCE_DIR}/external/spdlog/include
+        ${PROJECT_SOURCE_DIR}/external/imgui
+        ${PROJECT_SOURCE_DIR}/external/imgui/backends
+        ${PROJECT_SOURCE_DIR}/external/minhook/include
+    )
+    target_compile_definitions(framework_skyrim PUBLIC 
+        "IMGUI_USER_CONFIG=\"GAMEPLUG_imgui_config.h\""
+    )
+    target_link_libraries(framework_skyrim PUBLIC 
+        minhook
+        d3d9
+        d3dcompiler
+        dxguid
+    )
+
+    if(MSVC)
+        target_compile_options(framework_skyrim PRIVATE /utf-8 /FS)
+    endif()
+    
+endif()
+
 # --- D3D9 Support (x32 only) ---
 if(CMAKE_SIZEOF_VOID_P EQUAL 4)
     # --- D3D9 Framework ---

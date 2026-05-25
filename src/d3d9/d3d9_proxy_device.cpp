@@ -29,6 +29,8 @@ void ProxyDirect3DDevice9::UpdateScaledResolution() {
                     m_pFakeBackBuffer->SetInternalSurface(pRealSurf);
                 }
 
+                m_pReal->SetRenderTarget(0, pRealSurf);
+
                 if (pRealSurf)
                     pRealSurf->Release(); // Proxy holds a ref
                 Logger::info("Proxy: Fake backbuffer re-created at {}x{}", m_renderW, m_renderH);
@@ -64,6 +66,7 @@ ProxyDirect3DDevice9::ProxyDirect3DDevice9(
                 IDirect3DSurface9* pRealSurf = nullptr;
                 m_pFakeBackBufferTex->GetSurfaceLevel(0, &pRealSurf);
                 m_pFakeBackBuffer = new ProxySurface9(pRealSurf, this, m_displayW, m_displayH);
+                m_pReal->SetRenderTarget(0, pRealSurf);
                 if (pRealSurf)
                     pRealSurf->Release();
                 Logger::info("Proxy: Fake backbuffer created at native {}x{}", m_renderW, m_renderH);
@@ -159,14 +162,14 @@ STDMETHODIMP_(BOOL) ProxyDirect3DDevice9::ShowCursor(BOOL bShow) {
 STDMETHODIMP ProxyDirect3DDevice9::CreateAdditionalSwapChain(D3DPRESENT_PARAMETERS* pPP, IDirect3DSwapChain9** ppSC) {
     HRESULT hr = m_pReal->CreateAdditionalSwapChain(pPP, ppSC);
     if (SUCCEEDED(hr) && ppSC && *ppSC)
-        *ppSC = new ProxyDirect3DSwapChain9(*ppSC, (IDirect3DDevice9*)this);
+        *ppSC = new ProxyDirect3DSwapChain9(*ppSC, (IDirect3DDevice9*)this, m_pReal->GetNumberOfSwapChains() - 1);
     return hr;
 }
 
 STDMETHODIMP ProxyDirect3DDevice9::GetSwapChain(UINT iSC, IDirect3DSwapChain9** ppSC) {
     HRESULT hr = m_pReal->GetSwapChain(iSC, ppSC);
     if (SUCCEEDED(hr) && ppSC && *ppSC)
-        *ppSC = new ProxyDirect3DSwapChain9(*ppSC, (IDirect3DDevice9*)this);
+        *ppSC = new ProxyDirect3DSwapChain9(*ppSC, (IDirect3DDevice9*)this, iSC);
     return hr;
 }
 
@@ -186,23 +189,31 @@ STDMETHODIMP ProxyDirect3DDevice9::Reset(D3DPRESENT_PARAMETERS* pPP) {
         m_pFakeBackBufferTex = nullptr;
     }
 
-    int scaledW = pPP->BackBufferWidth;
-    int scaledH = pPP->BackBufferHeight;
-    GetScaledResolution(scaledW, scaledH);
+    int requestedW = pPP->BackBufferWidth;
+    int requestedH = pPP->BackBufferHeight;
 
     int nativeW = Config::Get().GetTargetWidth();
     int nativeH = Config::Get().GetTargetHeight();
 
     if (nativeW <= 0 || nativeH <= 0) {
-        D3DDISPLAYMODE dm;
-        if (SUCCEEDED(m_pReal->GetDisplayMode(0, &dm))) {
-            nativeW = dm.Width;
-            nativeH = dm.Height;
+        if (m_isUpscaling && requestedW == (int)m_renderW && requestedH == (int)m_renderH) {
+            nativeW = m_displayW;
+            nativeH = m_displayH;
         } else {
-            nativeW = pPP->BackBufferWidth;
-            nativeH = pPP->BackBufferHeight;
+            D3DDISPLAYMODE dm;
+            if (SUCCEEDED(m_pReal->GetDisplayMode(0, &dm))) {
+                nativeW = dm.Width;
+                nativeH = dm.Height;
+            } else {
+                nativeW = requestedW;
+                nativeH = requestedH;
+            }
         }
     }
+
+    int scaledW = nativeW;
+    int scaledH = nativeH;
+    GetScaledResolution(scaledW, scaledH);
 
     D3DPRESENT_PARAMETERS realPP = *pPP;
     realPP.BackBufferWidth = nativeW;
@@ -214,8 +225,8 @@ STDMETHODIMP ProxyDirect3DDevice9::Reset(D3DPRESENT_PARAMETERS* pPP) {
     m_displayH = nativeH;
     m_isUpscaling = true;
 
-    Logger::info("Reset: Game requested {}x{}, Proxy created device at {}x{}, Game sees {}x{}", pPP->BackBufferWidth, pPP->BackBufferHeight,
-        nativeW, nativeH, scaledW, scaledH);
+    Logger::info("Reset: Game requested {}x{}, Proxy created device at {}x{}, Game sees {}x{}", requestedW, requestedH, nativeW, nativeH,
+        scaledW, scaledH);
 
     HRESULT hr = m_pReal->Reset(&realPP);
     if (SUCCEEDED(hr)) {
@@ -235,6 +246,7 @@ STDMETHODIMP ProxyDirect3DDevice9::Reset(D3DPRESENT_PARAMETERS* pPP) {
                 } else {
                     m_pFakeBackBuffer->SetInternalSurface(pRealSurf);
                 }
+                m_pReal->SetRenderTarget(0, pRealSurf);
                 if (pRealSurf)
                     pRealSurf->Release();
                 Logger::info("Proxy: Fake backbuffer re-created at {}x{} (Reset path)", m_renderW, m_renderH);
@@ -933,21 +945,47 @@ STDMETHODIMP ProxyDirect3DDevice9::CreateDepthStencilSurfaceEx(
 STDMETHODIMP ProxyDirect3DDevice9::ResetEx(D3DPRESENT_PARAMETERS* pPP, D3DDISPLAYMODEEX* pFDM) {
     OverlayRenderer::Get().OnReset();
     UpscalerManager::Get().OnReset();
+    if (m_pFakeBackBuffer) {
+        m_pFakeBackBuffer->Release();
+        m_pFakeBackBuffer = nullptr;
+    }
+    if (m_pFakeBackBufferTex) {
+        m_pFakeBackBufferTex->Release();
+        m_pFakeBackBufferTex = nullptr;
+    }
 
-    int scaledW = pPP->BackBufferWidth;
-    int scaledH = pPP->BackBufferHeight;
-    GetScaledResolution(scaledW, scaledH);
+    int requestedW = pPP->BackBufferWidth;
+    int requestedH = pPP->BackBufferHeight;
 
     int nativeW = Config::Get().GetTargetWidth();
     int nativeH = Config::Get().GetTargetHeight();
-    if (nativeW <= 0)
-        nativeW = pPP->BackBufferWidth;
-    if (nativeH <= 0)
-        nativeH = pPP->BackBufferHeight;
+
+    if (nativeW <= 0 || nativeH <= 0) {
+        if (m_isUpscaling && requestedW == (int)m_renderW && requestedH == (int)m_renderH) {
+            nativeW = m_displayW;
+            nativeH = m_displayH;
+        } else {
+            nativeW = requestedW;
+            nativeH = requestedH;
+        }
+    }
+
+    int scaledW = nativeW;
+    int scaledH = nativeH;
+    GetScaledResolution(scaledW, scaledH);
 
     D3DPRESENT_PARAMETERS realPP = *pPP;
     realPP.BackBufferWidth = nativeW;
     realPP.BackBufferHeight = nativeH;
+
+    m_renderW = scaledW;
+    m_renderH = scaledH;
+    m_displayW = nativeW;
+    m_displayH = nativeH;
+    m_isUpscaling = true;
+
+    Logger::info("ResetEx: Game requested {}x{}, Proxy created device at {}x{}, Game sees {}x{}", requestedW, requestedH, nativeW, nativeH,
+        scaledW, scaledH);
 
     if (!m_pRealEx)
         return E_NOTIMPL;
@@ -955,6 +993,26 @@ STDMETHODIMP ProxyDirect3DDevice9::ResetEx(D3DPRESENT_PARAMETERS* pPP, D3DDISPLA
     if (SUCCEEDED(hr)) {
         pPP->BackBufferWidth = scaledW;
         pPP->BackBufferHeight = scaledH;
+        if (m_isUpscaling) {
+            if (m_pFakeBackBufferTex) {
+                m_pFakeBackBufferTex->Release();
+                m_pFakeBackBufferTex = nullptr;
+            }
+            if (SUCCEEDED(m_pReal->CreateTexture(
+                    m_renderW, m_renderH, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &m_pFakeBackBufferTex, nullptr))) {
+                IDirect3DSurface9* pRealSurf = nullptr;
+                m_pFakeBackBufferTex->GetSurfaceLevel(0, &pRealSurf);
+                if (!m_pFakeBackBuffer) {
+                    m_pFakeBackBuffer = new ProxySurface9(pRealSurf, this, m_displayW, m_displayH);
+                } else {
+                    m_pFakeBackBuffer->SetInternalSurface(pRealSurf);
+                }
+                m_pReal->SetRenderTarget(0, pRealSurf);
+                if (pRealSurf)
+                    pRealSurf->Release();
+                Logger::info("Proxy: Fake backbuffer re-created at {}x{} (ResetEx path)", m_renderW, m_renderH);
+            }
+        }
         OverlayRenderer::Get().OnPostReset();
     }
     return hr;

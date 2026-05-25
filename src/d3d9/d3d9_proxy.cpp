@@ -20,18 +20,27 @@ void GetScaledResolution(int& outW, int& outH) {
         // Poll current target from config (refreshed by overlay UI)
         int targetWidth = cfg.GetTargetWidth();
         int targetHeight = cfg.GetTargetHeight();
+
+        if (targetWidth <= 0 || targetHeight <= 0) {
+            targetWidth = gameW;
+            targetHeight = gameH;
+        }
+
         if (targetWidth > 0 && targetHeight > 0) {
             UpscalerManager& mgr = UpscalerManager::Get();
             bool nativeRendering = mgr.IsNativeRenderingEnabled();
             int quality = mgr.GetUpscaleQuality();
             bool upscaling = mgr.IsUpscalingEnabled();
-            
+
             static int lastQ = -1;
             static int lastN = -1;
             static int lastU = -1;
             if (quality != lastQ || (int)nativeRendering != lastN || (int)upscaling != lastU) {
-                Logger::info("GetScaledResolution: mgr={:p}, quality={}, native={}, upscaling={}", (void*)&mgr, quality, nativeRendering, upscaling);
-                lastQ = quality; lastN = (int)nativeRendering; lastU = (int)upscaling;
+                Logger::info(
+                    "GetScaledResolution: mgr={:p}, quality={}, native={}, upscaling={}", (void*)&mgr, quality, nativeRendering, upscaling);
+                lastQ = quality;
+                lastN = (int)nativeRendering;
+                lastU = (int)upscaling;
             }
 
             if (!nativeRendering && upscaling) {

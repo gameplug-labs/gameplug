@@ -1,6 +1,7 @@
 #include "d3d9_proxy_device.h"
 #include "d3d9_proxy_surface.h"
 #include "d3d9_proxy_swapchain.h"
+#include "upscaler_manager.h"
 
 void ProxyDirect3DDevice9::UpdateScaledResolution() {
     int sw = m_displayW;
@@ -54,6 +55,21 @@ ProxyDirect3DDevice9::ProxyDirect3DDevice9(
         m_displayH, m_isUpscaling, (void*)m_pRealEx);
 
     OverlayRenderer::Get().Init((IDirect3DDevice9*)this);
+
+    if (m_isUpscaling) {
+        if (UpscalerManager::Get().LoadUpscaler()) {
+            UpscalerManager::Get().InitUpscaler((void*)m_pReal);
+            if (SUCCEEDED(m_pReal->CreateTexture(
+                    m_renderW, m_renderH, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &m_pFakeBackBufferTex, nullptr))) {
+                IDirect3DSurface9* pRealSurf = nullptr;
+                m_pFakeBackBufferTex->GetSurfaceLevel(0, &pRealSurf);
+                m_pFakeBackBuffer = new ProxySurface9(pRealSurf, this, m_displayW, m_displayH);
+                if (pRealSurf)
+                    pRealSurf->Release();
+                Logger::info("Proxy: Fake backbuffer created at native {}x{}", m_renderW, m_renderH);
+            }
+        }
+    }
 }
 
 ProxyDirect3DDevice9::~ProxyDirect3DDevice9() {
@@ -160,6 +176,7 @@ STDMETHODIMP_(UINT) ProxyDirect3DDevice9::GetNumberOfSwapChains() {
 
 STDMETHODIMP ProxyDirect3DDevice9::Reset(D3DPRESENT_PARAMETERS* pPP) {
     OverlayRenderer::Get().OnReset();
+    UpscalerManager::Get().OnReset();
     if (m_pFakeBackBuffer) {
         m_pFakeBackBuffer->Release();
         m_pFakeBackBuffer = nullptr;
@@ -234,7 +251,18 @@ STDMETHODIMP ProxyDirect3DDevice9::Present(CONST RECT* pSR, CONST RECT* pDR, HWN
     IDirect3DSurface9* pRBB = nullptr;
     if (SUCCEEDED(m_pReal->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &pRBB))) {
         if (m_isUpscaling && m_pFakeBackBuffer) {
-            m_pReal->StretchRect(m_pFakeBackBuffer->GetInternalSurface(), NULL, pRBB, NULL, D3DTEXF_LINEAR);
+            bool upscalerHandled = false;
+            if (UpscalerManager::Get().IsUpscalingEnabled()) {
+                g_InUpscalerPass = true;
+                UpscalerManager::Get().RenderFrame((void*)m_pReal, (void*)m_pFakeBackBuffer->GetInternalSurface(), (void*)pRBB, m_displayW,
+                    m_displayH, m_renderW, m_renderH);
+                g_InUpscalerPass = false;
+                upscalerHandled = true;
+            }
+
+            if (!upscalerHandled) {
+                m_pReal->StretchRect(m_pFakeBackBuffer->GetInternalSurface(), NULL, pRBB, NULL, D3DTEXF_LINEAR);
+            }
         }
         IDirect3DSurface9* pOldRT = nullptr;
         m_pReal->GetRenderTarget(0, &pOldRT);
@@ -811,6 +839,14 @@ STDMETHODIMP ProxyDirect3DDevice9::PresentEx(CONST RECT* pSR, CONST RECT* pDR, H
     if (SUCCEEDED(m_pReal->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &pRBB))) {
         if (m_isUpscaling && m_pFakeBackBuffer) {
             bool upscalerHandled = false;
+            if (UpscalerManager::Get().IsUpscalingEnabled()) {
+                g_InUpscalerPass = true;
+                UpscalerManager::Get().RenderFrame((void*)m_pReal, (void*)m_pFakeBackBuffer->GetInternalSurface(), (void*)pRBB, m_displayW,
+                    m_displayH, m_renderW, m_renderH);
+                g_InUpscalerPass = false;
+                upscalerHandled = true;
+            }
+
             if (!upscalerHandled) {
                 m_pReal->StretchRect(m_pFakeBackBuffer->GetInternalSurface(), NULL, pRBB, NULL, D3DTEXF_LINEAR);
             }
@@ -896,6 +932,7 @@ STDMETHODIMP ProxyDirect3DDevice9::CreateDepthStencilSurfaceEx(
 
 STDMETHODIMP ProxyDirect3DDevice9::ResetEx(D3DPRESENT_PARAMETERS* pPP, D3DDISPLAYMODEEX* pFDM) {
     OverlayRenderer::Get().OnReset();
+    UpscalerManager::Get().OnReset();
 
     int scaledW = pPP->BackBufferWidth;
     int scaledH = pPP->BackBufferHeight;

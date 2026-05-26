@@ -17,8 +17,10 @@ static bool g_ShowKeyWasPressed = false;
 static WNDPROC g_OriginalWndProc = nullptr;
 
 LRESULT CALLBACK HookedWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    if (g_ImGuiInitialized && g_Visible && ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
-        return true;
+    if (g_ImGuiInitialized && g_Visible) {
+        if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
+            return true;
+    }
     return CallWindowProc(g_OriginalWndProc, hWnd, msg, wParam, lParam);
 }
 
@@ -87,7 +89,7 @@ bool InitImGuiDX11(IDXGISwapChain* pSwapChain) {
     Logger::info("DX11 Init: Step 3 - Creating ImGui Context (HWND=" + std::to_string((uintptr_t)hWnd) + ")");
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
-    io.IniFilename = nullptr; // Disable imgui.ini
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
     Logger::info("DX11 Init: Step 4 - ImGui_ImplWin32_Init");
     if (!ImGui_ImplWin32_Init(hWnd)) {
@@ -179,9 +181,6 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
         Logger::info("DX Overlay D3D11: Visibility toggled manually to: " + std::string(g_Visible ? "ON" : "OFF"));
     }
     g_ShowKeyWasPressed = keyCurrentlyPressed;
-
-    if (!g_Visible)
-        return;
 
     g_needsNewImGuiFrame = true;
     g_totalPresentCalls++;
@@ -286,7 +285,12 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
 
         ImGui_ImplDX11_NewFrame();
         ImGui_ImplWin32_NewFrame();
-        ImGui::NewFrame();
+        io.DisplaySize = ImVec2((float)desc.BufferDesc.Width, (float)desc.BufferDesc.Height);
+
+        // io.MouseDrawCursor = g_Visible;
+        if (!g_Visible) {
+            io.ClearInputKeys();
+        }
 
         ImGuiOverlayShared::DrawUI(desc.BufferDesc.Width, desc.BufferDesc.Height);
 

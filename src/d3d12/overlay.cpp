@@ -385,7 +385,6 @@ bool InitImGuiDX12(IDXGISwapChain* pSwapChain, ID3D12CommandQueue* pQueue) {
     Logger::info("DX12 Init: Step 5 - Creating ImGui Context");
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
-    io.IniFilename = nullptr;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
     Logger::info("DX12 Init: Step 6 - Forcing Font Build");

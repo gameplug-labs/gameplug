@@ -62,7 +62,6 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 8)
 
     target_compile_definitions(framework_d3d11 PRIVATE 
         FRAMEWORK_EXPORTS
-        GAMEPLUG_DIRECTX
     )
     target_include_directories(framework_d3d11 PUBLIC
         ${PROJECT_SOURCE_DIR}/include
@@ -103,7 +102,6 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 8)
 
     target_compile_definitions(framework_d3d12 PRIVATE 
         FRAMEWORK_EXPORTS
-        GAMEPLUG_DIRECTX
     )
     target_include_directories(framework_d3d12 PUBLIC
         ${PROJECT_SOURCE_DIR}/include
@@ -160,7 +158,6 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 4)
 
     target_compile_definitions(framework_d3d10 PRIVATE 
         FRAMEWORK_EXPORTS
-        GAMEPLUG_DIRECTX
     )
     target_include_directories(framework_d3d10 PUBLIC
         ${PROJECT_SOURCE_DIR}/include
@@ -207,6 +204,7 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 4)
 
     target_compile_definitions(framework_d3d9 PRIVATE 
         FRAMEWORK_EXPORTS
+        GAMEPLUG_WIN32
         GamePlug_INTERNAL_LOGGER
     )
     target_include_directories(framework_d3d9 PUBLIC

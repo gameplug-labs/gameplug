@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
+## [1.0.0] - 2026-05-26
+
 ### Added
 - DirectX 10 (D3D10) support and release packaging.
 - Logs disabled by default, enabled with `Debug=true` in `GamePlug.conf`.

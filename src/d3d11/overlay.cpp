@@ -282,6 +282,8 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
         bool shouldLog = (frameCount11 < 5);
         if (shouldLog)
             Logger::info("DX11 Frame " + std::to_string(frameCount11));
+        
+        ImGuiIO& io = ImGui::GetIO();
 
         ImGui_ImplDX11_NewFrame();
         ImGui_ImplWin32_NewFrame();

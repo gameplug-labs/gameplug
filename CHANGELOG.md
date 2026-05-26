@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- DirectX 10 (D3D10) support and release packaging.
+- Logs disabled by default, enabled with `Debug=true` in `GamePlug.conf`.
+
+### Changed
+- Redesigned resolution enumeration UI with dynamic checkbox toggles and bidirectional textbox synchronization.
+
 ## [0.1.2] - 2026-05-26
 
 ### Added

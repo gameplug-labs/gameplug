@@ -44,7 +44,7 @@ target_compile_definitions(framework_vk PUBLIC
 target_link_libraries(framework_vk PUBLIC volk minhook)
 
 if(MSVC)
-    target_compile_options(framework_vk PRIVATE /utf-8)
+    target_compile_options(framework_vk PRIVATE /utf-8 /FS)
 endif()
 
 # --- DirectX Framework (x64 only) ---
@@ -84,7 +84,7 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 8)
     )
 
     if(MSVC)
-        target_compile_options(framework_d3d11 PRIVATE /utf-8)
+        target_compile_options(framework_d3d11 PRIVATE /utf-8 /FS)
         set_target_properties(framework_d3d11 PROPERTIES LINK_FLAGS 
             "/DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3dcompiler_47.dll"
         )
@@ -125,7 +125,7 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 8)
     )
 
     if(MSVC)
-        target_compile_options(framework_d3d12 PRIVATE /utf-8)
+        target_compile_options(framework_d3d12 PRIVATE /utf-8 /FS)
         set_target_properties(framework_d3d12 PROPERTIES LINK_FLAGS 
             "/DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3dcompiler_47.dll"
         )
@@ -182,7 +182,7 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 4)
     )
 
     if(MSVC)
-        target_compile_options(framework_d3d10 PRIVATE /utf-8)
+        target_compile_options(framework_d3d10 PRIVATE /utf-8 /FS)
         set_target_properties(framework_d3d10 PROPERTIES LINK_FLAGS 
             "/DELAYLOAD:d3d10.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3dcompiler_47.dll"
         )
@@ -283,7 +283,7 @@ target_compile_definitions(vklayer PRIVATE
 )
 
 if(MSVC)
-    target_compile_options(vklayer PRIVATE /utf-8)
+    target_compile_options(vklayer PRIVATE /utf-8 /FS)
 endif()
 
 target_link_libraries(vklayer 

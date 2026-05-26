@@ -4,8 +4,11 @@
 
 | Game Name | Layer | File to Use |
 |-----------|-------|-------------|
+| Assassins Creed Directors Cut | d3d10 | dinput8.dll |
 | Resident Evil 4 | d3d12 | dinput8.dll |
+| Resident Evil 5 | d3d9 | dinput8.dll |
 | Resident Evil 6 | d3d9, vulkan | dinput8.dll |
+| Resident Evil Revelations 2 | d3d9 | dinput8.dll |
 | The Elder Scrolls V: Skyrim - Legendary Edition | d3d9 | dinput8.dll |
 | The Elder Scrolls V: Skyrim Anniversary | d3d11 | dinput8.dll |
 | The Elder Scrolls V: Skyrim Special Edition | d3d11 | dinput8.dll |
@@ -21,6 +24,7 @@ To contribute:
 
 Supported layers include:
 - `d3d9` - DirectX 9
+- `d3d10` - DirectX 10
 - `d3d11` - DirectX 11
 - `d3d12` - DirectX 12
 - `vulkan` - Vulkan

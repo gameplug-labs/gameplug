@@ -2,8 +2,8 @@
 #include "common.h"
 #include "config.h"
 #include "minhook.h"
-#include <d3d10.h>
 #include <d3d10_1.h>
+#include <d3d10.h>
 #include <dxgi1_5.h>
 #include <map>
 #include <mutex>

@@ -4,8 +4,8 @@
 #include "imgui_impl_win32.h"
 #include "imgui_overlay_shared.h"
 #include "plugin_manager.h"
-#include <d3d10.h>
 #include <d3d10_1.h>
+#include <d3d10.h>
 #include <mutex>
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);

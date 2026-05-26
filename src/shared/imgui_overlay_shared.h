@@ -13,7 +13,7 @@ public:
      * @param height Viewport height (used for UI scaling).
      */
     static void DrawUI(
-        uint32_t width, uint32_t height, std::function<void()> apiSpecificUI = nullptr, bool showResolutionEnumeration = true);
+        uint32_t width, uint32_t height, std::function<void()> apiSpecificUI = nullptr);
 };
 
 } // namespace GamePlug

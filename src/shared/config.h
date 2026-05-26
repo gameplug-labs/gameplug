@@ -19,7 +19,7 @@ public:
     void Load(const std::string& filename = "GamePlug.conf");
     void Save(const std::string& filename = "GamePlug.conf");
 
-    void RenderUI();
+    void RenderUI(bool showResolutionEnumeration = true);
 
     // General accessors
     bool GetBool(const std::string& key, bool defaultValue = false);
@@ -52,6 +52,10 @@ private:
     uint32_t m_targetWidth = 0;
     uint32_t m_targetHeight = 0;
     std::vector<Resolution> m_extraResolutions;
+
+    // UI state for resolution enumeration checkboxes
+    char m_resBuffer[512] = "";
+    bool m_resInit = false;
 
     std::string Trim(const std::string& s);
 };

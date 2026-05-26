@@ -4,6 +4,7 @@
 #include "plugin_manager.h"
 #include "win32_hooks.h"
 #include <algorithm>
+#include <cstring>
 #include <fstream>
 #include <sstream>
 #include <windows.h>
@@ -78,6 +79,15 @@ void Config::Load(const std::string& filename) {
                 }
             }
         }
+    }
+
+    auto it = m_settings.find("EnabledEnumeratedResolutions");
+    bool enabled = false;
+    if (it != m_settings.end()) {
+        enabled = (it->second == "true" || it->second == "1" || it->second == "on");
+    }
+    if (!enabled) {
+        m_extraResolutions.clear();
     }
 
     Logger::info("Config: Loaded " + std::to_string(m_settings.size()) + " settings from " + path);
@@ -192,15 +202,132 @@ std::string Config::Trim(const std::string& s) {
     return res;
 }
 
-void Config::RenderUI() {
-    /*
-    bool pluginEnabled = GetBool("PluginEnabled", true);
-    if (ImGui::Checkbox("Enable Plugins", &pluginEnabled)) {
-        SetBool("PluginEnabled", pluginEnabled);
-        Save(); // Always save for the master toggle
-        Logger::info("Config: Plugin master state changed to: " + std::string(pluginEnabled ? "ENABLED" : "DISABLED"));
+void Config::RenderUI(bool showResolutionEnumeration) {
+#ifdef GAMEPLUG_DIRECTX
+    showResolutionEnumeration = false;
+#endif
+    if (showResolutionEnumeration) {
+        // Extra Resolutions
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        bool enabled = GetBool("EnabledEnumeratedResolutions", false);
+        if (ImGui::Checkbox("Enable Resolution Enums", &enabled)) {
+            SetBool("EnabledEnumeratedResolutions", enabled);
+            Save();
+            Load();
+        }
+
+        if (enabled) {
+            // Parse current state from config
+            std::string currentResolutions = GetString("ExtraEnumeratedResolutions");
+            std::vector<std::string> resList;
+            {
+                std::stringstream ss(currentResolutions);
+                std::string item;
+                while (std::getline(ss, item, ',')) {
+                    std::string trimmed = Trim(item);
+                    if (!trimmed.empty()) {
+                        resList.push_back(trimmed);
+                    }
+                }
+            }
+
+            bool check1440 = false;
+            bool check2160 = false;
+
+            for (const auto& res : resList) {
+                if (res == "2560x1440") {
+                    check1440 = true;
+                } else if (res == "3840x2160") {
+                    check2160 = true;
+                }
+            }
+
+            if (!m_resInit) {
+                strncpy(m_resBuffer, currentResolutions.c_str(), sizeof(m_resBuffer) - 1);
+                m_resInit = true;
+            }
+
+            // Render Checkboxes
+            bool checkChanged = false;
+
+            if (ImGui::Checkbox("2560x1440", &check1440)) {
+                checkChanged = true;
+            }
+            ImGui::SameLine();
+            if (ImGui::Checkbox("3840x2160", &check2160)) {
+                checkChanged = true;
+            }
+
+            auto UpdateFromCheckboxes = [&](bool c1440, bool c2160) {
+                std::vector<std::string> list;
+                std::stringstream ss(m_resBuffer);
+                std::string item;
+                while (std::getline(ss, item, ',')) {
+                    std::string trimmed = Trim(item);
+                    if (!trimmed.empty()) {
+                        list.push_back(trimmed);
+                    }
+                }
+
+                auto it1440 = std::find(list.begin(), list.end(), "2560x1440");
+                if (c1440) {
+                    if (it1440 == list.end()) {
+                        list.insert(list.begin(), "2560x1440");
+                    }
+                } else {
+                    if (it1440 != list.end()) {
+                        list.erase(it1440);
+                    }
+                }
+
+                auto it2160 = std::find(list.begin(), list.end(), "3840x2160");
+                if (c2160) {
+                    if (it2160 == list.end()) {
+                        auto itInsert = std::find(list.begin(), list.end(), "2560x1440");
+                        if (itInsert != list.end()) {
+                            list.insert(itInsert + 1, "3840x2160");
+                        } else {
+                            list.insert(list.begin(), "3840x2160");
+                        }
+                    }
+                } else {
+                    if (it2160 != list.end()) {
+                        list.erase(it2160);
+                    }
+                }
+
+                std::string newStr = "";
+                for (size_t i = 0; i < list.size(); i++) {
+                    newStr += list[i];
+                    if (i + 1 < list.size()) {
+                        newStr += ", ";
+                    }
+                }
+                strncpy(m_resBuffer, newStr.c_str(), sizeof(m_resBuffer) - 1);
+                SetString("ExtraEnumeratedResolutions", newStr);
+                Save();
+                Load();
+            };
+
+            if (checkChanged) {
+                UpdateFromCheckboxes(check1440, check2160);
+            }
+
+            if (ImGui::InputTextWithHint("Resolution Enums", "2560x1440, 3840x2160", m_resBuffer, sizeof(m_resBuffer))) {
+                SetString("ExtraEnumeratedResolutions", m_resBuffer);
+            }
+
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                Save();
+                Load();
+            }
+
+            ImGui::TextDisabled("(Restart required).");
+        }
     }
-    */
 }
 
 } // namespace GamePlug

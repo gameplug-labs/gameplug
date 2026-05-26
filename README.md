@@ -1,10 +1,10 @@
 # 🚀 GamePlug: The Universal Plugin Layer
 
-GamePlug is a powerful, multi-API interception framework designed for modders. It provides a unified plugin system to inject custom ImGui UIs and game logic across **Vulkan**, **DirectX 9**, and **DirectX 12**.
+GamePlug is a powerful, multi-API interception framework designed for modders. It provides a unified plugin system to inject custom ImGui UIs and game logic across **Vulkan**, **DirectX 9**, **DirectX 10**, **DirectX 11**, and **DirectX 12**.
 
 ## ✨ Key Features
 
-*   **Multi-API Support**: One framework to rule them all. Works seamlessly with Vulkan, D3D9, and D3D12.
+*   **Multi-API Support**: One framework to rule them all. Works seamlessly with Vulkan, D3D9, D3D10, D3D11 and D3D12.
 *   **Unified Plugin System**: Build plugins once using a clean C++ interface. No need to worry about the underlying rendering backend.
 *   **ImGui Integration**: Full support for Dear ImGui overlays with shared context between the host and plugins.
 *   **Cross-Architecture**: Supports both x32 (Legacy/DXVK titles) and x64 (Modern titles).
@@ -13,6 +13,7 @@ GamePlug is a powerful, multi-API interception framework designed for modders. I
 
 - [Plugin Development Guide](docs/PLUGIN_DEVELOPMENT.md) - Learn how to build your own plugins.
 - [Plugin Usage Guide](docs/PLUGIN_USAGE.md) - How to install and manage plugins.
+- [Games Compatibility List](GAMES_COMPATIBILITY_LIST.md) - Supported games and their compatible layers.
 - [Changelog](CHANGELOG.md) - Track recent changes and updates.
 
 ## 🛠 Build Instructions
@@ -43,8 +44,8 @@ cmake --build build64 --config Release
 - `gameplug.exe`: The launcher that automatically sets up the Vulkan layer environment.
 - `run_game.bat`: A helper script for launching Vulkan games with the layer.
 
-### 🎮 DirectX 9 / 12 (Proxy Mode)
-- `dinput8.dll`: The universal drop-in proxy for all DirectX games (DX9 & DX12).
+### 🎮 DirectX 9 / 10 / 11 / 12 (Proxy Mode)
+- `dinput8.dll`: The universal drop-in proxy for all DirectX games (DX9, DX10, DX11 & DX12).
 
 ## 🔧 Usage
 
@@ -57,7 +58,7 @@ Vulkan uses a layer system. The easiest way to use it is via the launcher:
 1. Place `vklayer.dll` and `VK_LAYER_GAMEPLUG.json` in a folder.
 2. Set `VK_LAYER_PATH` to that folder and `VK_INSTANCE_LAYERS` to `VK_LAYER_GAMEPLUG`.
 
-### 🎮 DirectX Integration (9 / 12)
+### 🎮 DirectX Integration (9 / 10 / 11 / 12)
 DirectX integration is simpler and uses a single universal proxy:
 1. Copy `dinput8.dll` into the game's executable directory.
 2. Launch the game normally.

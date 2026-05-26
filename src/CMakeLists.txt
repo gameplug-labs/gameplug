@@ -44,7 +44,7 @@ target_compile_definitions(framework_vk PUBLIC
 target_link_libraries(framework_vk PUBLIC volk minhook)
 
 if(MSVC)
-    target_compile_options(framework_vk PRIVATE /utf-8)
+    target_compile_options(framework_vk PRIVATE /utf-8 /FS)
 endif()
 
 # --- DirectX Framework (x64 only) ---
@@ -84,7 +84,7 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 8)
     )
 
     if(MSVC)
-        target_compile_options(framework_d3d11 PRIVATE /utf-8)
+        target_compile_options(framework_d3d11 PRIVATE /utf-8 /FS)
         set_target_properties(framework_d3d11 PROPERTIES LINK_FLAGS 
             "/DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3dcompiler_47.dll"
         )
@@ -125,7 +125,7 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 8)
     )
 
     if(MSVC)
-        target_compile_options(framework_d3d12 PRIVATE /utf-8)
+        target_compile_options(framework_d3d12 PRIVATE /utf-8 /FS)
         set_target_properties(framework_d3d12 PROPERTIES LINK_FLAGS 
             "/DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3dcompiler_47.dll"
         )
@@ -143,8 +143,53 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 8)
 endif()
 
 
-# --- D3D9 Support (x32 only) ---
+# --- D3D9 / D3D10 Support (x32 only) ---
 if(CMAKE_SIZEOF_VOID_P EQUAL 4)
+    # --- D3D10 Framework ---
+    add_library(framework_d3d10 STATIC
+        ${SHARED_SOURCES}
+        d3d10/framework.cpp
+        d3d10/overlay.cpp
+        d3d10/hooks.cpp
+        d3d10/hooks_d3d10.cpp
+        d3d10/hooks_dxgi.cpp
+        ${PROJECT_SOURCE_DIR}/external/imgui/backends/imgui_impl_dx10.cpp
+    )
+
+    set_target_properties(framework_d3d10 PROPERTIES OUTPUT_NAME "framework_d3d10")
+
+    target_compile_definitions(framework_d3d10 PRIVATE 
+        FRAMEWORK_EXPORTS
+        GAMEPLUG_DIRECTX
+    )
+    target_include_directories(framework_d3d10 PUBLIC
+        ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/src/d3d10
+        ${PROJECT_SOURCE_DIR}/src/shared
+        ${PROJECT_SOURCE_DIR}/external/spdlog/include
+        ${PROJECT_SOURCE_DIR}/external/imgui
+        ${PROJECT_SOURCE_DIR}/external/imgui/backends
+    )
+    target_compile_definitions(framework_d3d10 PUBLIC 
+        "IMGUI_USER_CONFIG=\"GAMEPLUG_imgui_config.h\""
+    )
+    target_link_libraries(framework_d3d10 PUBLIC 
+        minhook
+        d3d10
+        dxgi
+        d3dcompiler
+        delayimp.lib
+    )
+
+    if(MSVC)
+        target_compile_options(framework_d3d10 PRIVATE /utf-8 /FS)
+        set_target_properties(framework_d3d10 PROPERTIES LINK_FLAGS 
+            "/DELAYLOAD:d3d10.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3dcompiler_47.dll"
+        )
+    endif()
+
+    add_subdirectory(d3d10)
+
     # --- D3D9 Framework ---
     add_library(framework_d3d9 STATIC
         ${SHARED_SOURCES}
@@ -238,7 +283,7 @@ target_compile_definitions(vklayer PRIVATE
 )
 
 if(MSVC)
-    target_compile_options(vklayer PRIVATE /utf-8)
+    target_compile_options(vklayer PRIVATE /utf-8 /FS)
 endif()
 
 target_link_libraries(vklayer 

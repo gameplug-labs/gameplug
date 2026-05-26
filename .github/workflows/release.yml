@@ -72,6 +72,10 @@ jobs:
           # The file is in bin/x32/d3d9/dinput8.dll
           zip -j assets/d3d9.zip bin/x32/d3d9/dinput8.dll
           
+          # d3d10.zip (x32 only)
+          # The file is in bin/x32/d3d10/dinput8.dll
+          zip -j assets/d3d10.zip bin/x32/d3d10/dinput8.dll
+          
           # d3d11.zip (x64 only)
           # The file is in bin/x64/d3d11/dinput8.dll
           zip -j assets/d3d11.zip bin/x64/d3d11/dinput8.dll

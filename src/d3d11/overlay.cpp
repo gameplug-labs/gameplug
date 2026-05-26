@@ -292,7 +292,11 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
             io.ClearInputKeys();
         }
 
-        ImGuiOverlayShared::DrawUI(desc.BufferDesc.Width, desc.BufferDesc.Height);
+        ImGui::NewFrame();
+
+        if (g_Visible) {
+            ImGuiOverlayShared::DrawUI(desc.BufferDesc.Width, desc.BufferDesc.Height);
+        }
 
         ImGui::Render();
 

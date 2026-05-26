@@ -290,8 +290,6 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
         
         ImGuiIO& io = ImGui::GetIO();
 
-        ImGuiIO& io = ImGui::GetIO();
-
         ImGui_ImplDX11_NewFrame();
         ImGui_ImplWin32_NewFrame();
         io.DisplaySize = ImVec2((float)desc.BufferDesc.Width, (float)desc.BufferDesc.Height);

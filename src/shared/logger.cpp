@@ -1,5 +1,7 @@
 #include "logger.h"
 #include <DbgHelp.h>
+#include <algorithm>
+#include <fstream>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <vector>
@@ -10,6 +12,49 @@
 namespace GamePlug {
 
 std::shared_ptr<spdlog::logger> Logger::s_logger = nullptr;
+
+namespace {
+bool IsDebugEnabled() {
+    char buf[MAX_PATH];
+    GetModuleFileNameA(NULL, buf, MAX_PATH);
+    std::string path = std::string(buf);
+    size_t lastSlash = path.find_last_of("\\/");
+    if (lastSlash != std::string::npos) {
+        path = path.substr(0, lastSlash + 1) + "GamePlug.conf";
+    } else {
+        path = "GamePlug.conf";
+    }
+
+    std::ifstream f(path);
+    if (!f.is_open()) {
+        return false;
+    }
+
+    std::string line;
+    while (std::getline(f, line)) {
+        auto trim = [](const std::string& s) {
+            std::string res = s;
+            res.erase(res.begin(), std::find_if(res.begin(), res.end(), [](unsigned char ch) { return !std::isspace(ch); }));
+            res.erase(std::find_if(res.rbegin(), res.rend(), [](unsigned char ch) { return !std::isspace(ch); }).base(), res.end());
+            return res;
+        };
+        line = trim(line);
+        if (line.empty() || line[0] == '#' || line[0] == ';')
+            continue;
+
+        size_t pos = line.find('=');
+        if (pos == std::string::npos)
+            continue;
+
+        std::string key = trim(line.substr(0, pos));
+        std::string value = trim(line.substr(pos + 1));
+        if (key == "Debug") {
+            return (value == "true" || value == "1" || value == "on");
+        }
+    }
+    return false;
+}
+} // namespace
 
 LONG WINAPI GamePlugCrashHandler(EXCEPTION_POINTERS* pExceptionInfo) {
     char buf[1024];
@@ -68,6 +113,10 @@ void Logger::Init(const std::string& filename) {
         spdlog::register_logger(s_logger);
 
         SetupCrashHandler();
+
+        if (!IsDebugEnabled()) {
+            file_sink->set_level(spdlog::level::off);
+        }
     } catch (const spdlog::spdlog_ex& ex) {
         // Fallback
     }

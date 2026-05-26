@@ -91,7 +91,6 @@ bool InitImGuiDX11(IDXGISwapChain* pSwapChain) {
     Logger::info("DX11 Init: Step 3 - Creating ImGui Context (HWND=" + std::to_string((uintptr_t)hWnd) + ")");
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
-    io.IniFilename = nullptr; // Disable imgui.ini
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
     Logger::info("DX11 Init: Step 4 - ImGui_ImplWin32_Init");
@@ -293,12 +292,6 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
 
         ImGui_ImplDX11_NewFrame();
         ImGui_ImplWin32_NewFrame();
-
-        // Override ImGui display size to match the real swap chain backbuffer.
-        // ImGui_ImplWin32_NewFrame() sets DisplaySize from the window client rect,
-        // which reflects the render resolution (e.g. 1280x720). Our RTV targets
-        // the real backbuffer (e.g. 1920x1080), so we must correct it here to ensure
-        // the overlay is positioned and scaled correctly on the full output surface.
         io.DisplaySize = ImVec2((float)desc.BufferDesc.Width, (float)desc.BufferDesc.Height);
 
         // io.MouseDrawCursor = g_Visible;

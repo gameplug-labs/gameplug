@@ -156,6 +156,13 @@ IDXGISwapChain* GetCurrentDXSwapChain() {
     std::lock_guard<std::recursive_mutex> lock(g_DXMtx);
     return g_currentSwapChain;
 }
+#ifdef SKYRIM_AE
+
+void SetCurrentDXSwapChain(IDXGISwapChain* swapChain) {
+    std::lock_guard<std::recursive_mutex> lock(g_DXMtx);
+    g_currentSwapChain = swapChain;
+}
+#endif
 
 void OnDXPresent(IDXGISwapChain* pSwapChain) {
     std::lock_guard<std::recursive_mutex> lock(g_DXMtx);
@@ -287,7 +294,7 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
         bool shouldLog = (frameCount11 < 5);
         if (shouldLog)
             Logger::info("DX11 Frame " + std::to_string(frameCount11));
-        
+
         ImGuiIO& io = ImGui::GetIO();
 
         ImGui_ImplDX11_NewFrame();
@@ -295,6 +302,32 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
         io.DisplaySize = ImVec2((float)desc.BufferDesc.Width, (float)desc.BufferDesc.Height);
 
         // io.MouseDrawCursor = g_Visible;
+#ifdef SKYRIM_AE
+        // Community Shaders pattern: use the event-queue API (AddMousePosEvent /
+        // AddMouseButtonEvent) rather than deprecated direct writes to io.MousePos /
+        // io.MouseDown[].  In newer ImGui, ImGui_ImplWin32_NewFrame() puts position
+        // events into the queue via AddMousePosEvent; a direct io.MousePos write made
+        // after that gets clobbered when ImGui::NewFrame() drains the queue.
+        // Similarly, io.MouseDown[] bypasses click-tracking and drag logic.
+        if (g_Visible && g_currentHWND) {
+            POINT cursorPos;
+            if (GetCursorPos(&cursorPos)) {
+                ScreenToClient(g_currentHWND, &cursorPos);
+                io.AddMousePosEvent((float)cursorPos.x, (float)cursorPos.y);
+            }
+            // Poll button state and feed it through the event queue
+            io.AddMouseButtonEvent(0, (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0);
+            io.AddMouseButtonEvent(1, (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0);
+            io.AddMouseButtonEvent(2, (GetAsyncKeyState(VK_MBUTTON) & 0x8000) != 0);
+            // Draw ImGui's own cursor on top – mirrors Community Shaders behaviour.
+            // The game cursor can be hidden in certain states (in-game, menus with
+            // hardware cursor hidden), so ImGui's software cursor is more reliable.
+            io.MouseDrawCursor = true;
+        } else {
+            io.MouseDrawCursor = false;
+        }
+#endif
+
         if (!g_Visible) {
             io.ClearInputKeys();
         }
@@ -360,5 +393,11 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
         Logger::error("OnDXPresent D3D11: Caught unknown aggregate exception");
     }
 }
+
+#ifdef SKYRIM_AE
+bool IsOverlayVisible() {
+    return g_Visible && g_ImGuiInitialized;
+}
+#endif
 
 } // namespace GamePlug

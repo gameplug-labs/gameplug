@@ -1,0 +1,6 @@
+LIBRARY dinput8
+EXPORTS
+    DirectInput8Create
+    GamePlug_SetSkyrimData
+    GamePlug_GetResolutionOverride
+    GamePlug_IsOverlayVisible

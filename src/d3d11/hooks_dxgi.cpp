@@ -277,6 +277,12 @@ HRESULT STDMETHODCALLTYPE HookedGetBuffer(IDXGISwapChain* pSwapChain, UINT Buffe
 
 void ApplySwapChainHooks(void* pSwapChain) {
     std::lock_guard<std::mutex> lock(g_HookMtx);
+
+#ifdef SKYRIM_AE
+    // Track the current swap chain early so it can be queried by resolution override hooks
+    SetCurrentDXSwapChain(static_cast<IDXGISwapChain*>(pSwapChain));
+#endif
+
     if (g_HookedVTables.count(pSwapChain))
         return;
 

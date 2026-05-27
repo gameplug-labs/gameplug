@@ -102,6 +102,9 @@ void DXUpscalerManager::CleanupPlugin() {
         Logger::info("DXUpscalerManager: Calling OnShutdown (Reset)");
         m_pInterface->OnShutdown();
     }
+#ifdef SKYRIM_AE
+    CleanupSkyrimSRVs();
+#endif
     DestroyFakeBackBuffer();
     m_pd3dDevice = nullptr;
     m_pd3dDeviceContext = nullptr;
@@ -334,8 +337,25 @@ void DXUpscalerManager::RenderFrameDX11(
     m_height = height;
     UpdateDimensions(width, height);
 
+#ifdef SKYRIM_AE
+    uint64_t depthPtr = 0;
+    uint64_t mvPtr = 0;
+    float jitX = 0.0f;
+    float jitY = 0.0f;
+
+    if (m_hasSkyrimData) {
+        depthPtr = (uint64_t)m_skyrimDepthSRV;
+        mvPtr = (uint64_t)m_skyrimMotionVectorSRV;
+        jitX = m_skyrimData.jitterX;
+        jitY = m_skyrimData.jitterY;
+    }
+
+    m_pInterface->OnRenderFrame((uintptr_t)context, (uint64_t)sourceSRV, (uint64_t)targetRTV, 0, width, height, m_renderWidth,
+        m_renderHeight, depthPtr, 0, mvPtr, 0, jitX, jitY);
+#else
     m_pInterface->OnRenderFrame((uintptr_t)context, (uint64_t)sourceSRV, (uint64_t)targetRTV, 0, width, height, m_renderWidth,
         m_renderHeight, 0, 0, 0, 0, 0.0f, 0.0f);
+#endif
 }
 
 void DXUpscalerManager::ResetFrame() {
@@ -354,7 +374,14 @@ void DXUpscalerManager::CreateFakeBackBuffer(IDXGISwapChain* swapChain) {
         return;
     }
 
+    // Only update dimensions from SwapChain if not running Skyrim SKSE bridge
+#ifdef SKYRIM_AE
+    if (!m_isSkyrim) {
+        UpdateDimensions(sd.BufferDesc.Width, sd.BufferDesc.Height);
+    }
+#else
     UpdateDimensions(sd.BufferDesc.Width, sd.BufferDesc.Height);
+#endif
 
     if (m_fakeBackBuffer) {
         D3D11_TEXTURE2D_DESC desc;
@@ -442,5 +469,128 @@ void DXUpscalerManager::SetShowDebugImageEnabled(bool enabled) {
         }
     }
 }
+
+#ifdef SKYRIM_AE
+void DXUpscalerManager::CleanupSkyrimSRVs() {
+    if (m_skyrimDepthSRV) {
+        m_skyrimDepthSRV->Release();
+        m_skyrimDepthSRV = nullptr;
+    }
+    if (m_skyrimMotionVectorSRV) {
+        m_skyrimMotionVectorSRV->Release();
+        m_skyrimMotionVectorSRV = nullptr;
+    }
+    m_lastDepthTexture = nullptr;
+    m_lastMotionVectorTexture = nullptr;
+}
+
+void DXUpscalerManager::SetSkyrimData(const GamePlugSkyrimData* data) {
+    if (!data) {
+        m_hasSkyrimData = false;
+        CleanupSkyrimSRVs();
+        return;
+    }
+
+    static uint64_t s_bridgeLogCount = 0;
+    if (s_bridgeLogCount++ % 1000 == 0) {
+        std::string depthFormatStr = "N/A";
+        std::string mvFormatStr = "N/A";
+        if (data->depthBuffer) {
+            D3D11_TEXTURE2D_DESC desc;
+            data->depthBuffer->GetDesc(&desc);
+            depthFormatStr = std::to_string(desc.Format);
+        }
+        if (data->motionVectorBuffer) {
+            D3D11_TEXTURE2D_DESC desc;
+            data->motionVectorBuffer->GetDesc(&desc);
+            mvFormatStr = std::to_string(desc.Format);
+        }
+        Logger::info("[GamePlug] Skyrim Bridge Data: Frame=" + std::to_string(data->frameCount) +
+                     ", DepthTex=" + std::to_string((uintptr_t)data->depthBuffer) + " (Format=" + depthFormatStr + ")" +
+                     ", MVTex=" + std::to_string((uintptr_t)data->motionVectorBuffer) + " (Format=" + mvFormatStr + ")" + ", Jitter=(" +
+                     std::to_string(data->jitterX) + ", " + std::to_string(data->jitterY) + ")" +
+                     ", Near=" + std::to_string(data->cameraNear) + ", Far=" + std::to_string(data->cameraFar) +
+                     ", IsVR=" + std::to_string(data->isVR) + ", ActiveEye=" + std::to_string(data->activeEye));
+    }
+
+    m_skyrimData = *data;
+    m_hasSkyrimData = true;
+    m_isSkyrim = true;
+
+    if (!m_pd3dDevice)
+        return;
+
+    // Handle Depth Buffer SRV
+    if (data->depthBuffer) {
+        if (data->depthBuffer != m_lastDepthTexture) {
+            if (m_skyrimDepthSRV) {
+                m_skyrimDepthSRV->Release();
+                m_skyrimDepthSRV = nullptr;
+            }
+            m_lastDepthTexture = data->depthBuffer;
+
+            D3D11_TEXTURE2D_DESC desc;
+            data->depthBuffer->GetDesc(&desc);
+
+            D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+            srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+            srvDesc.Texture2D.MipLevels = 1;
+            srvDesc.Texture2D.MostDetailedMip = 0;
+
+            // Map typeless formats to readable depth formats
+            if (desc.Format == DXGI_FORMAT_R32_TYPELESS) {
+                srvDesc.Format = DXGI_FORMAT_R32_FLOAT;
+            } else if (desc.Format == DXGI_FORMAT_R24G8_TYPELESS) {
+                srvDesc.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+            } else if (desc.Format == DXGI_FORMAT_R16_TYPELESS) {
+                srvDesc.Format = DXGI_FORMAT_R16_UNORM;
+            } else {
+                srvDesc.Format = desc.Format;
+            }
+
+            HRESULT hr = m_pd3dDevice->CreateShaderResourceView(data->depthBuffer, &srvDesc, &m_skyrimDepthSRV);
+            if (FAILED(hr)) {
+                Logger::error("[GamePlug] Failed to create Depth SRV for Skyrim (HR=" + std::to_string(hr) + ")");
+                m_skyrimDepthSRV = nullptr;
+                m_lastDepthTexture = nullptr;
+            } else {
+                Logger::info("[GamePlug] Created Depth SRV for Skyrim");
+            }
+        }
+    } else {
+        if (m_skyrimDepthSRV) {
+            m_skyrimDepthSRV->Release();
+            m_skyrimDepthSRV = nullptr;
+        }
+        m_lastDepthTexture = nullptr;
+    }
+
+    // Handle Motion Vector SRV
+    if (data->motionVectorBuffer) {
+        if (data->motionVectorBuffer != m_lastMotionVectorTexture) {
+            if (m_skyrimMotionVectorSRV) {
+                m_skyrimMotionVectorSRV->Release();
+                m_skyrimMotionVectorSRV = nullptr;
+            }
+            m_lastMotionVectorTexture = data->motionVectorBuffer;
+
+            HRESULT hr = m_pd3dDevice->CreateShaderResourceView(data->motionVectorBuffer, nullptr, &m_skyrimMotionVectorSRV);
+            if (FAILED(hr)) {
+                Logger::error("[GamePlug] Failed to create Motion Vector SRV for Skyrim (HR=" + std::to_string(hr) + ")");
+                m_skyrimMotionVectorSRV = nullptr;
+                m_lastMotionVectorTexture = nullptr;
+            } else {
+                Logger::info("[GamePlug] Created Motion Vector SRV for Skyrim");
+            }
+        }
+    } else {
+        if (m_skyrimMotionVectorSRV) {
+            m_skyrimMotionVectorSRV->Release();
+            m_skyrimMotionVectorSRV = nullptr;
+        }
+        m_lastMotionVectorTexture = nullptr;
+    }
+}
+#endif
 
 } // namespace GamePlug

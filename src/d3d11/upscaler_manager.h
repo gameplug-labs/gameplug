@@ -1,6 +1,9 @@
 #pragma once
 #include "framework_export.h"
 #include "upscaler_interface.h"
+#ifdef SKYRIM_AE
+#include "skyrim_bridge_api.h"
+#endif
 #include <d3d11.h>
 #include <memory>
 #include <string>
@@ -53,12 +56,23 @@ public:
     void GetTargetResolution(uint32_t width, uint32_t height, uint32_t& outW, uint32_t& outH);
     float GetScaleFactor() const;
 
+#ifdef SKYRIM_AE
+    // Skyrim Bridge API Support
+    void SetSkyrimData(const GamePlugSkyrimData* data);
+    bool HasSkyrimData() const { return m_hasSkyrimData; }
+    const GamePlugSkyrimData& GetSkyrimData() const { return m_skyrimData; }
+    void SetSkyrimActive(bool active) { m_isSkyrim = active; }
+#endif
+
 private:
     DXUpscalerManager()
         : m_handle(nullptr)
         , m_pInterface(nullptr) {}
 
     void LoadPlugin();
+#ifdef SKYRIM_AE
+    void CleanupSkyrimSRVs();
+#endif
 
     HMODULE m_handle;
     GamePlugUpscalerInterface* m_pInterface;
@@ -75,6 +89,17 @@ private:
     uint32_t m_height = 0;
     bool m_frameUpscaled = false;
     bool m_isShuttingDown = false;
+#ifdef SKYRIM_AE
+    bool m_isSkyrim = false;
+
+    // Skyrim Bridge Data
+    GamePlugSkyrimData m_skyrimData = {};
+    bool m_hasSkyrimData = false;
+    ID3D11ShaderResourceView* m_skyrimDepthSRV = nullptr;
+    ID3D11ShaderResourceView* m_skyrimMotionVectorSRV = nullptr;
+    ID3D11Texture2D* m_lastDepthTexture = nullptr;
+    ID3D11Texture2D* m_lastMotionVectorTexture = nullptr;
+#endif
 };
 
 } // namespace GamePlug

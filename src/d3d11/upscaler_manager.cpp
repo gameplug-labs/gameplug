@@ -103,6 +103,10 @@ void DXUpscalerManager::CleanupPlugin() {
         m_pInterface->OnShutdown();
     }
     DestroyFakeBackBuffer();
+    if (m_gameBackBufferRes) {
+        m_gameBackBufferRes->Release();
+        m_gameBackBufferRes = nullptr;
+    }
     m_pd3dDevice = nullptr;
     m_pd3dDeviceContext = nullptr;
 }
@@ -116,6 +120,19 @@ bool DXUpscalerManager::IsUpscalingEnabled() const {
         if (fields[i].Name && std::string(fields[i].Name) == "Upscaler Type") {
             int type = *(int*)fields[i].Data;
             return type > 0;
+        }
+    }
+    return false;
+}
+
+bool DXUpscalerManager::IsNativeRenderingEnabled() const {
+    if (!m_pInterface || !m_pInterface->GetFields)
+        return false;
+    GamePlugUpscalerInterface::FieldDescriptor* fields = nullptr;
+    int count = m_pInterface->GetFields(&fields);
+    for (int i = 0; i < count; i++) {
+        if (fields[i].Name && std::string(fields[i].Name) == "Native Rendering") {
+            return *(bool*)fields[i].Data;
         }
     }
     return false;
@@ -334,6 +351,17 @@ void DXUpscalerManager::RenderFrameDX11(
     m_height = height;
     UpdateDimensions(width, height);
 
+    if (m_fakeBackBuffer) {
+        D3D11_TEXTURE2D_DESC desc;
+        m_fakeBackBuffer->GetDesc(&desc);
+        if (desc.Width != m_renderWidth || desc.Height != m_renderHeight) {
+            Logger::info("DXUpscalerManager: Dynamic resolution change detected: " + std::to_string(desc.Width) + "x" +
+                         std::to_string(desc.Height) + " -> " + std::to_string(m_renderWidth) + "x" + std::to_string(m_renderHeight));
+            CreateFakeBackBuffer(m_swapChain);
+            sourceSRV = m_fakeBackBufferSRV;
+        }
+    }
+
     m_pInterface->OnRenderFrame((uintptr_t)context, (uint64_t)sourceSRV, (uint64_t)targetRTV, 0, width, height, m_renderWidth,
         m_renderHeight, 0, 0, 0, 0, 0.0f, 0.0f);
 }
@@ -347,6 +375,8 @@ void DXUpscalerManager::CreateFakeBackBuffer(IDXGISwapChain* swapChain) {
         Logger::error("DXUpscalerManager: CreateFakeBackBuffer failed - Device is NULL!");
         return;
     }
+
+    m_swapChain = swapChain;
 
     DXGI_SWAP_CHAIN_DESC sd;
     if (FAILED(swapChain->GetDesc(&sd))) {
@@ -391,9 +421,25 @@ void DXUpscalerManager::CreateFakeBackBuffer(IDXGISwapChain* swapChain) {
         return;
     }
 
+    if (!m_gameBackBufferRes) {
+        SetGameBackBufferRes(m_fakeBackBuffer);
+        Logger::info(
+            "DXUpscalerManager: Initialized game backbuffer resource tracking at: " + std::to_string((uintptr_t)m_gameBackBufferRes));
+    }
+
     hr = m_pd3dDevice->CreateShaderResourceView(m_fakeBackBuffer, nullptr, &m_fakeBackBufferSRV);
     if (FAILED(hr)) {
         Logger::error("DXUpscalerManager: Failed to create SRV for Fake BackBuffer (HR=" + std::to_string(hr) + ")");
+        m_fakeBackBuffer->Release();
+        m_fakeBackBuffer = nullptr;
+        return;
+    }
+
+    hr = m_pd3dDevice->CreateRenderTargetView(m_fakeBackBuffer, nullptr, &m_fakeBackBufferRTV);
+    if (FAILED(hr)) {
+        Logger::error("DXUpscalerManager: Failed to create RTV for Fake BackBuffer (HR=" + std::to_string(hr) + ")");
+        m_fakeBackBufferSRV->Release();
+        m_fakeBackBufferSRV = nullptr;
         m_fakeBackBuffer->Release();
         m_fakeBackBuffer = nullptr;
         return;
@@ -403,6 +449,10 @@ void DXUpscalerManager::CreateFakeBackBuffer(IDXGISwapChain* swapChain) {
 }
 
 void DXUpscalerManager::DestroyFakeBackBuffer() {
+    if (m_fakeBackBufferRTV) {
+        m_fakeBackBufferRTV->Release();
+        m_fakeBackBufferRTV = nullptr;
+    }
     if (m_fakeBackBufferSRV) {
         m_fakeBackBufferSRV->Release();
         m_fakeBackBufferSRV = nullptr;

@@ -11,8 +11,11 @@ PFN_ResizeBuffers g_OriginalResizeBuffers = nullptr;
 PFN_ResizeBuffers1 g_OriginalResizeBuffers1 = nullptr;
 PFN_GetBuffer g_OriginalGetBuffer = nullptr;
 PFN_CreateTexture2D g_OriginalCreateTexture2D = nullptr;
+PFN_CreateRenderTargetView g_OriginalCreateRenderTargetView = nullptr;
 PFN_RSSetViewports g_OriginalRSSetViewports = nullptr;
 PFN_RSSetScissorRects g_OriginalRSSetScissorRects = nullptr;
+PFN_OMSetRenderTargets g_OriginalOMSetRenderTargets = nullptr;
+PFN_ClearRenderTargetView g_OriginalClearRenderTargetView = nullptr;
 PFN_CreateDeferredContext g_OriginalCreateDeferredContext = nullptr;
 PFN_GetImmediateContext g_OriginalGetImmediateContext = nullptr;
 PFN_CreateSwapChain g_OriginalCreateSwapChain = nullptr;
@@ -94,6 +97,9 @@ void InstallDXGIHooks() {
                 void** pDevice11VTable = *(void***)d3d11Device;
                 MH_CreateHook(pDevice11VTable[5], (LPVOID)HookedCreateTexture2D, (LPVOID*)&g_OriginalCreateTexture2D);
                 Logger::info("DX Hooks D3D11: Hook ID3D11Device::CreateTexture2D (IDX 5): MH_OK");
+
+                MH_CreateHook(pDevice11VTable[9], (LPVOID)HookedCreateRenderTargetView, (LPVOID*)&g_OriginalCreateRenderTargetView);
+                Logger::info("DX Hooks D3D11: Hook ID3D11Device::CreateRenderTargetView (IDX 9): MH_OK");
 
                 MH_CreateHook(pDevice11VTable[27], (LPVOID)HookedCreateDeferredContext, (LPVOID*)&g_OriginalCreateDeferredContext);
                 Logger::info("DX Hooks D3D11: Hook ID3D11Device::CreateDeferredContext (IDX 27): MH_OK");

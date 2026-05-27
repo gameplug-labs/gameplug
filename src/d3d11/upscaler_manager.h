@@ -25,7 +25,21 @@ public:
     void DestroyFakeBackBuffer();
     ID3D11Texture2D* GetFakeBackBuffer() { return m_fakeBackBuffer; }
     ID3D11ShaderResourceView* GetFakeBackBufferSRV() { return m_fakeBackBufferSRV; }
+    ID3D11RenderTargetView* GetFakeBackBufferRTV() { return m_fakeBackBufferRTV; }
     ID3D11Device* GetDevice() { return m_pd3dDevice; }
+
+    void SetRealBackBufferRes(ID3D11Resource* res) { m_realBackBufferRes = res; }
+    ID3D11Resource* GetRealBackBufferRes() const { return m_realBackBufferRes; }
+    void SetGameBackBufferRTV(ID3D11RenderTargetView* rtv) { m_gameBackBufferRTV = rtv; }
+    ID3D11RenderTargetView* GetGameBackBufferRTV() const { return m_gameBackBufferRTV; }
+    void SetGameBackBufferRes(ID3D11Resource* res) {
+        if (m_gameBackBufferRes)
+            m_gameBackBufferRes->Release();
+        m_gameBackBufferRes = res;
+        if (m_gameBackBufferRes)
+            m_gameBackBufferRes->AddRef();
+    }
+    ID3D11Resource* GetGameBackBufferRes() const { return m_gameBackBufferRes; }
 
     void RenderUI(float fps, uint32_t width, uint32_t height);
 
@@ -39,6 +53,7 @@ public:
 
     bool IsLoaded() const { return m_handle != nullptr; }
     bool IsUpscalingEnabled() const;
+    bool IsNativeRenderingEnabled() const;
     bool IsShowDebugImageEnabled() const;
     void SetShowDebugImageEnabled(bool enabled);
 
@@ -66,8 +81,13 @@ private:
     // DX11
     ID3D11Device* m_pd3dDevice = nullptr;
     ID3D11DeviceContext* m_pd3dDeviceContext = nullptr;
+    IDXGISwapChain* m_swapChain = nullptr;
     ID3D11Texture2D* m_fakeBackBuffer = nullptr;
     ID3D11ShaderResourceView* m_fakeBackBufferSRV = nullptr;
+    ID3D11RenderTargetView* m_fakeBackBufferRTV = nullptr;
+    ID3D11Resource* m_realBackBufferRes = nullptr;
+    ID3D11RenderTargetView* m_gameBackBufferRTV = nullptr;
+    ID3D11Resource* m_gameBackBufferRes = nullptr;
 
     uint32_t m_renderWidth = 0;
     uint32_t m_renderHeight = 0;

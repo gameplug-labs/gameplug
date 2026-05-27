@@ -26,9 +26,15 @@ typedef HRESULT(STDMETHODCALLTYPE* PFN_GetBuffer)(IDXGISwapChain* pSwapChain, UI
 
 typedef HRESULT(STDMETHODCALLTYPE* PFN_CreateTexture2D)(
     ID3D11Device* pDevice, const D3D11_TEXTURE2D_DESC* pDesc, const D3D11_SUBRESOURCE_DATA* pInitialData, ID3D11Texture2D** ppTexture2D);
+typedef HRESULT(STDMETHODCALLTYPE* PFN_CreateRenderTargetView)(
+    ID3D11Device* pDevice, ID3D11Resource* pResource, const D3D11_RENDER_TARGET_VIEW_DESC* pDesc, ID3D11RenderTargetView** ppRTView);
 
 typedef void(STDMETHODCALLTYPE* PFN_RSSetViewports)(ID3D11DeviceContext* pCtx, UINT NumViewports, const D3D11_VIEWPORT* pViewports);
 typedef void(STDMETHODCALLTYPE* PFN_RSSetScissorRects)(ID3D11DeviceContext* pCtx, UINT NumRects, const D3D11_RECT* pRects);
+typedef void(STDMETHODCALLTYPE* PFN_OMSetRenderTargets)(ID3D11DeviceContext* pCtx, UINT NumViews,
+    ID3D11RenderTargetView* const* ppRenderTargetViews, ID3D11DepthStencilView* pDepthStencilView);
+typedef void(STDMETHODCALLTYPE* PFN_ClearRenderTargetView)(
+    ID3D11DeviceContext* pCtx, ID3D11RenderTargetView* pRenderTargetView, const FLOAT ColorRGBA[4]);
 typedef HRESULT(STDMETHODCALLTYPE* PFN_CreateDeferredContext)(
     ID3D11Device* pDevice, UINT ContextFlags, ID3D11DeviceContext** ppDeferredContext);
 typedef void(STDMETHODCALLTYPE* PFN_GetImmediateContext)(ID3D11Device* pDevice, ID3D11DeviceContext** ppImmediateContext);
@@ -53,8 +59,11 @@ extern PFN_ResizeBuffers g_OriginalResizeBuffers;
 extern PFN_ResizeBuffers1 g_OriginalResizeBuffers1;
 extern PFN_GetBuffer g_OriginalGetBuffer;
 extern PFN_CreateTexture2D g_OriginalCreateTexture2D;
+extern PFN_CreateRenderTargetView g_OriginalCreateRenderTargetView;
 extern PFN_RSSetViewports g_OriginalRSSetViewports;
 extern PFN_RSSetScissorRects g_OriginalRSSetScissorRects;
+extern PFN_OMSetRenderTargets g_OriginalOMSetRenderTargets;
+extern PFN_ClearRenderTargetView g_OriginalClearRenderTargetView;
 extern PFN_CreateDeferredContext g_OriginalCreateDeferredContext;
 extern PFN_GetImmediateContext g_OriginalGetImmediateContext;
 extern PFN_CreateSwapChain g_OriginalCreateSwapChain;
@@ -87,8 +96,14 @@ ULONG STDMETHODCALLTYPE HookedRelease(IUnknown* pUnk);
 bool ShouldOverrideD3D11(const D3D11_TEXTURE2D_DESC& desc);
 HRESULT STDMETHODCALLTYPE HookedCreateTexture2D(
     ID3D11Device* pDevice, const D3D11_TEXTURE2D_DESC* pDesc, const D3D11_SUBRESOURCE_DATA* pInitialData, ID3D11Texture2D** ppTexture2D);
+HRESULT STDMETHODCALLTYPE HookedCreateRenderTargetView(
+    ID3D11Device* pDevice, ID3D11Resource* pResource, const D3D11_RENDER_TARGET_VIEW_DESC* pDesc, ID3D11RenderTargetView** ppRTView);
 void STDMETHODCALLTYPE HookedRSSetViewports(ID3D11DeviceContext* pCtx, UINT NumViewports, const D3D11_VIEWPORT* pViewports);
 void STDMETHODCALLTYPE HookedRSSetScissorRects(ID3D11DeviceContext* pCtx, UINT NumRects, const D3D11_RECT* pRects);
+void STDMETHODCALLTYPE HookedOMSetRenderTargets(ID3D11DeviceContext* pCtx, UINT NumViews,
+    ID3D11RenderTargetView* const* ppRenderTargetViews, ID3D11DepthStencilView* pDepthStencilView);
+void STDMETHODCALLTYPE HookedClearRenderTargetView(
+    ID3D11DeviceContext* pCtx, ID3D11RenderTargetView* pRenderTargetView, const FLOAT ColorRGBA[4]);
 HRESULT STDMETHODCALLTYPE HookedQueryInterface(IUnknown* pUnk, REFIID riid, void** ppvObject);
 HRESULT STDMETHODCALLTYPE HookedPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT Flags);
 HRESULT STDMETHODCALLTYPE HookedPresent1(

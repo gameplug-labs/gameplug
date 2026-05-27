@@ -225,6 +225,14 @@ HRESULT STDMETHODCALLTYPE HookedGetBuffer(IDXGISwapChain* pSwapChain, UINT Buffe
 
     if (Buffer == 0) {
         Logger::info("HookedGetBuffer: Buffer=0 requested.");
+
+        // Track the real back buffer resource address
+        ID3D11Resource* realRes = nullptr;
+        if (SUCCEEDED(g_OriginalGetBuffer(pSwapChain, 0, __uuidof(ID3D11Resource), (void**)&realRes))) {
+            DXUpscalerManager::Get().SetRealBackBufferRes(realRes);
+            realRes->Release();
+        }
+
         if (!DXUpscalerManager::Get().GetDevice()) {
             Logger::info("HookedGetBuffer: Device is NULL, initializing...");
             ID3D11Device* device = nullptr;
@@ -246,9 +254,9 @@ HRESULT STDMETHODCALLTYPE HookedGetBuffer(IDXGISwapChain* pSwapChain, UINT Buffe
             }
         }
 
-        Logger::info("HookedGetBuffer: IsUpscalingEnabled=" + std::to_string(DXUpscalerManager::Get().IsUpscalingEnabled()));
+        Logger::info("HookedGetBuffer: IsNativeRenderingEnabled=" + std::to_string(DXUpscalerManager::Get().IsNativeRenderingEnabled()));
 
-        if (DXUpscalerManager::Get().IsUpscalingEnabled()) {
+        if (!DXUpscalerManager::Get().IsNativeRenderingEnabled()) {
             if (!DXUpscalerManager::Get().GetFakeBackBuffer()) {
                 Logger::info("HookedGetBuffer: Fake BackBuffer is NULL, creating...");
                 DXUpscalerManager::Get().CreateFakeBackBuffer(pSwapChain);

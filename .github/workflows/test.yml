@@ -3,8 +3,12 @@ name: Test Build
 on:
   push:
     branches: [ main, upscaler ]
+    paths:
+      - 'src/**'
   pull_request:
     branches: [ main, upscaler ]
+    paths:
+      - 'src/**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

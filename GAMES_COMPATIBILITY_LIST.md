@@ -8,6 +8,7 @@
 | Resident Evil 4 | d3d12 | dinput8.dll |
 | Resident Evil 5 | d3d9 | dinput8.dll |
 | Resident Evil 6 | d3d9, vulkan | dinput8.dll |
+| Resident Evil Revelations | d3d9 | dinput8.dll |
 | Resident Evil Revelations 2 | d3d9 | dinput8.dll |
 | The Elder Scrolls V: Skyrim - Legendary Edition | d3d9 | dinput8.dll |
 | The Elder Scrolls V: Skyrim Anniversary | d3d11 | dinput8.dll |

@@ -54,3 +54,47 @@ if(BIN_OUTPUT_DIR)
         COMMENT "Copying D3D9 proxy to d3d9/dinput8.dll"
     )
 endif()
+
+# --- Skyrim Specific Target ---
+add_library(dinput8_skyrim SHARED
+    d3d9.cpp
+    d3d9.def
+)
+
+target_include_directories(dinput8_skyrim PRIVATE
+    ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/src/d3d9
+    ${PROJECT_SOURCE_DIR}/src/shared
+    ${PROJECT_SOURCE_DIR}/external/imgui
+    ${PROJECT_SOURCE_DIR}/external/imgui/backends
+)
+
+if(MSVC)
+    target_compile_options(dinput8_skyrim PRIVATE /utf-8 /FS)
+endif()
+
+target_link_libraries(dinput8_skyrim PRIVATE
+    shlwapi
+    framework_skyrim
+    minhook
+    d3d9
+    d3dcompiler
+    dxguid
+)
+
+set_target_properties(dinput8_skyrim PROPERTIES 
+    PREFIX ""
+    SUFFIX ".dll"
+    OUTPUT_NAME "dinput8"
+)
+
+# Deployment for Skyrim
+if(BIN_OUTPUT_DIR)
+    add_custom_command(TARGET dinput8_skyrim POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${BIN_OUTPUT_DIR}/d3d9_skyrim"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different 
+                "$<TARGET_FILE:dinput8_skyrim>" 
+                "${BIN_OUTPUT_DIR}/d3d9_skyrim/dinput8.dll"
+        COMMENT "Copying Skyrim D3D9 proxy to d3d9_skyrim/dinput8.dll"
+    )
+endif()

@@ -98,4 +98,3 @@ if(BIN_OUTPUT_DIR)
         COMMENT "Copying Skyrim D3D9 proxy to d3d9_skyrim/dinput8.dll"
     )
 endif()
-

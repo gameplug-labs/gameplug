@@ -72,6 +72,10 @@ jobs:
           # The file is in bin/x32/d3d9/dinput8.dll
           zip -j assets/d3d9.zip bin/x32/d3d9/dinput8.dll
           
+          # d3d9_skyrim.zip (x32 only)
+          # The file is in bin/x32/d3d9_skyrim/dinput8.dll
+          zip -j assets/d3d9_skyrim.zip bin/x32/d3d9_skyrim/dinput8.dll
+          
           # d3d10.zip (x32 only)
           # The file is in bin/x32/d3d10/dinput8.dll
           zip -j assets/d3d10.zip bin/x32/d3d10/dinput8.dll

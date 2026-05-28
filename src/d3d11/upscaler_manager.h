@@ -3,6 +3,7 @@
 #include "upscaler_interface.h"
 #include <d3d11.h>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 #include <windows.h>
@@ -53,10 +54,28 @@ public:
     void GetTargetResolution(uint32_t width, uint32_t height, uint32_t& outW, uint32_t& outH);
     float GetScaleFactor() const;
 
+    // Depth & Motion Vector tracking
+    void TrackTexture(ID3D11Texture2D* texture, const D3D11_TEXTURE2D_DESC* desc);
+    void ResetTracker();
+
 private:
     DXUpscalerManager()
         : m_handle(nullptr)
-        , m_pInterface(nullptr) {}
+        , m_pInterface(nullptr)
+        , m_depthTexture(nullptr)
+        , m_depthFormat(DXGI_FORMAT_UNKNOWN)
+        , m_depthWidth(0)
+        , m_depthHeight(0)
+        , m_bestDepthScore(-1.0f)
+        , m_mvTexture(nullptr)
+        , m_mvFormat(DXGI_FORMAT_UNKNOWN)
+        , m_mvWidth(0)
+        , m_mvHeight(0)
+        , m_bestMVScore(-1.0f)
+        , m_jitterIndex(0)
+        , m_debugPreviewIndex(0)
+        , m_depthSRV(nullptr)
+        , m_mvSRV(nullptr) {}
 
     void LoadPlugin();
 
@@ -75,6 +94,26 @@ private:
     uint32_t m_height = 0;
     bool m_frameUpscaled = false;
     bool m_isShuttingDown = false;
+
+    // Depth & Motion Vector tracked resources
+    ID3D11Texture2D* m_depthTexture;
+    DXGI_FORMAT m_depthFormat;
+    uint32_t m_depthWidth;
+    uint32_t m_depthHeight;
+    float m_bestDepthScore;
+
+    ID3D11Texture2D* m_mvTexture;
+    DXGI_FORMAT m_mvFormat;
+    uint32_t m_mvWidth;
+    uint32_t m_mvHeight;
+    float m_bestMVScore;
+
+    int m_debugPreviewIndex;
+    ID3D11ShaderResourceView* m_depthSRV;
+    ID3D11ShaderResourceView* m_mvSRV;
+
+    std::mutex m_trackerMtx;
+    uint32_t m_jitterIndex;
 };
 
 } // namespace GamePlug

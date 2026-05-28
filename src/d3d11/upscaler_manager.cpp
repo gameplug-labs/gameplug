@@ -585,11 +585,17 @@ void DXUpscalerManager::GetTargetResolution(uint32_t width, uint32_t height, uin
 
         // Check Native Rendering first
         for (int i = 0; i < count; i++) {
-            if (fields[i].Name && std::string(fields[i].Name) == "Native Rendering") {
-                if (*(bool*)fields[i].Data) {
-                    return;
+            if (fields[i].Name) {
+                std::string name(fields[i].Name);
+
+                if (name == "Native AA" || name == "Native Rendering" || name == "DLAA") {
+
+                    if (*(bool*)fields[i].Data) {
+                        return;
+                    }
+
+                    break;
                 }
-                break;
             }
         }
 

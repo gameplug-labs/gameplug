@@ -328,9 +328,6 @@ void OverlayRenderer::NewFrame() {
     }
     m_showKeyWasPressed = keyCurrentlyPressed;
 
-    if (!m_visible)
-        return;
-
     auto currentTime = std::chrono::steady_clock::now();
     float deltaTime = std::chrono::duration<float, std::ratio<1, 1>>(currentTime - m_lastTime).count();
     m_lastTime = currentTime;
@@ -341,6 +338,29 @@ void OverlayRenderer::NewFrame() {
 
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplWin32_NewFrame();
+
+    if (m_visible && m_hWnd) {
+        POINT cursorPos;
+        if (GetCursorPos(&cursorPos)) {
+            ScreenToClient(m_hWnd, &cursorPos);
+            io.AddMousePosEvent((float)cursorPos.x, (float)cursorPos.y);
+        }
+        // Poll button state and feed it through the event queue
+        io.AddMouseButtonEvent(0, (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0);
+        io.AddMouseButtonEvent(1, (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0);
+        io.AddMouseButtonEvent(2, (GetAsyncKeyState(VK_MBUTTON) & 0x8000) != 0);
+        // Draw ImGui's own cursor on top – mirrors Community Shaders behaviour.
+        // The game cursor can be hidden in certain states (in-game, menus with
+        // hardware cursor hidden), so ImGui's software cursor is more reliable.
+        io.MouseDrawCursor = true;
+    } else {
+        io.MouseDrawCursor = false;
+    }
+
+    if (!m_visible) {
+        io.ClearInputKeys();
+    }
+
     ImGui::NewFrame();
 }
 

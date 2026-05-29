@@ -481,90 +481,90 @@ void DXUpscalerManager::RenderUI(float fps, uint32_t width, uint32_t height) {
         if (m_pInterface->OnImGuiRender)
             m_pInterface->OnImGuiRender();
 
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
+        // ImGui::Spacing();
+        // ImGui::Separator();
+        // ImGui::Spacing();
 
-        ImGui::TextColored(ImVec4(0.0f, 0.9f, 1.0f, 1.0f), "[ DX SYSTEM ACTIVE ]");
-        ImGui::SameLine();
-        float availW = ImGui::GetContentRegionAvail().x;
-        float textW = ImGui::CalcTextSize("120 FPS").x;
-        if (availW > textW)
-            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + availW - textW);
-        ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.4f, 1.0f), "%.0f FPS", fps);
+        // ImGui::TextColored(ImVec4(0.0f, 0.9f, 1.0f, 1.0f), "[ DX SYSTEM ACTIVE ]");
+        // ImGui::SameLine();
+        // float availW = ImGui::GetContentRegionAvail().x;
+        // float textW = ImGui::CalcTextSize("120 FPS").x;
+        // if (availW > textW)
+        //     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + availW - textW);
+        // ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.4f, 1.0f), "%.0f FPS", fps);
 
-        ImGui::TextDisabled("PIPELINE RESOLUTION:");
-        ImGui::Text("  Target: %d x %d", width, height);
-        ImGui::Text("  Render: %d x %d", m_renderWidth, m_renderHeight);
-        float scale = (float)width / (float)m_renderWidth;
-        ImGui::SameLine();
-        ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "(%.2fx)", scale);
+        // ImGui::TextDisabled("PIPELINE RESOLUTION:");
+        // ImGui::Text("  Target: %d x %d", width, height);
+        // ImGui::Text("  Render: %d x %d", m_renderWidth, m_renderHeight);
+        // float scale = (float)width / (float)m_renderWidth;
+        // ImGui::SameLine();
+        // ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "(%.2fx)", scale);
     }
 
-    if (IsShowDebugImageEnabled()) {
-        bool show = true;
-        ImGui::Begin("Upscaler Debug View", &show);
-        if (!show) {
-            SetShowDebugImageEnabled(false);
-        }
+    // if (IsShowDebugImageEnabled()) {
+    //     bool show = true;
+    //     ImGui::Begin("Upscaler Debug View", &show);
+    //     if (!show) {
+    //         SetShowDebugImageEnabled(false);
+    //     }
 
-        const char* debugItems[] = {"Source (Fake Back Buffer)", "Depth Buffer", "Motion Vectors"};
-        ImGui::Combo("Preview Target", &m_debugPreviewIndex, debugItems, IM_ARRAYSIZE(debugItems));
+    //     const char* debugItems[] = {"Source (Fake Back Buffer)", "Depth Buffer", "Motion Vectors"};
+    //     ImGui::Combo("Preview Target", &m_debugPreviewIndex, debugItems, IM_ARRAYSIZE(debugItems));
 
-        uint32_t dw = 0;
-        uint32_t dh = 0;
-        ID3D11ShaderResourceView* debugSRV = nullptr;
-        std::string targetName = "";
+    //     uint32_t dw = 0;
+    //     uint32_t dh = 0;
+    //     ID3D11ShaderResourceView* debugSRV = nullptr;
+    //     std::string targetName = "";
 
-        {
-            std::lock_guard<std::mutex> lock(m_trackerMtx);
-            if (m_debugPreviewIndex == 0) {
-                dw = m_renderWidth;
-                dh = m_renderHeight;
-                debugSRV = m_fakeBackBufferSRV;
-                targetName = "Fake Back Buffer";
-            } else if (m_debugPreviewIndex == 1) {
-                dw = m_depthWidth;
-                dh = m_depthHeight;
-                debugSRV = m_depthSRV;
-                targetName = "Depth Buffer";
-            } else if (m_debugPreviewIndex == 2) {
-                dw = m_mvWidth;
-                dh = m_mvHeight;
-                debugSRV = m_mvSRV;
-                targetName = "Motion Vectors";
-            }
-        }
+    //     {
+    //         std::lock_guard<std::mutex> lock(m_trackerMtx);
+    //         if (m_debugPreviewIndex == 0) {
+    //             dw = m_renderWidth;
+    //             dh = m_renderHeight;
+    //             debugSRV = m_fakeBackBufferSRV;
+    //             targetName = "Fake Back Buffer";
+    //         } else if (m_debugPreviewIndex == 1) {
+    //             dw = m_depthWidth;
+    //             dh = m_depthHeight;
+    //             debugSRV = m_depthSRV;
+    //             targetName = "Depth Buffer";
+    //         } else if (m_debugPreviewIndex == 2) {
+    //             dw = m_mvWidth;
+    //             dh = m_mvHeight;
+    //             debugSRV = m_mvSRV;
+    //             targetName = "Motion Vectors";
+    //         }
+    //     }
 
-        if (debugSRV && dw > 0 && dh > 0) {
-            ImGui::Text("%s Resource: %u x %u", targetName.c_str(), dw, dh);
+    //     if (debugSRV && dw > 0 && dh > 0) {
+    //         ImGui::Text("%s Resource: %u x %u", targetName.c_str(), dw, dh);
 
-            float windowWidth = ImGui::GetContentRegionAvail().x;
-            float windowHeight = ImGui::GetContentRegionAvail().y - 30.0f;
-            float aspect = (float)dh / (float)dw;
+    //         float windowWidth = ImGui::GetContentRegionAvail().x;
+    //         float windowHeight = ImGui::GetContentRegionAvail().y - 30.0f;
+    //         float aspect = (float)dh / (float)dw;
 
-            float imgWidth = windowWidth;
-            float imgHeight = windowWidth * aspect;
+    //         float imgWidth = windowWidth;
+    //         float imgHeight = windowWidth * aspect;
 
-            if (imgHeight > windowHeight) {
-                imgHeight = windowHeight;
-                imgWidth = windowHeight / aspect;
-            }
+    //         if (imgHeight > windowHeight) {
+    //             imgHeight = windowHeight;
+    //             imgWidth = windowHeight / aspect;
+    //         }
 
-            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (windowWidth - imgWidth) * 0.5f);
-            ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (windowHeight - imgHeight) * 0.5f);
+    //         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (windowWidth - imgWidth) * 0.5f);
+    //         ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (windowHeight - imgHeight) * 0.5f);
 
-            ImGui::Image((ImTextureID)debugSRV, ImVec2(imgWidth, imgHeight));
-        } else {
-            ImGui::Text("%s is not available (or cannot be bound as SRV).", targetName.c_str());
-        }
+    //         ImGui::Image((ImTextureID)debugSRV, ImVec2(imgWidth, imgHeight));
+    //     } else {
+    //         ImGui::Text("%s is not available (or cannot be bound as SRV).", targetName.c_str());
+    //     }
 
-        ImGui::SetCursorPosY(ImGui::GetWindowHeight() - 25.0f);
-        if (ImGui::Button("Close")) {
-            SetShowDebugImageEnabled(false);
-        }
-        ImGui::End();
-    }
+    //     ImGui::SetCursorPosY(ImGui::GetWindowHeight() - 25.0f);
+    //     if (ImGui::Button("Close")) {
+    //         SetShowDebugImageEnabled(false);
+    //     }
+    //     ImGui::End();
+    // }
 }
 
 void DXUpscalerManager::UpdateDimensions(uint32_t width, uint32_t height) {

@@ -57,6 +57,11 @@ public:
     // Depth & Motion Vector tracking
     void TrackTexture(ID3D11Texture2D* texture, const D3D11_TEXTURE2D_DESC* desc);
     void ResetTracker();
+    void RecordDepthClearValue(bool isInverted);
+    bool SetPluginFieldBool(const std::string& name, bool value);
+    bool SetPluginFieldFloat(const std::string& name, float value);
+    void ScanProjectionMatrix(ID3D11DeviceContext* context);
+    bool IsValidProjectionMatrix(const float* m, float& outFovY, float& outNear, float& outFar, bool& outInverted);
 
 private:
     DXUpscalerManager()
@@ -75,7 +80,16 @@ private:
         , m_jitterIndex(0)
         , m_debugPreviewIndex(0)
         , m_depthSRV(nullptr)
-        , m_mvSRV(nullptr) {}
+        , m_mvSRV(nullptr)
+        , m_detectedInvertedDepth(false)
+        , m_invertedDepthConfidence(0)
+        , m_detectedHDR(false)
+        , m_hdrConfidence(0)
+        , m_projScanCounter(0)
+        , m_cameraNear(0.1f)
+        , m_cameraFar(1000.0f)
+        , m_cameraFov(60.0f)
+        , m_viewSpaceToMetersFactor(1.0f) {}
 
     void LoadPlugin();
 
@@ -114,6 +128,17 @@ private:
 
     std::mutex m_trackerMtx;
     uint32_t m_jitterIndex;
+
+    bool m_detectedInvertedDepth;
+    int m_invertedDepthConfidence;
+    bool m_detectedHDR;
+    int m_hdrConfidence;
+    uint32_t m_projScanCounter;
+
+    float m_cameraNear;
+    float m_cameraFar;
+    float m_cameraFov;
+    float m_viewSpaceToMetersFactor;
 };
 
 } // namespace GamePlug

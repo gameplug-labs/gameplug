@@ -74,6 +74,7 @@ static bool IsFakeBackBufferBound(ID3D11DeviceContext* pCtx) {
 static std::unordered_map<void**, PFN_RSSetViewports> g_OriginalRSSetViewportsMap;
 static std::unordered_map<void**, PFN_RSSetScissorRects> g_OriginalRSSetScissorRectsMap;
 static std::unordered_map<void**, PFN_OMSetRenderTargets> g_OriginalOMSetRenderTargetsMap;
+static std::unordered_map<void**, PFN_ClearDepthStencilView> g_OriginalClearDepthStencilViewMap;
 static std::unordered_map<void**, PFN_QueryInterface> g_OriginalContextQIMap;
 
 void STDMETHODCALLTYPE HookedRSSetViewports(ID3D11DeviceContext* pCtx, UINT NumViewports, const D3D11_VIEWPORT* pViewports) {
@@ -272,6 +273,9 @@ void PatchDeviceContextVTable(ID3D11DeviceContext* context) {
     if (g_OriginalOMSetRenderTargetsMap.count(pVTable) == 0) {
         g_OriginalOMSetRenderTargetsMap[pVTable] = (PFN_OMSetRenderTargets)pVTable[33];
     }
+    if (g_OriginalClearDepthStencilViewMap.count(pVTable) == 0) {
+        g_OriginalClearDepthStencilViewMap[pVTable] = (PFN_ClearDepthStencilView)pVTable[53];
+    }
     if (g_OriginalContextQIMap.count(pVTable) == 0) {
         g_OriginalContextQIMap[pVTable] = (PFN_QueryInterface)pVTable[0];
     }
@@ -286,6 +290,9 @@ void PatchDeviceContextVTable(ID3D11DeviceContext* context) {
     if (!g_OriginalOMSetRenderTargets) {
         g_OriginalOMSetRenderTargets = (PFN_OMSetRenderTargets)pVTable[33];
     }
+    if (!g_OriginalClearDepthStencilView) {
+        g_OriginalClearDepthStencilView = (PFN_ClearDepthStencilView)pVTable[53];
+    }
 
     DWORD old;
     if (VirtualProtect(pVTable, 128 * sizeof(void*), PAGE_READWRITE, &old)) {
@@ -293,6 +300,7 @@ void PatchDeviceContextVTable(ID3D11DeviceContext* context) {
         pVTable[33] = (void*)HookedOMSetRenderTargets;
         pVTable[44] = (void*)HookedRSSetViewports;
         pVTable[45] = (void*)HookedRSSetScissorRects;
+        pVTable[53] = (void*)HookedClearDepthStencilView;
         VirtualProtect(pVTable, 128 * sizeof(void*), old, &old);
         Logger::info("DX Hooks D3D11: Patched DeviceContext VTable (" + std::to_string((uintptr_t)pVTable) + ")");
     } else {
@@ -670,6 +678,44 @@ void STDMETHODCALLTYPE HookedOMSetRenderTargets(ID3D11DeviceContext* pCtx, UINT 
 
     if (originalFn) {
         originalFn(pCtx, NumViews, ppRenderTargetViews, pDepthStencilView);
+    }
+}
+
+void STDMETHODCALLTYPE HookedClearDepthStencilView(
+    ID3D11DeviceContext* pCtx, ID3D11DepthStencilView* pDepthStencilView, UINT ClearFlags, FLOAT Depth, UINT8 Stencil) {
+    PFN_ClearDepthStencilView originalFn = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_HookMtx);
+        if (pCtx) {
+            void** pVTable = *(void***)pCtx;
+            auto it = g_OriginalClearDepthStencilViewMap.find(pVTable);
+            if (it != g_OriginalClearDepthStencilViewMap.end()) {
+                originalFn = it->second;
+            }
+        }
+    }
+    if (!originalFn) {
+        originalFn = g_OriginalClearDepthStencilView;
+    }
+
+    if (g_InHook) {
+        if (originalFn) {
+            originalFn(pCtx, pDepthStencilView, ClearFlags, Depth, Stencil);
+        }
+        return;
+    }
+    ScopedRecursionGuard guard;
+
+    if (ClearFlags & D3D11_CLEAR_DEPTH) {
+        // Standard depth is usually cleared to 1.0, inverted depth is cleared to 0.0
+        bool isInverted = (Depth < 0.5f);
+        Logger::info("DXUpscalerManager: Check depth detect " + std::string(isInverted ? "true" : "false") +
+                     " Depth: " + std::to_string(Depth) + " Stencil: " + std::to_string(Stencil));
+        DXUpscalerManager::Get().RecordDepthClearValue(isInverted);
+    }
+
+    if (originalFn) {
+        originalFn(pCtx, pDepthStencilView, ClearFlags, Depth, Stencil);
     }
 }
 

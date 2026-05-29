@@ -3,6 +3,7 @@
 #include "imgui.h"
 #include "logger.h"
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <sstream>
 #include <vector>
@@ -430,6 +431,11 @@ void DXUpscalerManager::RenderUI(float fps, uint32_t width, uint32_t height) {
                         }
                     }
 
+                    if (f.Name && (std::string(f.Name) == "Camera Near" || std::string(f.Name) == "Camera Far" ||
+                                      std::string(f.Name) == "Camera FOV" || std::string(f.Name) == "Meters Factor")) {
+                        continue;
+                    }
+
                     ImGui::PushID(f.Name);
                     bool changed = false;
                     switch (f.Type) {
@@ -633,11 +639,68 @@ void DXUpscalerManager::RenderFrameDX11(
         return;
     }
 
+    // HDR autodetection
+    bool isHDR = false;
+    if (sourceSRV) {
+        ID3D11Resource* srcRes = nullptr;
+        sourceSRV->GetResource(&srcRes);
+        if (srcRes) {
+            ID3D11Texture2D* srcTex = nullptr;
+            if (SUCCEEDED(srcRes->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&srcTex))) {
+                D3D11_TEXTURE2D_DESC srcDesc;
+                srcTex->GetDesc(&srcDesc);
+                if (srcDesc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT || srcDesc.Format == DXGI_FORMAT_R32G32B32A32_FLOAT ||
+                    srcDesc.Format == DXGI_FORMAT_R11G11B10_FLOAT || srcDesc.Format == DXGI_FORMAT_R10G10B10A2_UNORM) {
+                    isHDR = true;
+                }
+                srcTex->Release();
+            }
+            srcRes->Release();
+        }
+    }
+    if (targetRTV && !isHDR) {
+        ID3D11Resource* dstRes = nullptr;
+        targetRTV->GetResource(&dstRes);
+        if (dstRes) {
+            ID3D11Texture2D* dstTex = nullptr;
+            if (SUCCEEDED(dstRes->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&dstTex))) {
+                D3D11_TEXTURE2D_DESC dstDesc;
+                dstTex->GetDesc(&dstDesc);
+                if (dstDesc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT || dstDesc.Format == DXGI_FORMAT_R32G32B32A32_FLOAT ||
+                    dstDesc.Format == DXGI_FORMAT_R11G11B10_FLOAT || dstDesc.Format == DXGI_FORMAT_R10G10B10A2_UNORM) {
+                    isHDR = true;
+                    Logger::info("DXUpscalerManager: Check HDR detect " + std::string(isHDR ? "true" : "false"));
+                }
+                Logger::info("DXUpscalerManager: Check HDR detect " + std::string(isHDR ? "true" : "false"));
+                dstTex->Release();
+            }
+            dstRes->Release();
+        }
+    }
+
+    if (isHDR == m_detectedHDR) {
+        if (m_hdrConfidence < 10) {
+            m_hdrConfidence++;
+            if (m_hdrConfidence == 10) {
+                Logger::info("DXUpscalerManager: HDR state stabilized to: " + std::string(isHDR ? "true" : "false"));
+            }
+        }
+    } else {
+        m_detectedHDR = isHDR;
+        m_hdrConfidence = 1;
+    }
+
     Logger::warn("FSR EXECUTED FRAME");
     Logger::info("DXUpscalerManager: Calling OnRenderFrame (DX11)");
 
     m_frameUpscaled = true;
     UpdateDimensions(width, height);
+
+    m_projScanCounter++;
+    if (m_projScanCounter >= 120 || m_projScanCounter == 1) {
+        m_projScanCounter = 1;
+        ScanProjectionMatrix(context);
+    }
 
     static uint32_t frameCount = 0;
     static uint32_t lastW = 0, lastH = 0;
@@ -690,7 +753,8 @@ void DXUpscalerManager::RenderFrameDX11(
     }
 
     m_pInterface->OnRenderFrame((uintptr_t)context, (uint64_t)sourceSRV, (uint64_t)targetRTV, 0, width, height, m_renderWidth,
-        m_renderHeight, depthImage, depthFormatVal, mvImage, mvFormatVal, jitterX, jitterY);
+        m_renderHeight, depthImage, depthFormatVal, mvImage, mvFormatVal, jitterX, jitterY, m_cameraNear, m_cameraFar, m_cameraFov,
+        m_viewSpaceToMetersFactor, m_detectedInvertedDepth, m_detectedHDR);
 
     lastW = width;
     lastH = height;
@@ -916,6 +980,288 @@ void DXUpscalerManager::SetShowDebugImageEnabled(bool enabled) {
                 m_pInterface->OnFieldsChanged();
             }
             break;
+        }
+    }
+}
+
+void DXUpscalerManager::RecordDepthClearValue(bool isInverted) {
+    if (isInverted == m_detectedInvertedDepth) {
+        if (m_invertedDepthConfidence < 10) {
+            m_invertedDepthConfidence++;
+            if (m_invertedDepthConfidence == 10) {
+                Logger::info("DXUpscalerManager: Inverted Depth state stabilized to: " + std::string(isInverted ? "true" : "false"));
+            }
+        }
+    } else {
+        m_detectedInvertedDepth = isInverted;
+        m_invertedDepthConfidence = 1;
+    }
+}
+
+bool DXUpscalerManager::SetPluginFieldBool(const std::string& name, bool value) {
+    if (!m_pInterface || !m_pInterface->GetFields)
+        return false;
+    GamePlugUpscalerInterface::FieldDescriptor* fields = nullptr;
+    int count = m_pInterface->GetFields(&fields);
+    for (int i = 0; i < count; i++) {
+        if (fields[i].Name && std::string(fields[i].Name) == name) {
+            bool* pBool = (bool*)fields[i].Data;
+            if (*pBool != value) {
+                *pBool = value;
+                if (m_pInterface->OnFieldsChanged) {
+                    m_pInterface->OnFieldsChanged();
+                }
+                return true;
+            }
+            break;
+        }
+    }
+    return false;
+}
+
+bool DXUpscalerManager::SetPluginFieldFloat(const std::string& name, float value) {
+    if (!m_pInterface || !m_pInterface->GetFields)
+        return false;
+    GamePlugUpscalerInterface::FieldDescriptor* fields = nullptr;
+    int count = m_pInterface->GetFields(&fields);
+    for (int i = 0; i < count; i++) {
+        if (fields[i].Name && std::string(fields[i].Name) == name) {
+            float* pFloat = (float*)fields[i].Data;
+            if (std::abs(*pFloat - value) > 0.001f) {
+                *pFloat = value;
+                if (m_pInterface->OnFieldsChanged) {
+                    m_pInterface->OnFieldsChanged();
+                }
+                return true;
+            }
+            break;
+        }
+    }
+    return false;
+}
+
+bool DXUpscalerManager::IsValidProjectionMatrix(const float* m, float& outFovY, float& outNear, float& outFar, bool& outInverted) {
+    auto is_zero = [](float f) { return std::abs(f) < 1e-4f; };
+
+    bool rowMajor = false;
+    bool colMajor = false;
+
+    if (std::abs(m[11] - 1.0f) < 1e-3f || std::abs(m[11] + 1.0f) < 1e-3f) {
+        rowMajor = true;
+    } else if (std::abs(m[14] - 1.0f) < 1e-3f || std::abs(m[14] + 1.0f) < 1e-3f) {
+        colMajor = true;
+    }
+
+    if (!rowMajor && !colMajor)
+        return false;
+
+    float A, B, y, x;
+
+    if (rowMajor) {
+        // For row-major projection:
+        // m[2] (_13) and m[6] (_23) are jitter / off-center offsets and can be non-zero (within limit, e.g. < 0.1f).
+        // The other elements m[1], m[3], m[4], m[7], m[8], m[9], m[12], m[13], m[15] must be zero.
+        if (!is_zero(m[1]) || !is_zero(m[3]) || !is_zero(m[4]) || !is_zero(m[7]) || !is_zero(m[8]) || !is_zero(m[9]) || !is_zero(m[12]) ||
+            !is_zero(m[13]) || !is_zero(m[15])) {
+            return false;
+        }
+        if (std::abs(m[2]) > 0.1f || std::abs(m[6]) > 0.1f)
+            return false;
+
+        x = m[0];
+        y = m[5];
+        A = m[10];
+        B = m[14];
+    } else {
+        // For column-major projection:
+        // m[2] (_31) and m[6] (_32) are jitter / off-center offsets and can be non-zero (within limit, e.g. < 0.1f).
+        // The other elements m[1], m[4], m[3], m[7], m[8], m[9], m[12], m[13], m[15] must be zero.
+        if (!is_zero(m[1]) || !is_zero(m[4]) || !is_zero(m[3]) || !is_zero(m[7]) || !is_zero(m[8]) || !is_zero(m[9]) || !is_zero(m[12]) ||
+            !is_zero(m[13]) || !is_zero(m[15])) {
+            return false;
+        }
+        if (std::abs(m[2]) > 0.1f || std::abs(m[6]) > 0.1f)
+            return false;
+
+        x = m[0];
+        y = m[5];
+        A = m[10];
+        B = m[11];
+    }
+
+    if (x <= 0.05f || x > 20.0f || y <= 0.05f || y > 20.0f)
+        return false;
+
+    outFovY = 2.0f * std::atanf(1.0f / y);
+    // Restrict vertical FOV to normal human perspective range [5 deg, 115 deg] -> [0.08 rad, 2.01 rad].
+    // This avoids picking up shadow/reflection maps, while still allowing the main menu camera and sniper zoom.
+    if (outFovY < 0.08f || outFovY > 2.01f)
+        return false;
+
+    // Filter out square (shadow/reflection) matrices where aspect ratio is exactly 1.0
+    float aspect = y / x;
+    if (std::abs(aspect - 1.0f) < 0.01f)
+        return false;
+
+    float near_std = -B / A;
+    float far_std = A * near_std / (A - 1.0f);
+
+    float near_inv = B / (A - 1.0f);
+    float far_inv = B / A;
+
+    if (near_std > 0.0f && far_std > near_std && std::abs(A - 1.0f) > 1e-4f) {
+        outNear = near_std;
+        outFar = far_std;
+        outInverted = false;
+        return true;
+    }
+
+    if (near_inv > 0.0f && far_inv > near_inv && std::abs(A) > 1e-4f) {
+        outNear = near_inv;
+        outFar = far_inv;
+        outInverted = true;
+        return true;
+    }
+
+    if (std::abs(A) < 1e-4f && B > 0.0f) {
+        outNear = B;
+        outFar = 100000.0f;
+        outInverted = true;
+        return true;
+    }
+    if (std::abs(A - 1.0f) < 1e-4f && B < 0.0f) {
+        outNear = -B;
+        outFar = 100000.0f;
+        outInverted = false;
+        return true;
+    }
+
+    return false;
+}
+
+struct CandidateMatrix {
+    UINT slot;
+    UINT offset;
+    bool isRow;
+    float m[16];
+};
+
+void DXUpscalerManager::ScanProjectionMatrix(ID3D11DeviceContext* context) {
+    if (!m_pd3dDevice)
+        return;
+
+    // Autodetect viewSpaceToMetersFactor from executable name
+    static bool metersFactorSet = false;
+    if (!metersFactorSet) {
+        float factor = 1.0f;
+        char exePath[MAX_PATH];
+        GetModuleFileNameA(NULL, exePath, MAX_PATH);
+        std::string exeName = std::filesystem::path(exePath).filename().string();
+        std::transform(exeName.begin(), exeName.end(), exeName.begin(), ::tolower);
+
+        if (exeName.find("skyrim") != std::string::npos || exeName.find("tesv") != std::string::npos ||
+            exeName.find("fallout4") != std::string::npos) {
+            factor = 1.0f / 70.0f;
+            Logger::info("DXUpscalerManager: Detected Skyrim/Fallout engine. Setting Meters Factor to " + std::to_string(factor));
+        } else {
+            Logger::info("DXUpscalerManager: Defaulting Meters Factor to " + std::to_string(factor));
+        }
+
+        m_viewSpaceToMetersFactor = factor;
+        metersFactorSet = true;
+    }
+
+    std::vector<CandidateMatrix> candidates;
+
+    for (UINT slot = 0; slot < 14; ++slot) {
+        ID3D11Buffer* cb = nullptr;
+        context->VSGetConstantBuffers(slot, 1, &cb);
+        if (!cb)
+            continue;
+
+        D3D11_BUFFER_DESC desc;
+        cb->GetDesc(&desc);
+
+        if (desc.ByteWidth >= 64 && desc.ByteWidth <= 4096) {
+            ID3D11Buffer* staging = nullptr;
+            D3D11_BUFFER_DESC stagingDesc = {};
+            stagingDesc.ByteWidth = desc.ByteWidth;
+            stagingDesc.Usage = D3D11_USAGE_STAGING;
+            stagingDesc.BindFlags = 0;
+            stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+            stagingDesc.MiscFlags = 0;
+            stagingDesc.StructureByteStride = 0;
+
+            if (SUCCEEDED(m_pd3dDevice->CreateBuffer(&stagingDesc, nullptr, &staging))) {
+                context->CopyResource(staging, cb);
+                D3D11_MAPPED_SUBRESOURCE mapped;
+                if (SUCCEEDED(context->Map(staging, 0, D3D11_MAP_READ, 0, &mapped))) {
+                    float* data = (float*)mapped.pData;
+                    UINT numFloats = desc.ByteWidth / 4;
+
+                    for (UINT offset = 0; offset + 16 <= numFloats; offset += 4) {
+                        float fovY = 0.0f, nearP = 0.0f, farP = 0.0f;
+                        bool inverted = false;
+                        if (IsValidProjectionMatrix(&data[offset], fovY, nearP, farP, inverted)) {
+                            float fovDegrees = fovY * (180.0f / 3.14159265f);
+
+                            std::string matrixStr = "";
+                            const float* m = &data[offset];
+                            for (int i = 0; i < 16; ++i) {
+                                matrixStr += std::to_string(m[i]) + (i == 15 ? "" : ", ");
+                            }
+
+                            Logger::info("DXUpscalerManager: Detected Projection Matrix in Slot " + std::to_string(slot) + ": Near=" +
+                                         std::to_string(nearP) + ", Far=" + std::to_string(farP) + ", FOV=" + std::to_string(fovDegrees) +
+                                         ", Inverted=" + std::to_string(inverted) + ", Raw: [" + matrixStr + "]");
+
+                            m_cameraNear = nearP;
+                            m_cameraFar = farP;
+                            m_cameraFov = fovDegrees;
+                            RecordDepthClearValue(inverted);
+
+                            context->Unmap(staging, 0);
+                            staging->Release();
+                            cb->Release();
+                            return;
+                        } else {
+                            const float* m = &data[offset];
+                            bool isRow = false, isCol = false;
+                            if (std::abs(m[11] - 1.0f) < 1e-3f || std::abs(m[11] + 1.0f) < 1e-3f)
+                                isRow = true;
+                            else if (std::abs(m[14] - 1.0f) < 1e-3f || std::abs(m[14] + 1.0f) < 1e-3f)
+                                isCol = true;
+
+                            if ((isRow || isCol) && candidates.size() < 5) {
+                                CandidateMatrix cand;
+                                cand.slot = slot;
+                                cand.offset = offset;
+                                cand.isRow = isRow;
+                                for (int i = 0; i < 16; ++i) {
+                                    cand.m[i] = m[i];
+                                }
+                                candidates.push_back(cand);
+                            }
+                        }
+                    }
+                    context->Unmap(staging, 0);
+                }
+                staging->Release();
+            }
+        }
+        cb->Release();
+    }
+
+    if (!candidates.empty()) {
+        Logger::info(
+            "DXUpscalerManager: Failed to detect projection matrix. Found " + std::to_string(candidates.size()) + " close candidates:");
+        for (const auto& cand : candidates) {
+            std::string matrixStr = "";
+            for (int i = 0; i < 16; ++i) {
+                matrixStr += std::to_string(cand.m[i]) + (i == 15 ? "" : ", ");
+            }
+            Logger::info("  Candidate (Slot=" + std::to_string(cand.slot) + ", Offset=" + std::to_string(cand.offset) +
+                         ", RowMajor=" + std::to_string(cand.isRow) + "): [" + matrixStr + "]");
         }
     }
 }

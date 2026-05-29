@@ -14,6 +14,7 @@ PFN_CreateTexture2D g_OriginalCreateTexture2D = nullptr;
 PFN_RSSetViewports g_OriginalRSSetViewports = nullptr;
 PFN_RSSetScissorRects g_OriginalRSSetScissorRects = nullptr;
 PFN_OMSetRenderTargets g_OriginalOMSetRenderTargets = nullptr;
+PFN_ClearDepthStencilView g_OriginalClearDepthStencilView = nullptr;
 PFN_CreateDeferredContext g_OriginalCreateDeferredContext = nullptr;
 PFN_GetImmediateContext g_OriginalGetImmediateContext = nullptr;
 PFN_CreateSwapChain g_OriginalCreateSwapChain = nullptr;

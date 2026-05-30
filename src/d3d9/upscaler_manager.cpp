@@ -102,8 +102,12 @@ void UpscalerManager::RenderFrame(void* device, void* source, void* target, uint
 
     m_pInterface->OnRenderFrame(
         (uintptr_t)device, (uint64_t)source, (uint64_t)target, 0,
-        w, h, rw, rh, 0, 0, 0, 0, 0.0f, 0.0f
+        w, h, rw, rh, 0, 0, 0, 0,
+        0.0f, 0.0f, // jitterX, jitterY
+        0.0f, 0.0f, 0.0f, 0.0f, // cameraNear, cameraFar, cameraFov, viewSpaceToMetersFactor
+        false, false // invertedDepth, hdr
     );
+
 }
 
 bool UpscalerManager::IsUpscalingEnabled() const {

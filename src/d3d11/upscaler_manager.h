@@ -6,6 +6,7 @@
 #endif
 #include <d3d11.h>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 #include <windows.h>
@@ -63,11 +64,42 @@ public:
     const GamePlugSkyrimData& GetSkyrimData() const { return m_skyrimData; }
     void SetSkyrimActive(bool active) { m_isSkyrim = active; }
 #endif
+    // Depth & Motion Vector tracking
+    void TrackTexture(ID3D11Texture2D* texture, const D3D11_TEXTURE2D_DESC* desc);
+    void ResetTracker();
+    void RecordDepthClearValue(bool isInverted);
+    bool SetPluginFieldBool(const std::string& name, bool value);
+    bool SetPluginFieldFloat(const std::string& name, float value);
+    void ScanProjectionMatrix(ID3D11DeviceContext* context);
+    bool IsValidProjectionMatrix(const float* m, float& outFovY, float& outNear, float& outFar, bool& outInverted);
 
 private:
     DXUpscalerManager()
         : m_handle(nullptr)
-        , m_pInterface(nullptr) {}
+        , m_pInterface(nullptr)
+        , m_depthTexture(nullptr)
+        , m_depthFormat(DXGI_FORMAT_UNKNOWN)
+        , m_depthWidth(0)
+        , m_depthHeight(0)
+        , m_bestDepthScore(-1.0f)
+        , m_mvTexture(nullptr)
+        , m_mvFormat(DXGI_FORMAT_UNKNOWN)
+        , m_mvWidth(0)
+        , m_mvHeight(0)
+        , m_bestMVScore(-1.0f)
+        , m_jitterIndex(0)
+        , m_debugPreviewIndex(0)
+        , m_depthSRV(nullptr)
+        , m_mvSRV(nullptr)
+        , m_detectedInvertedDepth(false)
+        , m_invertedDepthConfidence(0)
+        , m_detectedHDR(false)
+        , m_hdrConfidence(0)
+        , m_projScanCounter(0)
+        , m_cameraNear(0.1f)
+        , m_cameraFar(1000.0f)
+        , m_cameraFov(60.0f)
+        , m_viewSpaceToMetersFactor(1.0f) {}
 
     void LoadPlugin();
 #ifdef SKYRIM_AE
@@ -100,6 +132,37 @@ private:
     ID3D11Texture2D* m_lastDepthTexture = nullptr;
     ID3D11Texture2D* m_lastMotionVectorTexture = nullptr;
 #endif
+
+    // Depth & Motion Vector tracked resources
+    ID3D11Texture2D* m_depthTexture;
+    DXGI_FORMAT m_depthFormat;
+    uint32_t m_depthWidth;
+    uint32_t m_depthHeight;
+    float m_bestDepthScore;
+
+    ID3D11Texture2D* m_mvTexture;
+    DXGI_FORMAT m_mvFormat;
+    uint32_t m_mvWidth;
+    uint32_t m_mvHeight;
+    float m_bestMVScore;
+
+    int m_debugPreviewIndex;
+    ID3D11ShaderResourceView* m_depthSRV;
+    ID3D11ShaderResourceView* m_mvSRV;
+
+    std::mutex m_trackerMtx;
+    uint32_t m_jitterIndex;
+
+    bool m_detectedInvertedDepth;
+    int m_invertedDepthConfidence;
+    bool m_detectedHDR;
+    int m_hdrConfidence;
+    uint32_t m_projScanCounter;
+
+    float m_cameraNear;
+    float m_cameraFar;
+    float m_cameraFov;
+    float m_viewSpaceToMetersFactor;
 };
 
 } // namespace GamePlug

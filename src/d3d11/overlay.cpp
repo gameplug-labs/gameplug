@@ -301,6 +301,24 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
         ImGui_ImplWin32_NewFrame();
         io.DisplaySize = ImVec2((float)desc.BufferDesc.Width, (float)desc.BufferDesc.Height);
 
+        if (g_Visible && g_currentHWND) {
+            POINT cursorPos;
+            if (GetCursorPos(&cursorPos)) {
+                ScreenToClient(g_currentHWND, &cursorPos);
+                io.AddMousePosEvent((float)cursorPos.x, (float)cursorPos.y);
+            }
+            // Poll button state and feed it through the event queue
+            io.AddMouseButtonEvent(0, (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0);
+            io.AddMouseButtonEvent(1, (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0);
+            io.AddMouseButtonEvent(2, (GetAsyncKeyState(VK_MBUTTON) & 0x8000) != 0);
+            // Draw ImGui's own cursor on top – mirrors Community Shaders behaviour.
+            // The game cursor can be hidden in certain states (in-game, menus with
+            // hardware cursor hidden), so ImGui's software cursor is more reliable.
+            io.MouseDrawCursor = true;
+        } else {
+            io.MouseDrawCursor = false;
+        }
+
         // io.MouseDrawCursor = g_Visible;
 #ifdef SKYRIM_AE
         // Community Shaders pattern: use the event-queue API (AddMousePosEvent /

@@ -3,6 +3,7 @@
 #include "imgui.h"
 #include "logger.h"
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <sstream>
 #include <vector>
@@ -10,6 +11,278 @@
 namespace GamePlug {
 extern void PatchDeviceContextVTable(ID3D11DeviceContext* context);
 typedef GamePlugUpscalerInterface* (*GamePlug_GetUpscalerInterfaceFn)();
+
+static std::string DXGIFormatToString(DXGI_FORMAT format) {
+    switch (format) {
+    case DXGI_FORMAT_UNKNOWN:
+        return "DXGI_FORMAT_UNKNOWN";
+    case DXGI_FORMAT_R32G32B32A32_TYPELESS:
+        return "DXGI_FORMAT_R32G32B32A32_TYPELESS";
+    case DXGI_FORMAT_R32G32B32A32_FLOAT:
+        return "DXGI_FORMAT_R32G32B32A32_FLOAT";
+    case DXGI_FORMAT_R32G32B32A32_UINT:
+        return "DXGI_FORMAT_R32G32B32A32_UINT";
+    case DXGI_FORMAT_R32G32B32A32_SINT:
+        return "DXGI_FORMAT_R32G32B32A32_SINT";
+    case DXGI_FORMAT_R32G32B32_TYPELESS:
+        return "DXGI_FORMAT_R32G32B32_TYPELESS";
+    case DXGI_FORMAT_R32G32B32_FLOAT:
+        return "DXGI_FORMAT_R32G32B32_FLOAT";
+    case DXGI_FORMAT_R32G32B32_UINT:
+        return "DXGI_FORMAT_R32G32B32_UINT";
+    case DXGI_FORMAT_R32G32B32_SINT:
+        return "DXGI_FORMAT_R32G32B32_SINT";
+    case DXGI_FORMAT_R16G16B16A16_TYPELESS:
+        return "DXGI_FORMAT_R16G16B16A16_TYPELESS";
+    case DXGI_FORMAT_R16G16B16A16_FLOAT:
+        return "DXGI_FORMAT_R16G16B16A16_FLOAT";
+    case DXGI_FORMAT_R16G16B16A16_UNORM:
+        return "DXGI_FORMAT_R16G16B16A16_UNORM";
+    case DXGI_FORMAT_R16G16B16A16_UINT:
+        return "DXGI_FORMAT_R16G16B16A16_UINT";
+    case DXGI_FORMAT_R16G16B16A16_SNORM:
+        return "DXGI_FORMAT_R16G16B16A16_SNORM";
+    case DXGI_FORMAT_R16G16B16A16_SINT:
+        return "DXGI_FORMAT_R16G16B16A16_SINT";
+    case DXGI_FORMAT_R32G32_TYPELESS:
+        return "DXGI_FORMAT_R32G32_TYPELESS";
+    case DXGI_FORMAT_R32G32_FLOAT:
+        return "DXGI_FORMAT_R32G32_FLOAT";
+    case DXGI_FORMAT_R32G32_UINT:
+        return "DXGI_FORMAT_R32G32_UINT";
+    case DXGI_FORMAT_R32G32_SINT:
+        return "DXGI_FORMAT_R32G32_SINT";
+    case DXGI_FORMAT_R32G8X24_TYPELESS:
+        return "DXGI_FORMAT_R32G8X24_TYPELESS";
+    case DXGI_FORMAT_D32_FLOAT_S8X24_UINT:
+        return "DXGI_FORMAT_D32_FLOAT_S8X24_UINT";
+    case DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS:
+        return "DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS";
+    case DXGI_FORMAT_X32_TYPELESS_G8X24_UINT:
+        return "DXGI_FORMAT_X32_TYPELESS_G8X24_UINT";
+    case DXGI_FORMAT_R10G10B10A2_TYPELESS:
+        return "DXGI_FORMAT_R10G10B10A2_TYPELESS";
+    case DXGI_FORMAT_R10G10B10A2_UNORM:
+        return "DXGI_FORMAT_R10G10B10A2_UNORM";
+    case DXGI_FORMAT_R10G10B10A2_UINT:
+        return "DXGI_FORMAT_R10G10B10A2_UINT";
+    case DXGI_FORMAT_R11G11B10_FLOAT:
+        return "DXGI_FORMAT_R11G11B10_FLOAT";
+    case DXGI_FORMAT_R8G8B8A8_TYPELESS:
+        return "DXGI_FORMAT_R8G8B8A8_TYPELESS";
+    case DXGI_FORMAT_R8G8B8A8_UNORM:
+        return "DXGI_FORMAT_R8G8B8A8_UNORM";
+    case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:
+        return "DXGI_FORMAT_R8G8B8A8_UNORM_SRGB";
+    case DXGI_FORMAT_R8G8B8A8_UINT:
+        return "DXGI_FORMAT_R8G8B8A8_UINT";
+    case DXGI_FORMAT_R8G8B8A8_SNORM:
+        return "DXGI_FORMAT_R8G8B8A8_SNORM";
+    case DXGI_FORMAT_R8G8B8A8_SINT:
+        return "DXGI_FORMAT_R8G8B8A8_SINT";
+    case DXGI_FORMAT_R16G16_TYPELESS:
+        return "DXGI_FORMAT_R16G16_TYPELESS";
+    case DXGI_FORMAT_R16G16_FLOAT:
+        return "DXGI_FORMAT_R16G16_FLOAT";
+    case DXGI_FORMAT_R16G16_UNORM:
+        return "DXGI_FORMAT_R16G16_UNORM";
+    case DXGI_FORMAT_R16G16_UINT:
+        return "DXGI_FORMAT_R16G16_UINT";
+    case DXGI_FORMAT_R16G16_SNORM:
+        return "DXGI_FORMAT_R16G16_SNORM";
+    case DXGI_FORMAT_R16G16_SINT:
+        return "DXGI_FORMAT_R16G16_SINT";
+    case DXGI_FORMAT_R32_TYPELESS:
+        return "DXGI_FORMAT_R32_TYPELESS";
+    case DXGI_FORMAT_D32_FLOAT:
+        return "DXGI_FORMAT_D32_FLOAT";
+    case DXGI_FORMAT_R32_FLOAT:
+        return "DXGI_FORMAT_R32_FLOAT";
+    case DXGI_FORMAT_R32_UINT:
+        return "DXGI_FORMAT_R32_UINT";
+    case DXGI_FORMAT_R32_SINT:
+        return "DXGI_FORMAT_R32_SINT";
+    case DXGI_FORMAT_R24G8_TYPELESS:
+        return "DXGI_FORMAT_R24G8_TYPELESS";
+    case DXGI_FORMAT_D24_UNORM_S8_UINT:
+        return "DXGI_FORMAT_D24_UNORM_S8_UINT";
+    case DXGI_FORMAT_R24_UNORM_X8_TYPELESS:
+        return "DXGI_FORMAT_R24_UNORM_X8_TYPELESS";
+    case DXGI_FORMAT_X24_TYPELESS_G8_UINT:
+        return "DXGI_FORMAT_X24_TYPELESS_G8_UINT";
+    case DXGI_FORMAT_R8G8_TYPELESS:
+        return "DXGI_FORMAT_R8G8_TYPELESS";
+    case DXGI_FORMAT_R8G8_UNORM:
+        return "DXGI_FORMAT_R8G8_UNORM";
+    case DXGI_FORMAT_R8G8_UINT:
+        return "DXGI_FORMAT_R8G8_UINT";
+    case DXGI_FORMAT_R8G8_SNORM:
+        return "DXGI_FORMAT_R8G8_SNORM";
+    case DXGI_FORMAT_R8G8_SINT:
+        return "DXGI_FORMAT_R8G8_SINT";
+    case DXGI_FORMAT_R16_TYPELESS:
+        return "DXGI_FORMAT_R16_TYPELESS";
+    case DXGI_FORMAT_R16_FLOAT:
+        return "DXGI_FORMAT_R16_FLOAT";
+    case DXGI_FORMAT_D16_UNORM:
+        return "DXGI_FORMAT_D16_UNORM";
+    case DXGI_FORMAT_R16_UNORM:
+        return "DXGI_FORMAT_R16_UNORM";
+    case DXGI_FORMAT_R16_UINT:
+        return "DXGI_FORMAT_R16_UINT";
+    case DXGI_FORMAT_R16_SNORM:
+        return "DXGI_FORMAT_R16_SNORM";
+    case DXGI_FORMAT_R16_SINT:
+        return "DXGI_FORMAT_R16_SINT";
+    case DXGI_FORMAT_R8_TYPELESS:
+        return "DXGI_FORMAT_R8_TYPELESS";
+    case DXGI_FORMAT_R8_UNORM:
+        return "DXGI_FORMAT_R8_UNORM";
+    case DXGI_FORMAT_R8_UINT:
+        return "DXGI_FORMAT_R8_UINT";
+    case DXGI_FORMAT_R8_SNORM:
+        return "DXGI_FORMAT_R8_SNORM";
+    case DXGI_FORMAT_R8_SINT:
+        return "DXGI_FORMAT_R8_SINT";
+    case DXGI_FORMAT_A8_UNORM:
+        return "DXGI_FORMAT_A8_UNORM";
+    case DXGI_FORMAT_R1_UNORM:
+        return "DXGI_FORMAT_R1_UNORM";
+    case DXGI_FORMAT_R9G9B9E5_SHAREDEXP:
+        return "DXGI_FORMAT_R9G9B9E5_SHAREDEXP";
+    case DXGI_FORMAT_R8G8_B8G8_UNORM:
+        return "DXGI_FORMAT_R8G8_B8G8_UNORM";
+    case DXGI_FORMAT_G8R8_G8B8_UNORM:
+        return "DXGI_FORMAT_G8R8_G8B8_UNORM";
+    case DXGI_FORMAT_BC1_TYPELESS:
+        return "DXGI_FORMAT_BC1_TYPELESS";
+    case DXGI_FORMAT_BC1_UNORM:
+        return "DXGI_FORMAT_BC1_UNORM";
+    case DXGI_FORMAT_BC1_UNORM_SRGB:
+        return "DXGI_FORMAT_BC1_UNORM_SRGB";
+    case DXGI_FORMAT_BC2_TYPELESS:
+        return "DXGI_FORMAT_BC2_TYPELESS";
+    case DXGI_FORMAT_BC2_UNORM:
+        return "DXGI_FORMAT_BC2_UNORM";
+    case DXGI_FORMAT_BC2_UNORM_SRGB:
+        return "DXGI_FORMAT_BC2_UNORM_SRGB";
+    case DXGI_FORMAT_BC3_TYPELESS:
+        return "DXGI_FORMAT_BC3_TYPELESS";
+    case DXGI_FORMAT_BC3_UNORM:
+        return "DXGI_FORMAT_BC3_UNORM";
+    case DXGI_FORMAT_BC3_UNORM_SRGB:
+        return "DXGI_FORMAT_BC3_UNORM_SRGB";
+    case DXGI_FORMAT_BC4_TYPELESS:
+        return "DXGI_FORMAT_BC4_TYPELESS";
+    case DXGI_FORMAT_BC4_UNORM:
+        return "DXGI_FORMAT_BC4_UNORM";
+    case DXGI_FORMAT_BC4_SNORM:
+        return "DXGI_FORMAT_BC4_SNORM";
+    case DXGI_FORMAT_BC5_TYPELESS:
+        return "DXGI_FORMAT_BC5_TYPELESS";
+    case DXGI_FORMAT_BC5_UNORM:
+        return "DXGI_FORMAT_BC5_UNORM";
+    case DXGI_FORMAT_BC5_SNORM:
+        return "DXGI_FORMAT_BC5_SNORM";
+    case DXGI_FORMAT_B5G6R5_UNORM:
+        return "DXGI_FORMAT_B5G6R5_UNORM";
+    case DXGI_FORMAT_B5G5R5A1_UNORM:
+        return "DXGI_FORMAT_B5G5R5A1_UNORM";
+    case DXGI_FORMAT_B8G8R8A8_UNORM:
+        return "DXGI_FORMAT_B8G8R8A8_UNORM";
+    case DXGI_FORMAT_B8G8R8X8_UNORM:
+        return "DXGI_FORMAT_B8G8R8X8_UNORM";
+    case DXGI_FORMAT_R10G10B10_XR_BIAS_A2_UNORM:
+        return "DXGI_FORMAT_R10G10B10_XR_BIAS_A2_UNORM";
+    case DXGI_FORMAT_B8G8R8A8_TYPELESS:
+        return "DXGI_FORMAT_B8G8R8A8_TYPELESS";
+    case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:
+        return "DXGI_FORMAT_B8G8R8A8_UNORM_SRGB";
+    case DXGI_FORMAT_B8G8R8X8_TYPELESS:
+        return "DXGI_FORMAT_B8G8R8X8_TYPELESS";
+    case DXGI_FORMAT_B8G8R8X8_UNORM_SRGB:
+        return "DXGI_FORMAT_B8G8R8X8_UNORM_SRGB";
+    case DXGI_FORMAT_BC6H_TYPELESS:
+        return "DXGI_FORMAT_BC6H_TYPELESS";
+    case DXGI_FORMAT_BC6H_UF16:
+        return "DXGI_FORMAT_BC6H_UF16";
+    case DXGI_FORMAT_BC6H_SF16:
+        return "DXGI_FORMAT_BC6H_SF16";
+    case DXGI_FORMAT_BC7_TYPELESS:
+        return "DXGI_FORMAT_BC7_TYPELESS";
+    case DXGI_FORMAT_BC7_UNORM:
+        return "DXGI_FORMAT_BC7_UNORM";
+    case DXGI_FORMAT_BC7_UNORM_SRGB:
+        return "DXGI_FORMAT_BC7_UNORM_SRGB";
+    case DXGI_FORMAT_AYUV:
+        return "DXGI_FORMAT_AYUV";
+    case DXGI_FORMAT_Y410:
+        return "DXGI_FORMAT_Y410";
+    case DXGI_FORMAT_Y416:
+        return "DXGI_FORMAT_Y416";
+    case DXGI_FORMAT_NV12:
+        return "DXGI_FORMAT_NV12";
+    case DXGI_FORMAT_P010:
+        return "DXGI_FORMAT_P010";
+    case DXGI_FORMAT_P016:
+        return "DXGI_FORMAT_P016";
+    case DXGI_FORMAT_420_OPAQUE:
+        return "DXGI_FORMAT_420_OPAQUE";
+    case DXGI_FORMAT_YUY2:
+        return "DXGI_FORMAT_YUY2";
+    case DXGI_FORMAT_Y210:
+        return "DXGI_FORMAT_Y210";
+    case DXGI_FORMAT_Y216:
+        return "DXGI_FORMAT_Y216";
+    case DXGI_FORMAT_NV11:
+        return "DXGI_FORMAT_NV11";
+    case DXGI_FORMAT_AI44:
+        return "DXGI_FORMAT_AI44";
+    case DXGI_FORMAT_IA44:
+        return "DXGI_FORMAT_IA44";
+    case DXGI_FORMAT_P8:
+        return "DXGI_FORMAT_P8";
+    case DXGI_FORMAT_A8P8:
+        return "DXGI_FORMAT_A8P8";
+    case DXGI_FORMAT_B4G4R4A4_UNORM:
+        return "DXGI_FORMAT_B4G4R4A4_UNORM";
+    default:
+        return "DXGI_FORMAT_UNKNOWN(" + std::to_string((int)format) + ")";
+    }
+}
+
+static ID3D11ShaderResourceView* CreateSRVForTrackedTexture(ID3D11Device* device, ID3D11Texture2D* texture) {
+    if (!device || !texture)
+        return nullptr;
+
+    D3D11_TEXTURE2D_DESC desc;
+    texture->GetDesc(&desc);
+
+    D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+    srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+    srvDesc.Texture2D.MostDetailedMip = 0;
+    srvDesc.Texture2D.MipLevels = 1;
+
+    DXGI_FORMAT srvFormat = desc.Format;
+    if (desc.Format == DXGI_FORMAT_R24G8_TYPELESS) {
+        srvFormat = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+    } else if (desc.Format == DXGI_FORMAT_R32G8X24_TYPELESS) {
+        srvFormat = DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS;
+    } else if (desc.Format == DXGI_FORMAT_R32_TYPELESS) {
+        srvFormat = DXGI_FORMAT_R32_FLOAT;
+    } else if (desc.Format == DXGI_FORMAT_R16_TYPELESS) {
+        srvFormat = DXGI_FORMAT_R16_UNORM;
+    }
+
+    srvDesc.Format = srvFormat;
+
+    ID3D11ShaderResourceView* srv = nullptr;
+    HRESULT hr = device->CreateShaderResourceView(texture, &srvDesc, &srv);
+    if (SUCCEEDED(hr)) {
+        return srv;
+    }
+    return nullptr;
+}
 
 void DXUpscalerLogBridge(GamePlugUpscalerInterface::LogLevel level, const char* message, void* context) {
     std::string formattedMsg = "[DXUpscaler] " + std::string(message);
@@ -31,6 +304,7 @@ void DXUpscalerLogBridge(GamePlugUpscalerInterface::LogLevel level, const char* 
 
 DXUpscalerManager::~DXUpscalerManager() {
     UnloadUpscaler();
+    ResetTracker();
 }
 
 void DXUpscalerManager::LoadPlugin() {
@@ -106,6 +380,7 @@ void DXUpscalerManager::CleanupPlugin() {
     CleanupSkyrimSRVs();
 #endif
     DestroyFakeBackBuffer();
+    ResetTracker();
     m_pd3dDevice = nullptr;
     m_pd3dDeviceContext = nullptr;
 }
@@ -157,6 +432,11 @@ void DXUpscalerManager::RenderUI(float fps, uint32_t width, uint32_t height) {
                         if (f.Name && (std::string(f.Name) == "HDR" || std::string(f.Name) == "Inverted Depth")) {
                             continue;
                         }
+                    }
+
+                    if (f.Name && (std::string(f.Name) == "Camera Near" || std::string(f.Name) == "Camera Far" ||
+                                      std::string(f.Name) == "Camera FOV" || std::string(f.Name) == "Meters Factor")) {
+                        continue;
                     }
 
                     ImGui::PushID(f.Name);
@@ -237,12 +517,36 @@ void DXUpscalerManager::RenderUI(float fps, uint32_t width, uint32_t height) {
     //         SetShowDebugImageEnabled(false);
     //     }
 
-    //     uint32_t dw = m_renderWidth;
-    //     uint32_t dh = m_renderHeight;
-    //     ID3D11ShaderResourceView* debugSRV = m_fakeBackBufferSRV;
+    //     const char* debugItems[] = {"Source (Fake Back Buffer)", "Depth Buffer", "Motion Vectors"};
+    //     ImGui::Combo("Preview Target", &m_debugPreviewIndex, debugItems, IM_ARRAYSIZE(debugItems));
+
+    //     uint32_t dw = 0;
+    //     uint32_t dh = 0;
+    //     ID3D11ShaderResourceView* debugSRV = nullptr;
+    //     std::string targetName = "";
+
+    //     {
+    //         std::lock_guard<std::mutex> lock(m_trackerMtx);
+    //         if (m_debugPreviewIndex == 0) {
+    //             dw = m_renderWidth;
+    //             dh = m_renderHeight;
+    //             debugSRV = m_fakeBackBufferSRV;
+    //             targetName = "Fake Back Buffer";
+    //         } else if (m_debugPreviewIndex == 1) {
+    //             dw = m_depthWidth;
+    //             dh = m_depthHeight;
+    //             debugSRV = m_depthSRV;
+    //             targetName = "Depth Buffer";
+    //         } else if (m_debugPreviewIndex == 2) {
+    //             dw = m_mvWidth;
+    //             dh = m_mvHeight;
+    //             debugSRV = m_mvSRV;
+    //             targetName = "Motion Vectors";
+    //         }
+    //     }
 
     //     if (debugSRV && dw > 0 && dh > 0) {
-    //         ImGui::Text("Source Resource: %u x %u", dw, dh);
+    //         ImGui::Text("%s Resource: %u x %u", targetName.c_str(), dw, dh);
 
     //         float windowWidth = ImGui::GetContentRegionAvail().x;
     //         float windowHeight = ImGui::GetContentRegionAvail().y - 30.0f;
@@ -261,7 +565,7 @@ void DXUpscalerManager::RenderUI(float fps, uint32_t width, uint32_t height) {
 
     //         ImGui::Image((ImTextureID)debugSRV, ImVec2(imgWidth, imgHeight));
     //     } else {
-    //         ImGui::Text("Debug image not available.");
+    //         ImGui::Text("%s is not available (or cannot be bound as SRV).", targetName.c_str());
     //     }
 
     //     ImGui::SetCursorPosY(ImGui::GetWindowHeight() - 25.0f);
@@ -273,6 +577,9 @@ void DXUpscalerManager::RenderUI(float fps, uint32_t width, uint32_t height) {
 }
 
 void DXUpscalerManager::UpdateDimensions(uint32_t width, uint32_t height) {
+    if (width != m_width || height != m_height) {
+        ResetTracker();
+    }
     m_width = width;
     m_height = height;
     GetTargetResolution(width, height, m_renderWidth, m_renderHeight);
@@ -287,11 +594,17 @@ void DXUpscalerManager::GetTargetResolution(uint32_t width, uint32_t height, uin
 
         // Check Native Rendering first
         for (int i = 0; i < count; i++) {
-            if (fields[i].Name && std::string(fields[i].Name) == "Native Rendering") {
-                if (*(bool*)fields[i].Data) {
-                    return;
+            if (fields[i].Name) {
+                std::string name(fields[i].Name);
+
+                if (name == "Native AA" || name == "Native Rendering" || name == "DLAA") {
+
+                    if (*(bool*)fields[i].Data) {
+                        return;
+                    }
+
+                    break;
                 }
-                break;
             }
         }
 
@@ -329,12 +642,61 @@ void DXUpscalerManager::RenderFrameDX11(
         return;
     }
 
+    // HDR autodetection
+    bool isHDR = false;
+    if (sourceSRV) {
+        ID3D11Resource* srcRes = nullptr;
+        sourceSRV->GetResource(&srcRes);
+        if (srcRes) {
+            ID3D11Texture2D* srcTex = nullptr;
+            if (SUCCEEDED(srcRes->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&srcTex))) {
+                D3D11_TEXTURE2D_DESC srcDesc;
+                srcTex->GetDesc(&srcDesc);
+                if (srcDesc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT || srcDesc.Format == DXGI_FORMAT_R32G32B32A32_FLOAT ||
+                    srcDesc.Format == DXGI_FORMAT_R11G11B10_FLOAT || srcDesc.Format == DXGI_FORMAT_R10G10B10A2_UNORM) {
+                    isHDR = true;
+                }
+                srcTex->Release();
+            }
+            srcRes->Release();
+        }
+    }
+    if (targetRTV && !isHDR) {
+        ID3D11Resource* dstRes = nullptr;
+        targetRTV->GetResource(&dstRes);
+        if (dstRes) {
+            ID3D11Texture2D* dstTex = nullptr;
+            if (SUCCEEDED(dstRes->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&dstTex))) {
+                D3D11_TEXTURE2D_DESC dstDesc;
+                dstTex->GetDesc(&dstDesc);
+                if (dstDesc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT || dstDesc.Format == DXGI_FORMAT_R32G32B32A32_FLOAT ||
+                    dstDesc.Format == DXGI_FORMAT_R11G11B10_FLOAT || dstDesc.Format == DXGI_FORMAT_R10G10B10A2_UNORM) {
+                    isHDR = true;
+                    Logger::info("DXUpscalerManager: Check HDR detect " + std::string(isHDR ? "true" : "false"));
+                }
+                Logger::info("DXUpscalerManager: Check HDR detect " + std::string(isHDR ? "true" : "false"));
+                dstTex->Release();
+            }
+            dstRes->Release();
+        }
+    }
+
+    if (isHDR == m_detectedHDR) {
+        if (m_hdrConfidence < 10) {
+            m_hdrConfidence++;
+            if (m_hdrConfidence == 10) {
+                Logger::info("DXUpscalerManager: HDR state stabilized to: " + std::string(isHDR ? "true" : "false"));
+            }
+        }
+    } else {
+        m_detectedHDR = isHDR;
+        m_hdrConfidence = 1;
+    }
+
     Logger::warn("FSR EXECUTED FRAME");
     Logger::info("DXUpscalerManager: Calling OnRenderFrame (DX11)");
 
     m_frameUpscaled = true;
-    m_width = width;
-    m_height = height;
     UpdateDimensions(width, height);
 
 #ifdef SKYRIM_AE
@@ -356,6 +718,187 @@ void DXUpscalerManager::RenderFrameDX11(
     m_pInterface->OnRenderFrame((uintptr_t)context, (uint64_t)sourceSRV, (uint64_t)targetRTV, 0, width, height, m_renderWidth,
         m_renderHeight, 0, 0, 0, 0, 0.0f, 0.0f);
 #endif
+    m_projScanCounter++;
+    if (m_projScanCounter >= 120 || m_projScanCounter == 1) {
+        m_projScanCounter = 1;
+        ScanProjectionMatrix(context);
+    }
+
+    static uint32_t frameCount = 0;
+    static uint32_t lastW = 0, lastH = 0;
+    bool shouldLog = (frameCount % 300 == 0) || (width != lastW || height != lastH);
+    frameCount++;
+
+    // Halton sequence for jitter
+    m_jitterIndex++;
+    if (m_jitterIndex > 128)
+        m_jitterIndex = 1;
+
+    auto HaltonFn = [](uint32_t index, uint32_t base) -> float {
+        float f = 1.0f;
+        float r = 0.0f;
+        while (index > 0) {
+            f /= (float)base;
+            r += f * (float)(index % base);
+            index /= base;
+        }
+        return r;
+    };
+
+    float jitterX = HaltonFn(m_jitterIndex, 2) - 0.5f;
+    float jitterY = HaltonFn(m_jitterIndex, 3) - 0.5f;
+
+    if (shouldLog) {
+        Logger::info("DXUpscalerManager::RenderFrameDX11 [Jitter] x=" + std::to_string(jitterX) + " y=" + std::to_string(jitterY));
+    }
+
+    uint64_t depthImage = 0;
+    uint32_t depthFormatVal = 0;
+    uint64_t mvImage = 0;
+    uint32_t mvFormatVal = 0;
+
+    {
+        std::lock_guard<std::mutex> lock(m_trackerMtx);
+        depthImage = m_depthTexture ? (uint64_t)m_depthTexture : 0;
+        depthFormatVal = m_depthTexture ? (uint32_t)m_depthFormat : 0;
+        mvImage = m_mvTexture ? (uint64_t)m_mvTexture : 0;
+        mvFormatVal = m_mvTexture ? (uint32_t)m_mvFormat : 0;
+
+        if (shouldLog) {
+            std::string depthName = m_depthTexture ? DXGIFormatToString(m_depthFormat) : "DXGI_FORMAT_UNKNOWN";
+            std::string mvName = m_mvTexture ? DXGIFormatToString(m_mvFormat) : "DXGI_FORMAT_UNKNOWN";
+
+            Logger::info("DXUpscalerManager::RenderFrameDX11 [Buffers] depth=" + std::to_string(depthImage) + " (" +
+                         std::to_string(m_depthWidth) + "x" + std::to_string(m_depthHeight) + ", fmt=" + depthName +
+                         "), mv=" + std::to_string(mvImage) + " (fmt=" + mvName + ")");
+        }
+    }
+
+    m_pInterface->OnRenderFrame((uintptr_t)context, (uint64_t)sourceSRV, (uint64_t)targetRTV, 0, width, height, m_renderWidth,
+        m_renderHeight, depthImage, depthFormatVal, mvImage, mvFormatVal, jitterX, jitterY, m_cameraNear, m_cameraFar, m_cameraFov,
+        m_viewSpaceToMetersFactor, m_detectedInvertedDepth, m_detectedHDR);
+
+    lastW = width;
+    lastH = height;
+}
+
+void DXUpscalerManager::TrackTexture(ID3D11Texture2D* texture, const D3D11_TEXTURE2D_DESC* desc) {
+    if (!texture || !desc)
+        return;
+
+    std::lock_guard<std::mutex> lock(m_trackerMtx);
+
+    // Identify Depth Buffer candidate
+    if (desc->BindFlags & D3D11_BIND_DEPTH_STENCIL) {
+        float score = 0.0f;
+        if (m_width > 0 && desc->Width == m_width && desc->Height == m_height)
+            score += 1000000.0f;
+        if (desc->Width != desc->Height)
+            score += 500000.0f;
+        if (desc->Width >= 640 && desc->Height >= 360)
+            score += 100000.0f;
+
+        // Shadow map penalty
+        if (desc->Width == desc->Height && m_width != m_height)
+            score -= 800000.0f;
+
+        // Minimum size filter
+        if (desc->Width < 320 || desc->Height < 200)
+            score = -100.0f;
+
+        if (score > m_bestDepthScore && score > 0) {
+            if (m_depthTexture) {
+                m_depthTexture->Release();
+            }
+            if (m_depthSRV) {
+                m_depthSRV->Release();
+                m_depthSRV = nullptr;
+            }
+            m_depthTexture = texture;
+            m_depthTexture->AddRef();
+            m_depthWidth = desc->Width;
+            m_depthHeight = desc->Height;
+            m_depthFormat = desc->Format;
+            m_bestDepthScore = score;
+
+            m_depthSRV = CreateSRVForTrackedTexture(m_pd3dDevice, m_depthTexture);
+
+            Logger::info("DXUpscalerManager: Depth buffer candidate updated (Width=" + std::to_string(desc->Width) +
+                         ", Height=" + std::to_string(desc->Height) + ", Format=" + DXGIFormatToString(desc->Format) +
+                         ", Score=" + std::to_string(score) + ", HasSRV=" + std::to_string(m_depthSRV != nullptr) + ")");
+        }
+    }
+
+    // Identify Motion Vector candidate
+    if ((desc->BindFlags & D3D11_BIND_RENDER_TARGET) || (desc->BindFlags & D3D11_BIND_SHADER_RESOURCE)) {
+        float score = 0.0f;
+
+        // Size match to current render resolution or display resolution
+        if (m_renderWidth > 0 && desc->Width == m_renderWidth && desc->Height == m_renderHeight) {
+            score += 500000.0f;
+        } else if (m_width > 0 && desc->Width == m_width && desc->Height == m_height) {
+            score += 300000.0f;
+        }
+
+        // Format scoring: R16G16_FLOAT / R32G32_FLOAT etc are very common motion vector formats
+        if (desc->Format == DXGI_FORMAT_R16G16_FLOAT || desc->Format == DXGI_FORMAT_R32G32_FLOAT) {
+            score += 200000.0f;
+        } else if (desc->Format == DXGI_FORMAT_R16G16_SNORM || desc->Format == DXGI_FORMAT_R16G16_UNORM) {
+            score += 150000.0f;
+        } else if (desc->Format == DXGI_FORMAT_R8G8_UNORM || desc->Format == DXGI_FORMAT_R8G8_SNORM) {
+            score += 50000.0f;
+        }
+
+        if (score > m_bestMVScore && score > 0) {
+            if (m_mvTexture) {
+                m_mvTexture->Release();
+            }
+            if (m_mvSRV) {
+                m_mvSRV->Release();
+                m_mvSRV = nullptr;
+            }
+            m_mvTexture = texture;
+            m_mvTexture->AddRef();
+            m_mvWidth = desc->Width;
+            m_mvHeight = desc->Height;
+            m_mvFormat = desc->Format;
+            m_bestMVScore = score;
+
+            m_mvSRV = CreateSRVForTrackedTexture(m_pd3dDevice, m_mvTexture);
+
+            Logger::info("DXUpscalerManager: Motion Vector candidate updated (Width=" + std::to_string(desc->Width) +
+                         ", Height=" + std::to_string(desc->Height) + ", Format=" + DXGIFormatToString(desc->Format) +
+                         ", Score=" + std::to_string(score) + ", HasSRV=" + std::to_string(m_mvSRV != nullptr) + ")");
+        }
+    }
+}
+
+void DXUpscalerManager::ResetTracker() {
+    std::lock_guard<std::mutex> lock(m_trackerMtx);
+    if (m_depthTexture) {
+        m_depthTexture->Release();
+        m_depthTexture = nullptr;
+    }
+    if (m_mvTexture) {
+        m_mvTexture->Release();
+        m_mvTexture = nullptr;
+    }
+    if (m_depthSRV) {
+        m_depthSRV->Release();
+        m_depthSRV = nullptr;
+    }
+    if (m_mvSRV) {
+        m_mvSRV->Release();
+        m_mvSRV = nullptr;
+    }
+    m_bestDepthScore = -1.0f;
+    m_bestMVScore = -1.0f;
+    m_depthWidth = 0;
+    m_depthHeight = 0;
+    m_depthFormat = DXGI_FORMAT_UNKNOWN;
+    m_mvWidth = 0;
+    m_mvHeight = 0;
+    m_mvFormat = DXGI_FORMAT_UNKNOWN;
 }
 
 void DXUpscalerManager::ResetFrame() {
@@ -592,5 +1135,286 @@ void DXUpscalerManager::SetSkyrimData(const GamePlugSkyrimData* data) {
     }
 }
 #endif
+void DXUpscalerManager::RecordDepthClearValue(bool isInverted) {
+    if (isInverted == m_detectedInvertedDepth) {
+        if (m_invertedDepthConfidence < 10) {
+            m_invertedDepthConfidence++;
+            if (m_invertedDepthConfidence == 10) {
+                Logger::info("DXUpscalerManager: Inverted Depth state stabilized to: " + std::string(isInverted ? "true" : "false"));
+            }
+        }
+    } else {
+        m_detectedInvertedDepth = isInverted;
+        m_invertedDepthConfidence = 1;
+    }
+}
+
+bool DXUpscalerManager::SetPluginFieldBool(const std::string& name, bool value) {
+    if (!m_pInterface || !m_pInterface->GetFields)
+        return false;
+    GamePlugUpscalerInterface::FieldDescriptor* fields = nullptr;
+    int count = m_pInterface->GetFields(&fields);
+    for (int i = 0; i < count; i++) {
+        if (fields[i].Name && std::string(fields[i].Name) == name) {
+            bool* pBool = (bool*)fields[i].Data;
+            if (*pBool != value) {
+                *pBool = value;
+                if (m_pInterface->OnFieldsChanged) {
+                    m_pInterface->OnFieldsChanged();
+                }
+                return true;
+            }
+            break;
+        }
+    }
+    return false;
+}
+
+bool DXUpscalerManager::SetPluginFieldFloat(const std::string& name, float value) {
+    if (!m_pInterface || !m_pInterface->GetFields)
+        return false;
+    GamePlugUpscalerInterface::FieldDescriptor* fields = nullptr;
+    int count = m_pInterface->GetFields(&fields);
+    for (int i = 0; i < count; i++) {
+        if (fields[i].Name && std::string(fields[i].Name) == name) {
+            float* pFloat = (float*)fields[i].Data;
+            if (std::abs(*pFloat - value) > 0.001f) {
+                *pFloat = value;
+                if (m_pInterface->OnFieldsChanged) {
+                    m_pInterface->OnFieldsChanged();
+                }
+                return true;
+            }
+            break;
+        }
+    }
+    return false;
+}
+
+bool DXUpscalerManager::IsValidProjectionMatrix(const float* m, float& outFovY, float& outNear, float& outFar, bool& outInverted) {
+    auto is_zero = [](float f) { return std::abs(f) < 1e-4f; };
+
+    bool rowMajor = false;
+    bool colMajor = false;
+
+    if (std::abs(m[11] - 1.0f) < 1e-3f || std::abs(m[11] + 1.0f) < 1e-3f) {
+        rowMajor = true;
+    } else if (std::abs(m[14] - 1.0f) < 1e-3f || std::abs(m[14] + 1.0f) < 1e-3f) {
+        colMajor = true;
+    }
+
+    if (!rowMajor && !colMajor)
+        return false;
+
+    float A, B, y, x;
+
+    if (rowMajor) {
+        // For row-major projection:
+        // m[2] (_13) and m[6] (_23) are jitter / off-center offsets and can be non-zero (within limit, e.g. < 0.1f).
+        // The other elements m[1], m[3], m[4], m[7], m[8], m[9], m[12], m[13], m[15] must be zero.
+        if (!is_zero(m[1]) || !is_zero(m[3]) || !is_zero(m[4]) || !is_zero(m[7]) || !is_zero(m[8]) || !is_zero(m[9]) || !is_zero(m[12]) ||
+            !is_zero(m[13]) || !is_zero(m[15])) {
+            return false;
+        }
+        if (std::abs(m[2]) > 0.1f || std::abs(m[6]) > 0.1f)
+            return false;
+
+        x = m[0];
+        y = m[5];
+        A = m[10];
+        B = m[14];
+    } else {
+        // For column-major projection:
+        // m[2] (_31) and m[6] (_32) are jitter / off-center offsets and can be non-zero (within limit, e.g. < 0.1f).
+        // The other elements m[1], m[4], m[3], m[7], m[8], m[9], m[12], m[13], m[15] must be zero.
+        if (!is_zero(m[1]) || !is_zero(m[4]) || !is_zero(m[3]) || !is_zero(m[7]) || !is_zero(m[8]) || !is_zero(m[9]) || !is_zero(m[12]) ||
+            !is_zero(m[13]) || !is_zero(m[15])) {
+            return false;
+        }
+        if (std::abs(m[2]) > 0.1f || std::abs(m[6]) > 0.1f)
+            return false;
+
+        x = m[0];
+        y = m[5];
+        A = m[10];
+        B = m[11];
+    }
+
+    if (x <= 0.05f || x > 20.0f || y <= 0.05f || y > 20.0f)
+        return false;
+
+    outFovY = 2.0f * std::atanf(1.0f / y);
+    // Restrict vertical FOV to normal human perspective range [5 deg, 115 deg] -> [0.08 rad, 2.01 rad].
+    // This avoids picking up shadow/reflection maps, while still allowing the main menu camera and sniper zoom.
+    if (outFovY < 0.08f || outFovY > 2.01f)
+        return false;
+
+    // Filter out square (shadow/reflection) matrices where aspect ratio is exactly 1.0
+    float aspect = y / x;
+    if (std::abs(aspect - 1.0f) < 0.01f)
+        return false;
+
+    float near_std = -B / A;
+    float far_std = A * near_std / (A - 1.0f);
+
+    float near_inv = B / (A - 1.0f);
+    float far_inv = B / A;
+
+    if (near_std > 0.0f && far_std > near_std && std::abs(A - 1.0f) > 1e-4f) {
+        outNear = near_std;
+        outFar = far_std;
+        outInverted = false;
+        return true;
+    }
+
+    if (near_inv > 0.0f && far_inv > near_inv && std::abs(A) > 1e-4f) {
+        outNear = near_inv;
+        outFar = far_inv;
+        outInverted = true;
+        return true;
+    }
+
+    if (std::abs(A) < 1e-4f && B > 0.0f) {
+        outNear = B;
+        outFar = 100000.0f;
+        outInverted = true;
+        return true;
+    }
+    if (std::abs(A - 1.0f) < 1e-4f && B < 0.0f) {
+        outNear = -B;
+        outFar = 100000.0f;
+        outInverted = false;
+        return true;
+    }
+
+    return false;
+}
+
+struct CandidateMatrix {
+    UINT slot;
+    UINT offset;
+    bool isRow;
+    float m[16];
+};
+
+void DXUpscalerManager::ScanProjectionMatrix(ID3D11DeviceContext* context) {
+    if (!m_pd3dDevice)
+        return;
+
+    // Autodetect viewSpaceToMetersFactor from executable name
+    static bool metersFactorSet = false;
+    if (!metersFactorSet) {
+        float factor = 1.0f;
+        char exePath[MAX_PATH];
+        GetModuleFileNameA(NULL, exePath, MAX_PATH);
+        std::string exeName = std::filesystem::path(exePath).filename().string();
+        std::transform(exeName.begin(), exeName.end(), exeName.begin(), ::tolower);
+
+        if (exeName.find("skyrim") != std::string::npos || exeName.find("tesv") != std::string::npos ||
+            exeName.find("fallout4") != std::string::npos) {
+            factor = 1.0f / 70.0f;
+            Logger::info("DXUpscalerManager: Detected Skyrim/Fallout engine. Setting Meters Factor to " + std::to_string(factor));
+        } else {
+            Logger::info("DXUpscalerManager: Defaulting Meters Factor to " + std::to_string(factor));
+        }
+
+        m_viewSpaceToMetersFactor = factor;
+        metersFactorSet = true;
+    }
+
+    std::vector<CandidateMatrix> candidates;
+
+    for (UINT slot = 0; slot < 14; ++slot) {
+        ID3D11Buffer* cb = nullptr;
+        context->VSGetConstantBuffers(slot, 1, &cb);
+        if (!cb)
+            continue;
+
+        D3D11_BUFFER_DESC desc;
+        cb->GetDesc(&desc);
+
+        if (desc.ByteWidth >= 64 && desc.ByteWidth <= 4096) {
+            ID3D11Buffer* staging = nullptr;
+            D3D11_BUFFER_DESC stagingDesc = {};
+            stagingDesc.ByteWidth = desc.ByteWidth;
+            stagingDesc.Usage = D3D11_USAGE_STAGING;
+            stagingDesc.BindFlags = 0;
+            stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+            stagingDesc.MiscFlags = 0;
+            stagingDesc.StructureByteStride = 0;
+
+            if (SUCCEEDED(m_pd3dDevice->CreateBuffer(&stagingDesc, nullptr, &staging))) {
+                context->CopyResource(staging, cb);
+                D3D11_MAPPED_SUBRESOURCE mapped;
+                if (SUCCEEDED(context->Map(staging, 0, D3D11_MAP_READ, 0, &mapped))) {
+                    float* data = (float*)mapped.pData;
+                    UINT numFloats = desc.ByteWidth / 4;
+
+                    for (UINT offset = 0; offset + 16 <= numFloats; offset += 4) {
+                        float fovY = 0.0f, nearP = 0.0f, farP = 0.0f;
+                        bool inverted = false;
+                        if (IsValidProjectionMatrix(&data[offset], fovY, nearP, farP, inverted)) {
+                            float fovDegrees = fovY * (180.0f / 3.14159265f);
+
+                            std::string matrixStr = "";
+                            const float* m = &data[offset];
+                            for (int i = 0; i < 16; ++i) {
+                                matrixStr += std::to_string(m[i]) + (i == 15 ? "" : ", ");
+                            }
+
+                            Logger::info("DXUpscalerManager: Detected Projection Matrix in Slot " + std::to_string(slot) + ": Near=" +
+                                         std::to_string(nearP) + ", Far=" + std::to_string(farP) + ", FOV=" + std::to_string(fovDegrees) +
+                                         ", Inverted=" + std::to_string(inverted) + ", Raw: [" + matrixStr + "]");
+
+                            m_cameraNear = nearP;
+                            m_cameraFar = farP;
+                            m_cameraFov = fovDegrees;
+                            RecordDepthClearValue(inverted);
+
+                            context->Unmap(staging, 0);
+                            staging->Release();
+                            cb->Release();
+                            return;
+                        } else {
+                            const float* m = &data[offset];
+                            bool isRow = false, isCol = false;
+                            if (std::abs(m[11] - 1.0f) < 1e-3f || std::abs(m[11] + 1.0f) < 1e-3f)
+                                isRow = true;
+                            else if (std::abs(m[14] - 1.0f) < 1e-3f || std::abs(m[14] + 1.0f) < 1e-3f)
+                                isCol = true;
+
+                            if ((isRow || isCol) && candidates.size() < 5) {
+                                CandidateMatrix cand;
+                                cand.slot = slot;
+                                cand.offset = offset;
+                                cand.isRow = isRow;
+                                for (int i = 0; i < 16; ++i) {
+                                    cand.m[i] = m[i];
+                                }
+                                candidates.push_back(cand);
+                            }
+                        }
+                    }
+                    context->Unmap(staging, 0);
+                }
+                staging->Release();
+            }
+        }
+        cb->Release();
+    }
+
+    if (!candidates.empty()) {
+        Logger::info(
+            "DXUpscalerManager: Failed to detect projection matrix. Found " + std::to_string(candidates.size()) + " close candidates:");
+        for (const auto& cand : candidates) {
+            std::string matrixStr = "";
+            for (int i = 0; i < 16; ++i) {
+                matrixStr += std::to_string(cand.m[i]) + (i == 15 ? "" : ", ");
+            }
+            Logger::info("  Candidate (Slot=" + std::to_string(cand.slot) + ", Offset=" + std::to_string(cand.offset) +
+                         ", RowMajor=" + std::to_string(cand.isRow) + "): [" + matrixStr + "]");
+        }
+    }
+}
 
 } // namespace GamePlug

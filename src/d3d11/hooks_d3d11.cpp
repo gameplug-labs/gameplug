@@ -27,7 +27,11 @@ HRESULT STDMETHODCALLTYPE HookedCreateTexture2D(
         }
     }
 
-    return g_OriginalCreateTexture2D(pDevice, &desc, pInitialData, ppTexture2D);
+    HRESULT hr = g_OriginalCreateTexture2D(pDevice, &desc, pInitialData, ppTexture2D);
+    if (SUCCEEDED(hr) && ppTexture2D && *ppTexture2D) {
+        DXUpscalerManager::Get().TrackTexture(*ppTexture2D, &desc);
+    }
+    return hr;
 }
 
 // -------------------------------------------------------------------------
@@ -69,12 +73,11 @@ static bool IsFakeBackBufferBound(ID3D11DeviceContext* pCtx) {
 
 static std::unordered_map<void**, PFN_RSSetViewports> g_OriginalRSSetViewportsMap;
 static std::unordered_map<void**, PFN_RSSetScissorRects> g_OriginalRSSetScissorRectsMap;
+static std::unordered_map<void**, PFN_OMSetRenderTargets> g_OriginalOMSetRenderTargetsMap;
+static std::unordered_map<void**, PFN_ClearDepthStencilView> g_OriginalClearDepthStencilViewMap;
 static std::unordered_map<void**, PFN_QueryInterface> g_OriginalContextQIMap;
 
 void STDMETHODCALLTYPE HookedRSSetViewports(ID3D11DeviceContext* pCtx, UINT NumViewports, const D3D11_VIEWPORT* pViewports) {
-    Logger::info("HookedRSSetViewports entry (g_InHook=" + std::to_string(g_InHook) +
-                 " pViewports=" + std::to_string(pViewports != nullptr) + " NumViewports=" + std::to_string(NumViewports) + ")");
-
     PFN_RSSetViewports originalFn = nullptr;
     {
         std::lock_guard<std::mutex> lock(g_HookMtx);
@@ -97,7 +100,6 @@ void STDMETHODCALLTYPE HookedRSSetViewports(ID3D11DeviceContext* pCtx, UINT NumV
         return;
     }
     ScopedRecursionGuard guard;
-    Logger::info("HookedRSSetViewports entry 1");
     DXUpscalerManager& mgr = DXUpscalerManager::Get();
     uint32_t dispW = mgr.GetDisplayWidth();
     uint32_t dispH = mgr.GetDisplayHeight();
@@ -162,9 +164,6 @@ void STDMETHODCALLTYPE HookedRSSetViewports(ID3D11DeviceContext* pCtx, UINT NumV
 }
 
 void STDMETHODCALLTYPE HookedRSSetScissorRects(ID3D11DeviceContext* pCtx, UINT NumRects, const D3D11_RECT* pRects) {
-    Logger::info("HookedRSSetScissorRects entry (g_InHook=" + std::to_string(g_InHook) + " pRects=" + std::to_string(pRects != nullptr) +
-                 " NumRects=" + std::to_string(NumRects) + ")");
-
     PFN_RSSetScissorRects originalFn = nullptr;
     {
         std::lock_guard<std::mutex> lock(g_HookMtx);
@@ -271,6 +270,12 @@ void PatchDeviceContextVTable(ID3D11DeviceContext* context) {
     if (g_OriginalRSSetScissorRectsMap.count(pVTable) == 0) {
         g_OriginalRSSetScissorRectsMap[pVTable] = (PFN_RSSetScissorRects)pVTable[45];
     }
+    if (g_OriginalOMSetRenderTargetsMap.count(pVTable) == 0) {
+        g_OriginalOMSetRenderTargetsMap[pVTable] = (PFN_OMSetRenderTargets)pVTable[33];
+    }
+    if (g_OriginalClearDepthStencilViewMap.count(pVTable) == 0) {
+        g_OriginalClearDepthStencilViewMap[pVTable] = (PFN_ClearDepthStencilView)pVTable[53];
+    }
     if (g_OriginalContextQIMap.count(pVTable) == 0) {
         g_OriginalContextQIMap[pVTable] = (PFN_QueryInterface)pVTable[0];
     }
@@ -282,12 +287,20 @@ void PatchDeviceContextVTable(ID3D11DeviceContext* context) {
     if (!g_OriginalRSSetScissorRects) {
         g_OriginalRSSetScissorRects = (PFN_RSSetScissorRects)pVTable[45];
     }
+    if (!g_OriginalOMSetRenderTargets) {
+        g_OriginalOMSetRenderTargets = (PFN_OMSetRenderTargets)pVTable[33];
+    }
+    if (!g_OriginalClearDepthStencilView) {
+        g_OriginalClearDepthStencilView = (PFN_ClearDepthStencilView)pVTable[53];
+    }
 
     DWORD old;
     if (VirtualProtect(pVTable, 128 * sizeof(void*), PAGE_READWRITE, &old)) {
         pVTable[0] = (void*)HookedContextQueryInterface;
+        pVTable[33] = (void*)HookedOMSetRenderTargets;
         pVTable[44] = (void*)HookedRSSetViewports;
         pVTable[45] = (void*)HookedRSSetScissorRects;
+        pVTable[53] = (void*)HookedClearDepthStencilView;
         VirtualProtect(pVTable, 128 * sizeof(void*), old, &old);
         Logger::info("DX Hooks D3D11: Patched DeviceContext VTable (" + std::to_string((uintptr_t)pVTable) + ")");
     } else {
@@ -351,6 +364,359 @@ HRESULT STDMETHODCALLTYPE HookedContextQueryInterface(ID3D11DeviceContext* pCtx,
         }
     }
     return hr;
+}
+
+static std::string DXGIFormatToString(DXGI_FORMAT format) {
+    switch (format) {
+    case DXGI_FORMAT_UNKNOWN:
+        return "DXGI_FORMAT_UNKNOWN";
+    case DXGI_FORMAT_R32G32B32A32_TYPELESS:
+        return "DXGI_FORMAT_R32G32B32A32_TYPELESS";
+    case DXGI_FORMAT_R32G32B32A32_FLOAT:
+        return "DXGI_FORMAT_R32G32B32A32_FLOAT";
+    case DXGI_FORMAT_R32G32B32A32_UINT:
+        return "DXGI_FORMAT_R32G32B32A32_UINT";
+    case DXGI_FORMAT_R32G32B32A32_SINT:
+        return "DXGI_FORMAT_R32G32B32A32_SINT";
+    case DXGI_FORMAT_R32G32B32_TYPELESS:
+        return "DXGI_FORMAT_R32G32B32_TYPELESS";
+    case DXGI_FORMAT_R32G32B32_FLOAT:
+        return "DXGI_FORMAT_R32G32B32_FLOAT";
+    case DXGI_FORMAT_R32G32B32_UINT:
+        return "DXGI_FORMAT_R32G32B32_UINT";
+    case DXGI_FORMAT_R32G32B32_SINT:
+        return "DXGI_FORMAT_R32G32B32_SINT";
+    case DXGI_FORMAT_R16G16B16A16_TYPELESS:
+        return "DXGI_FORMAT_R16G16B16A16_TYPELESS";
+    case DXGI_FORMAT_R16G16B16A16_FLOAT:
+        return "DXGI_FORMAT_R16G16B16A16_FLOAT";
+    case DXGI_FORMAT_R16G16B16A16_UNORM:
+        return "DXGI_FORMAT_R16G16B16A16_UNORM";
+    case DXGI_FORMAT_R16G16B16A16_UINT:
+        return "DXGI_FORMAT_R16G16B16A16_UINT";
+    case DXGI_FORMAT_R16G16B16A16_SNORM:
+        return "DXGI_FORMAT_R16G16B16A16_SNORM";
+    case DXGI_FORMAT_R16G16B16A16_SINT:
+        return "DXGI_FORMAT_R16G16B16A16_SINT";
+    case DXGI_FORMAT_R32G32_TYPELESS:
+        return "DXGI_FORMAT_R32G32_TYPELESS";
+    case DXGI_FORMAT_R32G32_FLOAT:
+        return "DXGI_FORMAT_R32G32_FLOAT";
+    case DXGI_FORMAT_R32G32_UINT:
+        return "DXGI_FORMAT_R32G32_UINT";
+    case DXGI_FORMAT_R32G32_SINT:
+        return "DXGI_FORMAT_R32G32_SINT";
+    case DXGI_FORMAT_R32G8X24_TYPELESS:
+        return "DXGI_FORMAT_R32G8X24_TYPELESS";
+    case DXGI_FORMAT_D32_FLOAT_S8X24_UINT:
+        return "DXGI_FORMAT_D32_FLOAT_S8X24_UINT";
+    case DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS:
+        return "DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS";
+    case DXGI_FORMAT_X32_TYPELESS_G8X24_UINT:
+        return "DXGI_FORMAT_X32_TYPELESS_G8X24_UINT";
+    case DXGI_FORMAT_R10G10B10A2_TYPELESS:
+        return "DXGI_FORMAT_R10G10B10A2_TYPELESS";
+    case DXGI_FORMAT_R10G10B10A2_UNORM:
+        return "DXGI_FORMAT_R10G10B10A2_UNORM";
+    case DXGI_FORMAT_R10G10B10A2_UINT:
+        return "DXGI_FORMAT_R10G10B10A2_UINT";
+    case DXGI_FORMAT_R11G11B10_FLOAT:
+        return "DXGI_FORMAT_R11G11B10_FLOAT";
+    case DXGI_FORMAT_R8G8B8A8_TYPELESS:
+        return "DXGI_FORMAT_R8G8B8A8_TYPELESS";
+    case DXGI_FORMAT_R8G8B8A8_UNORM:
+        return "DXGI_FORMAT_R8G8B8A8_UNORM";
+    case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:
+        return "DXGI_FORMAT_R8G8B8A8_UNORM_SRGB";
+    case DXGI_FORMAT_R8G8B8A8_UINT:
+        return "DXGI_FORMAT_R8G8B8A8_UINT";
+    case DXGI_FORMAT_R8G8B8A8_SNORM:
+        return "DXGI_FORMAT_R8G8B8A8_SNORM";
+    case DXGI_FORMAT_R8G8B8A8_SINT:
+        return "DXGI_FORMAT_R8G8B8A8_SINT";
+    case DXGI_FORMAT_R16G16_TYPELESS:
+        return "DXGI_FORMAT_R16G16_TYPELESS";
+    case DXGI_FORMAT_R16G16_FLOAT:
+        return "DXGI_FORMAT_R16G16_FLOAT";
+    case DXGI_FORMAT_R16G16_UNORM:
+        return "DXGI_FORMAT_R16G16_UNORM";
+    case DXGI_FORMAT_R16G16_UINT:
+        return "DXGI_FORMAT_R16G16_UINT";
+    case DXGI_FORMAT_R16G16_SNORM:
+        return "DXGI_FORMAT_R16G16_SNORM";
+    case DXGI_FORMAT_R16G16_SINT:
+        return "DXGI_FORMAT_R16G16_SINT";
+    case DXGI_FORMAT_R32_TYPELESS:
+        return "DXGI_FORMAT_R32_TYPELESS";
+    case DXGI_FORMAT_D32_FLOAT:
+        return "DXGI_FORMAT_D32_FLOAT";
+    case DXGI_FORMAT_R32_FLOAT:
+        return "DXGI_FORMAT_R32_FLOAT";
+    case DXGI_FORMAT_R32_UINT:
+        return "DXGI_FORMAT_R32_UINT";
+    case DXGI_FORMAT_R32_SINT:
+        return "DXGI_FORMAT_R32_SINT";
+    case DXGI_FORMAT_R24G8_TYPELESS:
+        return "DXGI_FORMAT_R24G8_TYPELESS";
+    case DXGI_FORMAT_D24_UNORM_S8_UINT:
+        return "DXGI_FORMAT_D24_UNORM_S8_UINT";
+    case DXGI_FORMAT_R24_UNORM_X8_TYPELESS:
+        return "DXGI_FORMAT_R24_UNORM_X8_TYPELESS";
+    case DXGI_FORMAT_X24_TYPELESS_G8_UINT:
+        return "DXGI_FORMAT_X24_TYPELESS_G8_UINT";
+    case DXGI_FORMAT_R8G8_TYPELESS:
+        return "DXGI_FORMAT_R8G8_TYPELESS";
+    case DXGI_FORMAT_R8G8_UNORM:
+        return "DXGI_FORMAT_R8G8_UNORM";
+    case DXGI_FORMAT_R8G8_UINT:
+        return "DXGI_FORMAT_R8G8_UINT";
+    case DXGI_FORMAT_R8G8_SNORM:
+        return "DXGI_FORMAT_R8G8_SNORM";
+    case DXGI_FORMAT_R8G8_SINT:
+        return "DXGI_FORMAT_R8G8_SINT";
+    case DXGI_FORMAT_R16_TYPELESS:
+        return "DXGI_FORMAT_R16_TYPELESS";
+    case DXGI_FORMAT_R16_FLOAT:
+        return "DXGI_FORMAT_R16_FLOAT";
+    case DXGI_FORMAT_D16_UNORM:
+        return "DXGI_FORMAT_D16_UNORM";
+    case DXGI_FORMAT_R16_UNORM:
+        return "DXGI_FORMAT_R16_UNORM";
+    case DXGI_FORMAT_R16_UINT:
+        return "DXGI_FORMAT_R16_UINT";
+    case DXGI_FORMAT_R16_SNORM:
+        return "DXGI_FORMAT_R16_SNORM";
+    case DXGI_FORMAT_R16_SINT:
+        return "DXGI_FORMAT_R16_SINT";
+    case DXGI_FORMAT_R8_TYPELESS:
+        return "DXGI_FORMAT_R8_TYPELESS";
+    case DXGI_FORMAT_R8_UNORM:
+        return "DXGI_FORMAT_R8_UNORM";
+    case DXGI_FORMAT_R8_UINT:
+        return "DXGI_FORMAT_R8_UINT";
+    case DXGI_FORMAT_R8_SNORM:
+        return "DXGI_FORMAT_R8_SNORM";
+    case DXGI_FORMAT_R8_SINT:
+        return "DXGI_FORMAT_R8_SINT";
+    case DXGI_FORMAT_A8_UNORM:
+        return "DXGI_FORMAT_A8_UNORM";
+    case DXGI_FORMAT_R1_UNORM:
+        return "DXGI_FORMAT_R1_UNORM";
+    case DXGI_FORMAT_R9G9B9E5_SHAREDEXP:
+        return "DXGI_FORMAT_R9G9B9E5_SHAREDEXP";
+    case DXGI_FORMAT_R8G8_B8G8_UNORM:
+        return "DXGI_FORMAT_R8G8_B8G8_UNORM";
+    case DXGI_FORMAT_G8R8_G8B8_UNORM:
+        return "DXGI_FORMAT_G8R8_G8B8_UNORM";
+    case DXGI_FORMAT_BC1_TYPELESS:
+        return "DXGI_FORMAT_BC1_TYPELESS";
+    case DXGI_FORMAT_BC1_UNORM:
+        return "DXGI_FORMAT_BC1_UNORM";
+    case DXGI_FORMAT_BC1_UNORM_SRGB:
+        return "DXGI_FORMAT_BC1_UNORM_SRGB";
+    case DXGI_FORMAT_BC2_TYPELESS:
+        return "DXGI_FORMAT_BC2_TYPELESS";
+    case DXGI_FORMAT_BC2_UNORM:
+        return "DXGI_FORMAT_BC2_UNORM";
+    case DXGI_FORMAT_BC2_UNORM_SRGB:
+        return "DXGI_FORMAT_BC2_UNORM_SRGB";
+    case DXGI_FORMAT_BC3_TYPELESS:
+        return "DXGI_FORMAT_BC3_TYPELESS";
+    case DXGI_FORMAT_BC3_UNORM:
+        return "DXGI_FORMAT_BC3_UNORM";
+    case DXGI_FORMAT_BC3_UNORM_SRGB:
+        return "DXGI_FORMAT_BC3_UNORM_SRGB";
+    case DXGI_FORMAT_BC4_TYPELESS:
+        return "DXGI_FORMAT_BC4_TYPELESS";
+    case DXGI_FORMAT_BC4_UNORM:
+        return "DXGI_FORMAT_BC4_UNORM";
+    case DXGI_FORMAT_BC4_SNORM:
+        return "DXGI_FORMAT_BC4_SNORM";
+    case DXGI_FORMAT_BC5_TYPELESS:
+        return "DXGI_FORMAT_BC5_TYPELESS";
+    case DXGI_FORMAT_BC5_UNORM:
+        return "DXGI_FORMAT_BC5_UNORM";
+    case DXGI_FORMAT_BC5_SNORM:
+        return "DXGI_FORMAT_BC5_SNORM";
+    case DXGI_FORMAT_B5G6R5_UNORM:
+        return "DXGI_FORMAT_B5G6R5_UNORM";
+    case DXGI_FORMAT_B5G5R5A1_UNORM:
+        return "DXGI_FORMAT_B5G5R5A1_UNORM";
+    case DXGI_FORMAT_B8G8R8A8_UNORM:
+        return "DXGI_FORMAT_B8G8R8A8_UNORM";
+    case DXGI_FORMAT_B8G8R8X8_UNORM:
+        return "DXGI_FORMAT_B8G8R8X8_UNORM";
+    case DXGI_FORMAT_R10G10B10_XR_BIAS_A2_UNORM:
+        return "DXGI_FORMAT_R10G10B10_XR_BIAS_A2_UNORM";
+    case DXGI_FORMAT_B8G8R8A8_TYPELESS:
+        return "DXGI_FORMAT_B8G8R8A8_TYPELESS";
+    case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:
+        return "DXGI_FORMAT_B8G8R8A8_UNORM_SRGB";
+    case DXGI_FORMAT_B8G8R8X8_TYPELESS:
+        return "DXGI_FORMAT_B8G8R8X8_TYPELESS";
+    case DXGI_FORMAT_B8G8R8X8_UNORM_SRGB:
+        return "DXGI_FORMAT_B8G8R8X8_UNORM_SRGB";
+    case DXGI_FORMAT_BC6H_TYPELESS:
+        return "DXGI_FORMAT_BC6H_TYPELESS";
+    case DXGI_FORMAT_BC6H_UF16:
+        return "DXGI_FORMAT_BC6H_UF16";
+    case DXGI_FORMAT_BC6H_SF16:
+        return "DXGI_FORMAT_BC6H_SF16";
+    case DXGI_FORMAT_BC7_TYPELESS:
+        return "DXGI_FORMAT_BC7_TYPELESS";
+    case DXGI_FORMAT_BC7_UNORM:
+        return "DXGI_FORMAT_BC7_UNORM";
+    case DXGI_FORMAT_BC7_UNORM_SRGB:
+        return "DXGI_FORMAT_BC7_UNORM_SRGB";
+    case DXGI_FORMAT_AYUV:
+        return "DXGI_FORMAT_AYUV";
+    case DXGI_FORMAT_Y410:
+        return "DXGI_FORMAT_Y410";
+    case DXGI_FORMAT_Y416:
+        return "DXGI_FORMAT_Y416";
+    case DXGI_FORMAT_NV12:
+        return "DXGI_FORMAT_NV12";
+    case DXGI_FORMAT_P010:
+        return "DXGI_FORMAT_P010";
+    case DXGI_FORMAT_P016:
+        return "DXGI_FORMAT_P016";
+    case DXGI_FORMAT_420_OPAQUE:
+        return "DXGI_FORMAT_420_OPAQUE";
+    case DXGI_FORMAT_YUY2:
+        return "DXGI_FORMAT_YUY2";
+    case DXGI_FORMAT_Y210:
+        return "DXGI_FORMAT_Y210";
+    case DXGI_FORMAT_Y216:
+        return "DXGI_FORMAT_Y216";
+    case DXGI_FORMAT_NV11:
+        return "DXGI_FORMAT_NV11";
+    case DXGI_FORMAT_AI44:
+        return "DXGI_FORMAT_AI44";
+    case DXGI_FORMAT_IA44:
+        return "DXGI_FORMAT_IA44";
+    case DXGI_FORMAT_P8:
+        return "DXGI_FORMAT_P8";
+    case DXGI_FORMAT_A8P8:
+        return "DXGI_FORMAT_A8P8";
+    case DXGI_FORMAT_B4G4R4A4_UNORM:
+        return "DXGI_FORMAT_B4G4R4A4_UNORM";
+    default:
+        return "DXGI_FORMAT_UNKNOWN(" + std::to_string((int)format) + ")";
+    }
+}
+
+static void LogRTVDesc(ID3D11RenderTargetView* rtv, int index) {
+    if (!rtv)
+        return;
+    ID3D11Resource* res = nullptr;
+    rtv->GetResource(&res);
+    if (res) {
+        ID3D11Texture2D* tex = nullptr;
+        if (SUCCEEDED(res->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&tex))) {
+            D3D11_TEXTURE2D_DESC desc;
+            tex->GetDesc(&desc);
+            Logger::info("  Bound RTV[" + std::to_string(index) + "]: size=" + std::to_string(desc.Width) + "x" +
+                         std::to_string(desc.Height) + " format=" + DXGIFormatToString(desc.Format) +
+                         " RTV=" + std::to_string((uintptr_t)rtv));
+            tex->Release();
+        }
+        res->Release();
+    }
+}
+
+static void LogDSVDesc(ID3D11DepthStencilView* dsv) {
+    if (!dsv)
+        return;
+    ID3D11Resource* res = nullptr;
+    dsv->GetResource(&res);
+    if (res) {
+        ID3D11Texture2D* tex = nullptr;
+        if (SUCCEEDED(res->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&tex))) {
+            D3D11_TEXTURE2D_DESC desc;
+            tex->GetDesc(&desc);
+            Logger::info("  Bound DSV: size=" + std::to_string(desc.Width) + "x" + std::to_string(desc.Height) +
+                         " format=" + DXGIFormatToString(desc.Format) + " DSV=" + std::to_string((uintptr_t)dsv));
+            tex->Release();
+        }
+        res->Release();
+    }
+}
+
+void STDMETHODCALLTYPE HookedOMSetRenderTargets(ID3D11DeviceContext* pCtx, UINT NumViews,
+    ID3D11RenderTargetView* const* ppRenderTargetViews, ID3D11DepthStencilView* pDepthStencilView) {
+    PFN_OMSetRenderTargets originalFn = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_HookMtx);
+        if (pCtx) {
+            void** pVTable = *(void***)pCtx;
+            auto it = g_OriginalOMSetRenderTargetsMap.find(pVTable);
+            if (it != g_OriginalOMSetRenderTargetsMap.end()) {
+                originalFn = it->second;
+            }
+        }
+    }
+    if (!originalFn) {
+        originalFn = g_OriginalOMSetRenderTargets;
+    }
+
+    if (g_InHook || NumViews == 0 || !ppRenderTargetViews) {
+        if (originalFn) {
+            originalFn(pCtx, NumViews, ppRenderTargetViews, pDepthStencilView);
+        }
+        return;
+    }
+    ScopedRecursionGuard guard;
+
+    static uint64_t s_omLogCount = 0;
+    if (s_omLogCount++ % 1000 == 0) {
+        Logger::info("OMSetRenderTargets Trace (Frame " + std::to_string(s_omLogCount / 60) + "):");
+        for (UINT i = 0; i < NumViews; ++i) {
+            LogRTVDesc(ppRenderTargetViews[i], i);
+        }
+        LogDSVDesc(pDepthStencilView);
+    }
+
+    if (originalFn) {
+        originalFn(pCtx, NumViews, ppRenderTargetViews, pDepthStencilView);
+    }
+}
+
+void STDMETHODCALLTYPE HookedClearDepthStencilView(
+    ID3D11DeviceContext* pCtx, ID3D11DepthStencilView* pDepthStencilView, UINT ClearFlags, FLOAT Depth, UINT8 Stencil) {
+    PFN_ClearDepthStencilView originalFn = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_HookMtx);
+        if (pCtx) {
+            void** pVTable = *(void***)pCtx;
+            auto it = g_OriginalClearDepthStencilViewMap.find(pVTable);
+            if (it != g_OriginalClearDepthStencilViewMap.end()) {
+                originalFn = it->second;
+            }
+        }
+    }
+    if (!originalFn) {
+        originalFn = g_OriginalClearDepthStencilView;
+    }
+
+    if (g_InHook) {
+        if (originalFn) {
+            originalFn(pCtx, pDepthStencilView, ClearFlags, Depth, Stencil);
+        }
+        return;
+    }
+    ScopedRecursionGuard guard;
+
+    if (ClearFlags & D3D11_CLEAR_DEPTH) {
+        // Standard depth is usually cleared to 1.0, inverted depth is cleared to 0.0
+        bool isInverted = (Depth < 0.5f);
+        Logger::info("DXUpscalerManager: Check depth detect " + std::string(isInverted ? "true" : "false") +
+                     " Depth: " + std::to_string(Depth) + " Stencil: " + std::to_string(Stencil));
+        DXUpscalerManager::Get().RecordDepthClearValue(isInverted);
+    }
+
+    if (originalFn) {
+        originalFn(pCtx, pDepthStencilView, ClearFlags, Depth, Stencil);
+    }
 }
 
 } // namespace GamePlug

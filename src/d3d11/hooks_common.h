@@ -29,6 +29,10 @@ typedef HRESULT(STDMETHODCALLTYPE* PFN_CreateTexture2D)(
 
 typedef void(STDMETHODCALLTYPE* PFN_RSSetViewports)(ID3D11DeviceContext* pCtx, UINT NumViewports, const D3D11_VIEWPORT* pViewports);
 typedef void(STDMETHODCALLTYPE* PFN_RSSetScissorRects)(ID3D11DeviceContext* pCtx, UINT NumRects, const D3D11_RECT* pRects);
+typedef void(STDMETHODCALLTYPE* PFN_OMSetRenderTargets)(ID3D11DeviceContext* pCtx, UINT NumViews,
+    ID3D11RenderTargetView* const* ppRenderTargetViews, ID3D11DepthStencilView* pDepthStencilView);
+typedef void(STDMETHODCALLTYPE* PFN_ClearDepthStencilView)(
+    ID3D11DeviceContext* pCtx, ID3D11DepthStencilView* pDepthStencilView, UINT ClearFlags, FLOAT Depth, UINT8 Stencil);
 typedef HRESULT(STDMETHODCALLTYPE* PFN_CreateDeferredContext)(
     ID3D11Device* pDevice, UINT ContextFlags, ID3D11DeviceContext** ppDeferredContext);
 typedef void(STDMETHODCALLTYPE* PFN_GetImmediateContext)(ID3D11Device* pDevice, ID3D11DeviceContext** ppImmediateContext);
@@ -55,6 +59,8 @@ extern PFN_GetBuffer g_OriginalGetBuffer;
 extern PFN_CreateTexture2D g_OriginalCreateTexture2D;
 extern PFN_RSSetViewports g_OriginalRSSetViewports;
 extern PFN_RSSetScissorRects g_OriginalRSSetScissorRects;
+extern PFN_OMSetRenderTargets g_OriginalOMSetRenderTargets;
+extern PFN_ClearDepthStencilView g_OriginalClearDepthStencilView;
 extern PFN_CreateDeferredContext g_OriginalCreateDeferredContext;
 extern PFN_GetImmediateContext g_OriginalGetImmediateContext;
 extern PFN_CreateSwapChain g_OriginalCreateSwapChain;
@@ -93,6 +99,8 @@ HRESULT STDMETHODCALLTYPE HookedCreateTexture2D(
     ID3D11Device* pDevice, const D3D11_TEXTURE2D_DESC* pDesc, const D3D11_SUBRESOURCE_DATA* pInitialData, ID3D11Texture2D** ppTexture2D);
 void STDMETHODCALLTYPE HookedRSSetViewports(ID3D11DeviceContext* pCtx, UINT NumViewports, const D3D11_VIEWPORT* pViewports);
 void STDMETHODCALLTYPE HookedRSSetScissorRects(ID3D11DeviceContext* pCtx, UINT NumRects, const D3D11_RECT* pRects);
+void STDMETHODCALLTYPE HookedOMSetRenderTargets(ID3D11DeviceContext* pCtx, UINT NumViews,
+    ID3D11RenderTargetView* const* ppRenderTargetViews, ID3D11DepthStencilView* pDepthStencilView);
 HRESULT STDMETHODCALLTYPE HookedQueryInterface(IUnknown* pUnk, REFIID riid, void** ppvObject);
 HRESULT STDMETHODCALLTYPE HookedPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT Flags);
 HRESULT STDMETHODCALLTYPE HookedPresent1(
@@ -119,5 +127,7 @@ void PatchDeviceContextVTable(ID3D11DeviceContext* context);
 HRESULT STDMETHODCALLTYPE HookedCreateDeferredContext(ID3D11Device* pDevice, UINT ContextFlags, ID3D11DeviceContext** ppDeferredContext);
 void STDMETHODCALLTYPE HookedGetImmediateContext(ID3D11Device* pDevice, ID3D11DeviceContext** ppImmediateContext);
 HRESULT STDMETHODCALLTYPE HookedContextQueryInterface(ID3D11DeviceContext* pCtx, REFIID riid, void** ppvObject);
+void STDMETHODCALLTYPE HookedClearDepthStencilView(
+    ID3D11DeviceContext* pCtx, ID3D11DepthStencilView* pDepthStencilView, UINT ClearFlags, FLOAT Depth, UINT8 Stencil);
 
 } // namespace GamePlug

@@ -91,11 +91,10 @@ set_target_properties(dinput8_skyrim PROPERTIES
 # Deployment for Skyrim
 if(BIN_OUTPUT_DIR)
     add_custom_command(TARGET dinput8_skyrim POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${BIN_OUTPUT_DIR}/skyrim"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${BIN_OUTPUT_DIR}/d3d9_skyrim"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different 
                 "$<TARGET_FILE:dinput8_skyrim>" 
-                "${BIN_OUTPUT_DIR}/skyrim/dinput8.dll"
-        COMMENT "Copying Skyrim D3D9 proxy to skyrim/dinput8.dll"
+                "${BIN_OUTPUT_DIR}/d3d9_skyrim/dinput8.dll"
+        COMMENT "Copying Skyrim D3D9 proxy to d3d9_skyrim/dinput8.dll"
     )
 endif()
-

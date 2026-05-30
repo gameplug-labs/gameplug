@@ -4,6 +4,11 @@ project(GamePlug CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Always use the Release CRT (/MD) even in Debug builds.
+# This prevents heap corruption crashes when injecting into a Release game process,
+# which uses a single CRT heap. Mixing /MDd and /MD across DLL boundaries causes crashes.
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL" CACHE STRING "" FORCE)
+
 if(WIN32)
     add_compile_definitions(VK_USE_PLATFORM_WIN32_KHR)
 endif()

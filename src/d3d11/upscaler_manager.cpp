@@ -449,7 +449,24 @@ void DXUpscalerManager::RenderUI(float fps, uint32_t width, uint32_t height) {
                         changed = ImGui::DragInt(f.Name, (int*)f.Data);
                         break;
                     case 2:
-                        changed = ImGui::DragFloat(f.Name, (float*)f.Data);
+                        {
+                            float minVal = 0.0f;
+                            float maxVal = 1.0f;
+                            bool hasRange = false;
+                            if (f.Options) {
+                                float optMin = 0.0f, optMax = 0.0f;
+                                if (sscanf(f.Options, "%f,%f", &optMin, &optMax) == 2) {
+                                    minVal = optMin;
+                                    maxVal = optMax;
+                                    hasRange = true;
+                                }
+                            }
+                            if (hasRange) {
+                                changed = ImGui::SliderFloat(f.Name, (float*)f.Data, minVal, maxVal);
+                            } else {
+                                changed = ImGui::DragFloat(f.Name, (float*)f.Data);
+                            }
+                        }
                         break;
                     case 3:
                         changed = ImGui::InputText(f.Name, (char*)f.Data, (size_t)f.DataSize);

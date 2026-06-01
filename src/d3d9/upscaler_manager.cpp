@@ -102,8 +102,10 @@ void UpscalerManager::RenderFrame(void* device, void* source, void* target, uint
 
     m_pInterface->OnRenderFrame(
         (uintptr_t)device, (uint64_t)source, (uint64_t)target, 0,
-        w, h, rw, rh, 0, 0, 0, 0, 0.0f, 0.0f
+        w, h, rw, rh, 0, 0, 0, 0, 0.0f, 0.0f,
+        0.0f, 0.0f, 0.0f, 1.0f, false, false
     );
+
 }
 
 bool UpscalerManager::IsUpscalingEnabled() const {
@@ -191,7 +193,24 @@ void UpscalerManager::RenderUI(float fps, uint32_t width, uint32_t height) {
                             changed = ImGui::DragInt(f.Name, (int*)f.Data);
                             break;
                         case 2: // FLOAT
-                            changed = ImGui::DragFloat(f.Name, (float*)f.Data);
+                            {
+                                float minVal = 0.0f;
+                                float maxVal = 1.0f;
+                                bool hasRange = false;
+                                if (f.Options) {
+                                    float optMin = 0.0f, optMax = 0.0f;
+                                    if (sscanf(f.Options, "%f,%f", &optMin, &optMax) == 2) {
+                                        minVal = optMin;
+                                        maxVal = optMax;
+                                        hasRange = true;
+                                    }
+                                }
+                                if (hasRange) {
+                                    changed = ImGui::SliderFloat(f.Name, (float*)f.Data, minVal, maxVal);
+                                } else {
+                                    changed = ImGui::DragFloat(f.Name, (float*)f.Data);
+                                }
+                            }
                             break;
                         case 3: // STRING
                             changed = ImGui::InputText(f.Name, (char*)f.Data, (size_t)f.DataSize);

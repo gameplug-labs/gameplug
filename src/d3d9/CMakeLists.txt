@@ -98,3 +98,90 @@ if(BIN_OUTPUT_DIR)
         COMMENT "Copying Skyrim D3D9 proxy to d3d9_skyrim/dinput8.dll"
     )
 endif()
+
+# --- D3D9 Version Target ---
+add_library(version_d3d9 SHARED
+    version.cpp
+    version.def
+)
+
+target_include_directories(version_d3d9 PRIVATE
+    ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/src/d3d9
+    ${PROJECT_SOURCE_DIR}/src/shared
+    ${PROJECT_SOURCE_DIR}/external/imgui
+    ${PROJECT_SOURCE_DIR}/external/imgui/backends
+)
+
+if(MSVC)
+    target_compile_options(version_d3d9 PRIVATE /utf-8 /FS)
+endif()
+
+target_link_libraries(version_d3d9 PRIVATE
+    shlwapi
+    framework_d3d9
+    minhook
+    d3d9
+    d3dcompiler
+    dxguid
+)
+
+set_target_properties(version_d3d9 PROPERTIES 
+    PREFIX ""
+    SUFFIX ".dll"
+    OUTPUT_NAME "version"
+)
+
+if(BIN_OUTPUT_DIR)
+    add_custom_command(TARGET version_d3d9 POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${BIN_OUTPUT_DIR}/d3d9"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different 
+                "$<TARGET_FILE:version_d3d9>" 
+                "${BIN_OUTPUT_DIR}/d3d9/version.dll"
+        COMMENT "Copying D3D9 version proxy to d3d9/version.dll"
+    )
+endif()
+
+# --- Skyrim Specific Version Target ---
+add_library(version_skyrim SHARED
+    version.cpp
+    version.def
+)
+
+target_include_directories(version_skyrim PRIVATE
+    ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/src/d3d9
+    ${PROJECT_SOURCE_DIR}/src/shared
+    ${PROJECT_SOURCE_DIR}/external/imgui
+    ${PROJECT_SOURCE_DIR}/external/imgui/backends
+)
+
+if(MSVC)
+    target_compile_options(version_skyrim PRIVATE /utf-8 /FS)
+endif()
+
+target_link_libraries(version_skyrim PRIVATE
+    shlwapi
+    framework_skyrim
+    minhook
+    d3d9
+    d3dcompiler
+    dxguid
+)
+
+set_target_properties(version_skyrim PROPERTIES 
+    PREFIX ""
+    SUFFIX ".dll"
+    OUTPUT_NAME "version"
+)
+
+if(BIN_OUTPUT_DIR)
+    add_custom_command(TARGET version_skyrim POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${BIN_OUTPUT_DIR}/d3d9_skyrim"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different 
+                "$<TARGET_FILE:version_skyrim>" 
+                "${BIN_OUTPUT_DIR}/d3d9_skyrim/version.dll"
+        COMMENT "Copying Skyrim version proxy to d3d9_skyrim/version.dll"
+    )
+endif()
+

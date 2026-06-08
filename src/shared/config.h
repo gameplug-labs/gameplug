@@ -19,7 +19,7 @@ public:
     void Load(const std::string& filename = "GamePlug.conf");
     void Save(const std::string& filename = "GamePlug.conf");
 
-    void RenderUI(bool showResolutionEnumeration = true);
+    void RenderUI(bool showResolutionEnumeration = false);
 
     // General accessors
     bool GetBool(const std::string& key, bool defaultValue = false);

@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Added proxy DLL support via `version.dll` for all renderer backends (D3D9, D3D9 Skyrim, D3D10, D3D11, and D3D12).
+
+
+## [1.0.1] - 2026-05-28
+
+### Fixed
+- Fix UI not interactable on some games.
+
+
+## [1.0.0] - 2026-05-26
+
+### Added
 - DirectX 10 (D3D10) support and release packaging.
 - Logs disabled by default, enabled with `Debug=true` in `GamePlug.conf`.
 

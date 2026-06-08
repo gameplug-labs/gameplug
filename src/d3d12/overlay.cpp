@@ -385,7 +385,6 @@ bool InitImGuiDX12(IDXGISwapChain* pSwapChain, ID3D12CommandQueue* pQueue) {
     Logger::info("DX12 Init: Step 5 - Creating ImGui Context");
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
-    io.IniFilename = nullptr;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
     Logger::info("DX12 Init: Step 6 - Forcing Font Build");
@@ -478,9 +477,6 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
         Logger::info("DX Overlay: Visibility toggled manually to: " + std::string(g_Visible ? "ON" : "OFF"));
     }
     g_ShowKeyWasPressed = keyCurrentlyPressed;
-
-    if (!g_Visible)
-        return;
 
     g_needsNewImGuiFrame = true;
     g_totalPresentCalls++;
@@ -683,11 +679,39 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
 
                 // UI Logic
                 if (g_needsNewImGuiFrame) {
+                    ImGuiIO& io = ImGui::GetIO();
+
                     ImGui_ImplDX12_NewFrame();
                     ImGui_ImplWin32_NewFrame();
+                    io.DisplaySize = ImVec2((float)width, (float)height);
+
+                    if (g_Visible && g_currentHWND) {
+                        POINT cursorPos;
+                        if (GetCursorPos(&cursorPos)) {
+                            ScreenToClient(g_currentHWND, &cursorPos);
+                            io.AddMousePosEvent((float)cursorPos.x, (float)cursorPos.y);
+                        }
+                        // Poll button state and feed it through the event queue
+                        io.AddMouseButtonEvent(0, (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0);
+                        io.AddMouseButtonEvent(1, (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0);
+                        io.AddMouseButtonEvent(2, (GetAsyncKeyState(VK_MBUTTON) & 0x8000) != 0);
+                        // Draw ImGui's own cursor on top – mirrors Community Shaders behaviour.
+                        // The game cursor can be hidden in certain states (in-game, menus with
+                        // hardware cursor hidden), so ImGui's software cursor is more reliable.
+                        io.MouseDrawCursor = true;
+                    } else {
+                        io.MouseDrawCursor = false;
+                    }
+
+                    if (!g_Visible) {
+                        io.ClearInputKeys();
+                    }
+
                     ImGui::NewFrame();
 
-                    ImGuiOverlayShared::DrawUI(width, height);
+                    if (g_Visible) {
+                        ImGuiOverlayShared::DrawUI(width, height);
+                    }
                     ImGui::Render();
                     g_needsNewImGuiFrame = false;
                 }

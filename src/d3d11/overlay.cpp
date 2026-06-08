@@ -17,8 +17,10 @@ static bool g_ShowKeyWasPressed = false;
 static WNDPROC g_OriginalWndProc = nullptr;
 
 LRESULT CALLBACK HookedWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    if (g_ImGuiInitialized && g_Visible && ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
-        return true;
+    if (g_ImGuiInitialized && g_Visible) {
+        if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
+            return true;
+    }
     return CallWindowProc(g_OriginalWndProc, hWnd, msg, wParam, lParam);
 }
 
@@ -87,7 +89,7 @@ bool InitImGuiDX11(IDXGISwapChain* pSwapChain) {
     Logger::info("DX11 Init: Step 3 - Creating ImGui Context (HWND=" + std::to_string((uintptr_t)hWnd) + ")");
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
-    io.IniFilename = nullptr; // Disable imgui.ini
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
     Logger::info("DX11 Init: Step 4 - ImGui_ImplWin32_Init");
     if (!ImGui_ImplWin32_Init(hWnd)) {
@@ -179,9 +181,6 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
         Logger::info("DX Overlay D3D11: Visibility toggled manually to: " + std::string(g_Visible ? "ON" : "OFF"));
     }
     g_ShowKeyWasPressed = keyCurrentlyPressed;
-
-    if (!g_Visible)
-        return;
 
     g_needsNewImGuiFrame = true;
     g_totalPresentCalls++;
@@ -284,11 +283,40 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
         if (shouldLog)
             Logger::info("DX11 Frame " + std::to_string(frameCount11));
 
+        ImGuiIO& io = ImGui::GetIO();
+
         ImGui_ImplDX11_NewFrame();
         ImGui_ImplWin32_NewFrame();
+        io.DisplaySize = ImVec2((float)desc.BufferDesc.Width, (float)desc.BufferDesc.Height);
+
+        if (g_Visible && g_currentHWND) {
+            POINT cursorPos;
+            if (GetCursorPos(&cursorPos)) {
+                ScreenToClient(g_currentHWND, &cursorPos);
+                io.AddMousePosEvent((float)cursorPos.x, (float)cursorPos.y);
+            }
+            // Poll button state and feed it through the event queue
+            io.AddMouseButtonEvent(0, (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0);
+            io.AddMouseButtonEvent(1, (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0);
+            io.AddMouseButtonEvent(2, (GetAsyncKeyState(VK_MBUTTON) & 0x8000) != 0);
+            // Draw ImGui's own cursor on top – mirrors Community Shaders behaviour.
+            // The game cursor can be hidden in certain states (in-game, menus with
+            // hardware cursor hidden), so ImGui's software cursor is more reliable.
+            io.MouseDrawCursor = true;
+        } else {
+            io.MouseDrawCursor = false;
+        }
+
+        // io.MouseDrawCursor = g_Visible;
+        if (!g_Visible) {
+            io.ClearInputKeys();
+        }
+
         ImGui::NewFrame();
 
-        ImGuiOverlayShared::DrawUI(desc.BufferDesc.Width, desc.BufferDesc.Height);
+        if (g_Visible) {
+            ImGuiOverlayShared::DrawUI(desc.BufferDesc.Width, desc.BufferDesc.Height);
+        }
 
         ImGui::Render();
 

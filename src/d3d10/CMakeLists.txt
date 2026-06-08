@@ -25,6 +25,7 @@ target_link_libraries(dinput8_d3d10 PRIVATE
 )
 
 if(MSVC)
+    target_compile_options(dinput8_d3d10 PRIVATE /utf-8 /FS)
     set_target_properties(dinput8_d3d10 PROPERTIES 
         PREFIX ""
         SUFFIX ".dll"
@@ -47,3 +48,53 @@ add_custom_command(TARGET dinput8_d3d10 POST_BUILD
             "${PROJECT_SOURCE_DIR}/bin/${BIN_ARCH}/d3d10/$<TARGET_FILE_NAME:dinput8_d3d10>"
     COMMENT "Copying dinput8.dll proxy to bin/d3d10 folder"
 )
+
+# Version DLL target
+add_library(version_d3d10 SHARED
+    version.cpp
+    version.def
+)
+
+target_include_directories(version_d3d10 PRIVATE
+    ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/src/d3d10
+    ${PROJECT_SOURCE_DIR}/src/shared
+    ${PROJECT_SOURCE_DIR}/external/imgui
+    ${PROJECT_SOURCE_DIR}/external/imgui/backends
+)
+
+target_link_libraries(version_d3d10 PRIVATE
+    shlwapi
+    framework_d3d10
+    minhook
+    d3d10
+    dxgi
+    d3dcompiler
+    delayimp.lib
+)
+
+if(MSVC)
+    target_compile_options(version_d3d10 PRIVATE /utf-8 /FS)
+    set_target_properties(version_d3d10 PROPERTIES 
+        PREFIX ""
+        SUFFIX ".dll"
+        OUTPUT_NAME "version"
+        LINK_FLAGS "/DELAYLOAD:d3d10.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3dcompiler_47.dll"
+    )
+else()
+    set_target_properties(version_d3d10 PROPERTIES
+        PREFIX ""
+        SUFFIX ".dll"
+        OUTPUT_NAME "version"
+    )
+endif()
+
+# Post-build copy to root bin folder
+add_custom_command(TARGET version_d3d10 POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${PROJECT_SOURCE_DIR}/bin/${BIN_ARCH}/d3d10"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:version_d3d10>"
+            "${PROJECT_SOURCE_DIR}/bin/${BIN_ARCH}/d3d10/$<TARGET_FILE_NAME:version_d3d10>"
+    COMMENT "Copying version.dll proxy to bin/d3d10 folder"
+)
+

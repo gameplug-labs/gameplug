@@ -92,10 +92,10 @@ void Config::Load(const std::string& filename) {
 
     Logger::info("Config: Loaded " + std::to_string(m_settings.size()) + " settings from " + path);
 
-#ifndef GAMEPLUG_DIRECTX
+#ifdef GAMEPLUG_WIN32
     InstallWin32Hooks();
 #else
-    Logger::info("Config: Skipping Win32 hooks for D3D12 backend");
+    Logger::info("Config: Skipping Win32 hooks for other backend");
 #endif
 }
 
@@ -203,8 +203,8 @@ std::string Config::Trim(const std::string& s) {
 }
 
 void Config::RenderUI(bool showResolutionEnumeration) {
-#ifdef GAMEPLUG_DIRECTX
-    showResolutionEnumeration = false;
+#ifdef GAMEPLUG_WIN32
+    showResolutionEnumeration = true;
 #endif
     if (showResolutionEnumeration) {
         // Extra Resolutions

@@ -125,7 +125,7 @@ jobs:
 
           # Create readme.txt
           cat << 'EOF' > nexus/GamePlug/readme.txt
-          Place the any 1 file in your game executable folder
+          Place the any 1 file dinput8.dll or version.dll in your game executable folder
 
           x32 games
           d3d9, d3d10

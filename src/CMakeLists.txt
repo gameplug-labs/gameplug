@@ -47,48 +47,50 @@ if(MSVC)
     target_compile_options(framework_vk PRIVATE /utf-8 /FS)
 endif()
 
+# --- D3D11 Framework ---
+add_library(framework_d3d11 STATIC
+    ${SHARED_SOURCES}
+    d3d11/framework.cpp
+    d3d11/overlay.cpp
+    d3d11/hooks.cpp
+    d3d11/hooks_d3d11.cpp
+    d3d11/hooks_dxgi.cpp
+    ${PROJECT_SOURCE_DIR}/external/imgui/backends/imgui_impl_dx11.cpp
+)
+
+target_compile_definitions(framework_d3d11 PRIVATE 
+    FRAMEWORK_EXPORTS
+)
+target_include_directories(framework_d3d11 PUBLIC
+    ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/src/d3d11
+    ${PROJECT_SOURCE_DIR}/src/shared
+    ${PROJECT_SOURCE_DIR}/external/spdlog/include
+    ${PROJECT_SOURCE_DIR}/external/imgui
+    ${PROJECT_SOURCE_DIR}/external/imgui/backends
+)
+target_compile_definitions(framework_d3d11 PUBLIC 
+    "IMGUI_USER_CONFIG=\"GAMEPLUG_imgui_config.h\""
+)
+target_link_libraries(framework_d3d11 PUBLIC 
+    minhook
+    d3d11
+    dxgi
+    d3dcompiler
+    delayimp.lib
+)
+
+if(MSVC)
+    target_compile_options(framework_d3d11 PRIVATE /utf-8 /FS)
+    set_target_properties(framework_d3d11 PROPERTIES LINK_FLAGS 
+        "/DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3dcompiler_47.dll"
+    )
+endif()
+
+add_subdirectory(d3d11)
+
 # --- DirectX Framework (x64 only) ---
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
-    # --- D3D11 Framework ---
-    add_library(framework_d3d11 STATIC
-        ${SHARED_SOURCES}
-        d3d11/framework.cpp
-        d3d11/overlay.cpp
-        d3d11/hooks.cpp
-        d3d11/hooks_d3d11.cpp
-        d3d11/hooks_dxgi.cpp
-        ${PROJECT_SOURCE_DIR}/external/imgui/backends/imgui_impl_dx11.cpp
-    )
-
-    target_compile_definitions(framework_d3d11 PRIVATE 
-        FRAMEWORK_EXPORTS
-    )
-    target_include_directories(framework_d3d11 PUBLIC
-        ${PROJECT_SOURCE_DIR}/include
-        ${PROJECT_SOURCE_DIR}/src/d3d11
-        ${PROJECT_SOURCE_DIR}/src/shared
-        ${PROJECT_SOURCE_DIR}/external/spdlog/include
-        ${PROJECT_SOURCE_DIR}/external/imgui
-        ${PROJECT_SOURCE_DIR}/external/imgui/backends
-    )
-    target_compile_definitions(framework_d3d11 PUBLIC 
-        "IMGUI_USER_CONFIG=\"GAMEPLUG_imgui_config.h\""
-    )
-    target_link_libraries(framework_d3d11 PUBLIC 
-        minhook
-        d3d11
-        dxgi
-        d3dcompiler
-        delayimp.lib
-    )
-
-    if(MSVC)
-        target_compile_options(framework_d3d11 PRIVATE /utf-8 /FS)
-        set_target_properties(framework_d3d11 PROPERTIES LINK_FLAGS 
-            "/DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3dcompiler_47.dll"
-        )
-    endif()
-
     # --- D3D12 Framework ---
     add_library(framework_d3d12 STATIC
         ${SHARED_SOURCES}
@@ -129,14 +131,13 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 8)
         )
     endif()
 
-    add_subdirectory(d3d11)
     add_subdirectory(d3d12)
 endif()
 
 # --- Post-build naming ---
 set_target_properties(framework_vk PROPERTIES OUTPUT_NAME "framework_vk")
+set_target_properties(framework_d3d11 PROPERTIES OUTPUT_NAME "framework_d3d11")
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
-    set_target_properties(framework_d3d11 PROPERTIES OUTPUT_NAME "framework_d3d11")
     set_target_properties(framework_d3d12 PROPERTIES OUTPUT_NAME "framework_d3d12")
 endif()
 

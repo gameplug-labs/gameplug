@@ -68,31 +68,35 @@ jobs:
         run: |
           mkdir assets
           
-          # d3d9.zip (x32 only)
+          # d3d9_x32.zip (x32 only)
           # The file is in bin/x32/d3d9/dinput8.dll
-          zip -j assets/d3d9.zip bin/x32/d3d9/dinput8.dll
+          zip -j assets/d3d9_x32.zip bin/x32/d3d9/dinput8.dll bin/x32/d3d9/version.dll
           
-          # d3d9_skyrim.zip (x32 only)
+          # d3d9_skyrim_x32.zip (x32 only)
           # The file is in bin/x32/d3d9_skyrim/dinput8.dll
-          zip -j assets/d3d9_skyrim.zip bin/x32/d3d9_skyrim/dinput8.dll
+          zip -j assets/d3d9_skyrim_x32.zip bin/x32/d3d9_skyrim/dinput8.dll bin/x32/d3d9_skyrim/version.dll
           
-          # d3d10.zip (x32 only)
+          # d3d10_x32.zip (x32 only)
           # The file is in bin/x32/d3d10/dinput8.dll
-          zip -j assets/d3d10.zip bin/x32/d3d10/dinput8.dll
+          zip -j assets/d3d10_x32.zip bin/x32/d3d10/dinput8.dll bin/x32/d3d10/version.dll
           
-          # d3d11.zip (x64 only)
+          # d3d11_x32.zip (x32 only)
+          # The file is in bin/x32/d3d11/dinput8.dll
+          zip -j assets/d3d11_x32.zip bin/x32/d3d11/dinput8.dll bin/x32/d3d11/version.dll
+          
+          # d3d11_x64.zip (x64 only)
           # The file is in bin/x64/d3d11/dinput8.dll
-          zip -j assets/d3d11.zip bin/x64/d3d11/dinput8.dll
+          zip -j assets/d3d11_x64.zip bin/x64/d3d11/dinput8.dll bin/x64/d3d11/version.dll
           
-          # d3d12.zip (x64 only)
+          # d3d12_x64.zip (x64 only)
           # The file is in bin/x64/d3d12/dinput8.dll
-          zip -j assets/d3d12.zip bin/x64/d3d12/dinput8.dll
+          zip -j assets/d3d12_x64.zip bin/x64/d3d12/dinput8.dll bin/x64/d3d12/version.dll
           
-          # vk.zip (Both x32 and x64)
-          mkdir -p vk_package/x32 vk_package/x64
-          cp bin/x32/vklayer.dll bin/x32/VK_LAYER_GAMEPLUG.json bin/x32/GAMEPLUG.exe bin/x32/run_game.bat vk_package/x32/
-          cp bin/x64/vklayer.dll bin/x64/VK_LAYER_GAMEPLUG.json bin/x64/GAMEPLUG.exe bin/x64/run_game.bat vk_package/x64/
-          cd vk_package && zip -r ../assets/vk.zip . && cd ..
+          # vk_x32.zip
+          zip -j assets/vk_x32.zip bin/x32/vklayer.dll bin/x32/VK_LAYER_GAMEPLUG.json bin/x32/GAMEPLUG.exe bin/x32/run_game.bat
+          
+          # vk_x64.zip
+          zip -j assets/vk_x64.zip bin/x64/vklayer.dll bin/x64/VK_LAYER_GAMEPLUG.json bin/x64/GAMEPLUG.exe bin/x64/run_game.bat
 
       - name: Create Release
         uses: softprops/action-gh-release@v2

@@ -1,4 +1,5 @@
 #include "texture_replacer.h"
+#include "config.h"
 #include "d3d9_proxy_device.h"
 #include "d3d9_proxy_surface.h"
 #include "d3d9_proxy_texture.h"
@@ -78,6 +79,10 @@ void TextureReplacer::Init() {
     std::error_code ec;
     std::filesystem::create_directories(m_dumpsDir, ec);
     std::filesystem::create_directories(m_replacementsDir, ec);
+
+    m_enableReplacement = Config::Get().GetBool("EnableTextureReplacement", false);
+    m_enableDumper = Config::Get().GetBool("EnableDumper", false);
+    m_enableAutoDump = Config::Get().GetBool("AutoDumpTextures", false);
 
     m_initialized = true;
     Logger::info("TextureReplacer: Initialized. Base dir: {}", m_baseDir.string());
@@ -390,235 +395,259 @@ void TextureReplacer::RenderUI(IDirect3DDevice9* pDevice) {
     ImGui::Separator();
     ImGui::Spacing();
 
-    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.2f, 0.7f, 1.0f, 1.0f));
-    ImGui::Text("Texture Replacer & Dumper");
-    ImGui::PopStyleColor();
-    ImGui::Spacing();
+    if (ImGui::CollapsingHeader("Texture Replacer & Dumper")) {
+        ImGui::Indent();
 
-    if (ImGui::Checkbox("Enable Texture Replacement", &m_enableReplacement)) {
-        if (!m_enableReplacement) {
-            std::vector<ProxyTexture9*> texturesToFree;
-            {
-                std::lock_guard<std::recursive_mutex> lock(m_mtx);
-                texturesToFree.assign(m_activeTextures.begin(), m_activeTextures.end());
+        bool replacementEnabled = m_enableReplacement;
+        if (ImGui::Checkbox("Enable Texture Replacement", &replacementEnabled)) {
+            m_enableReplacement = replacementEnabled;
+            Config::Get().SetBool("EnableTextureReplacement", replacementEnabled);
+            Config::Get().Save();
+
+            if (!replacementEnabled) {
+                std::vector<ProxyTexture9*> texturesToFree;
+                {
+                    std::lock_guard<std::recursive_mutex> lock(m_mtx);
+                    texturesToFree.assign(m_activeTextures.begin(), m_activeTextures.end());
+                    for (auto* pTex : texturesToFree) {
+                        pTex->AddRef();
+                    }
+                }
                 for (auto* pTex : texturesToFree) {
-                    pTex->AddRef();
+                    pTex->FreeReplacedTexture();
+                    pTex->Release();
                 }
             }
-            for (auto* pTex : texturesToFree) {
-                pTex->FreeReplacedTexture();
-                pTex->Release();
-            }
         }
-    }
 
-    if (ImGui::Checkbox("Auto Dump Textures to Disk", &m_enableAutoDump)) {
-        if (m_enableAutoDump) {
-            // Dump all currently tracked textures that already have hashes
-            std::vector<ProxyTexture9*> toSnapshot;
+        if (m_enableReplacement) {
+            ImGui::Indent();
+            if (ImGui::Button("Open Replacements Folder")) {
+                OpenFolderInExplorer(m_replacementsDir);
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Reload Replacements")) {
+                ReloadReplacements(pDevice);
+            }
+            ImGui::Unindent();
+            ImGui::Spacing();
+        }
+
+        bool dumperEnabled = m_enableDumper;
+        if (ImGui::Checkbox("Enable Dumper", &dumperEnabled)) {
+            m_enableDumper = dumperEnabled;
+            Config::Get().SetBool("EnableDumper", dumperEnabled);
+            Config::Get().Save();
+        }
+
+        if (m_enableDumper) {
+            ImGui::Indent();
+
+            bool autoDumpEnabled = m_enableAutoDump;
+            if (ImGui::Checkbox("Auto Dump Textures to Disk", &autoDumpEnabled)) {
+                m_enableAutoDump = autoDumpEnabled;
+                Config::Get().SetBool("AutoDumpTextures", autoDumpEnabled);
+                Config::Get().Save();
+
+                if (autoDumpEnabled) {
+                    // Dump all currently tracked textures that already have hashes
+                    std::vector<ProxyTexture9*> toSnapshot;
+                    {
+                        std::lock_guard<std::recursive_mutex> lock(m_mtx);
+                        toSnapshot = m_browserTextures;
+                        for (auto* pTex : toSnapshot)
+                            pTex->AddRef();
+                    }
+                    for (auto* pTex : toSnapshot) {
+                        AutoDumpTexture(pTex);
+                        pTex->Release();
+                    }
+                }
+            }
+            ImGui::TextDisabled("Warning: Heavy RAM usage, game may crash.");
+
+            if (ImGui::Button("Open Dumps Folder")) {
+                OpenFolderInExplorer(m_dumpsDir);
+            }
+
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            ImGui::Text("Texture Browser");
+
+            ProxyTexture9* selected = nullptr;
+            int currentSelectedIndex = -1;
+            int totalTextures = 0;
+
             {
                 std::lock_guard<std::recursive_mutex> lock(m_mtx);
-                toSnapshot = m_browserTextures;
-                for (auto* pTex : toSnapshot)
-                    pTex->AddRef();
-            }
-            for (auto* pTex : toSnapshot) {
-                AutoDumpTexture(pTex);
-                pTex->Release();
-            }
-        }
-    }
-    ImGui::Spacing();
-
-    if (ImGui::Button("Open Dumps Folder")) {
-        OpenFolderInExplorer(m_dumpsDir);
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Open Replacements Folder")) {
-        OpenFolderInExplorer(m_replacementsDir);
-    }
-
-    if (ImGui::Button("Reload Replacements")) {
-        ReloadReplacements(pDevice);
-    }
-
-    ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::Spacing();
-
-    ImGui::Text("Texture Browser");
-
-    ProxyTexture9* selected = nullptr;
-    int currentSelectedIndex = -1;
-    int totalTextures = 0;
-
-    {
-        std::lock_guard<std::recursive_mutex> lock(m_mtx);
-        totalTextures = (int)m_browserTextures.size();
-        if (totalTextures > 0) {
-            if (m_selectedIndex < 0 || m_selectedIndex >= totalTextures) {
-                m_selectedIndex = 0;
-            }
-            currentSelectedIndex = m_selectedIndex;
-            selected = m_browserTextures[currentSelectedIndex];
-            selected->AddRef();
-        }
-    }
-
-    if (!selected) {
-        ImGui::TextDisabled("No active textures bound yet.");
-        return;
-    }
-
-    if (ImGui::Button("Previous")) {
-        std::lock_guard<std::recursive_mutex> lock(m_mtx);
-        if (!m_browserTextures.empty()) {
-            if (m_selectedIndex > 0)
-                m_selectedIndex--;
-            else
-                m_selectedIndex = (int)m_browserTextures.size() - 1;
-            currentSelectedIndex = m_selectedIndex;
-        }
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Next")) {
-        std::lock_guard<std::recursive_mutex> lock(m_mtx);
-        if (!m_browserTextures.empty()) {
-            if (m_selectedIndex < (int)m_browserTextures.size() - 1)
-                m_selectedIndex++;
-            else
-                m_selectedIndex = 0;
-            currentSelectedIndex = m_selectedIndex;
-        }
-    }
-
-    ProxyTexture9* nextSelected = nullptr;
-    {
-        std::lock_guard<std::recursive_mutex> lock(m_mtx);
-        totalTextures = (int)m_browserTextures.size();
-        if (totalTextures > 0) {
-            if (m_selectedIndex < 0 || m_selectedIndex >= totalTextures) {
-                m_selectedIndex = 0;
-            }
-            currentSelectedIndex = m_selectedIndex;
-            nextSelected = m_browserTextures[currentSelectedIndex];
-            nextSelected->AddRef();
-        }
-    }
-
-    selected->Release();
-    selected = nextSelected;
-
-    if (!selected) {
-        ImGui::TextDisabled("No active textures bound yet.");
-        return;
-    }
-
-    ImGui::Text("Index: %d / %d", currentSelectedIndex + 1, totalTextures);
-    ImGui::Text("Dimensions: %d x %d (Mips: %d)", selected->GetWidth(), selected->GetHeight(), selected->GetLevelCount());
-
-    const char* fmtStr = "Unknown";
-    switch (selected->GetFormat()) {
-    case D3DFMT_A8R8G8B8:
-        fmtStr = "A8R8G8B8";
-        break;
-    case D3DFMT_X8R8G8B8:
-        fmtStr = "X8R8G8B8";
-        break;
-    case D3DFMT_R8G8B8:
-        fmtStr = "R8G8B8";
-        break;
-    case D3DFMT_A1R5G5B5:
-        fmtStr = "A1R5G5B5";
-        break;
-    case D3DFMT_X1R5G5B5:
-        fmtStr = "X1R5G5B5";
-        break;
-    case D3DFMT_R5G6B5:
-        fmtStr = "R5G6B5";
-        break;
-    case D3DFMT_A8:
-        fmtStr = "A8";
-        break;
-    case D3DFMT_L8:
-        fmtStr = "L8";
-        break;
-    case D3DFMT_DXT1:
-        fmtStr = "DXT1";
-        break;
-    case D3DFMT_DXT2:
-        fmtStr = "DXT2";
-        break;
-    case D3DFMT_DXT3:
-        fmtStr = "DXT3";
-        break;
-    case D3DFMT_DXT4:
-        fmtStr = "DXT4";
-        break;
-    case D3DFMT_DXT5:
-        fmtStr = "DXT5";
-        break;
-    }
-    ImGui::Text("Format: %s", fmtStr);
-
-    if (selected->IsHashComputed()) {
-        ImGui::Text("Hash: %08X", selected->GetHash());
-
-        if (ImGui::Button("Manual Dump")) {
-            char hashStr[16];
-            sprintf_s(hashStr, sizeof(hashStr), "%08X", selected->GetHash());
-            std::filesystem::path dumpPath = m_dumpsDir / (std::string(hashStr) + ".dds");
-
-            IDirect3DTexture9* pReal = selected->GetRealTexture();
-            D3DLOCKED_RECT locked;
-            if (SUCCEEDED(pReal->LockRect(0, &locked, NULL, D3DLOCK_READONLY))) {
-                if (SaveDDS(dumpPath, locked.pBits, locked.Pitch, selected->GetWidth(), selected->GetHeight(), selected->GetFormat())) {
-                    Logger::info("Manual Dump: Saved texture to {}", dumpPath.string());
-                } else {
-                    Logger::error("Manual Dump: Failed to write DDS file.");
+                totalTextures = (int)m_browserTextures.size();
+                if (totalTextures > 0) {
+                    if (m_selectedIndex < 0 || m_selectedIndex >= totalTextures) {
+                        m_selectedIndex = 0;
+                    }
+                    currentSelectedIndex = m_selectedIndex;
+                    selected = m_browserTextures[currentSelectedIndex];
+                    selected->AddRef();
                 }
-                pReal->UnlockRect(0);
-            } else {
-                Logger::error("Manual Dump: Failed to lock texture for reading.");
             }
-        }
-    } else {
-        if (selected->GetUsage() & D3DUSAGE_RENDERTARGET) {
-            ImGui::Text("Hash: Render Target (Dynamic)");
-        } else if (selected->GetUsage() & D3DUSAGE_DYNAMIC) {
-            ImGui::Text("Hash: Dynamic Texture");
-        } else {
-            ImGui::Text("Hash: Not Computed (Never Locked)");
-        }
-    }
 
-    IDirect3DTexture9* imgTex = nullptr;
-    {
-        std::lock_guard<std::recursive_mutex> lock(m_mtx);
-        imgTex = selected->GetReplacedReal();
-        if (imgTex) {
-            imgTex->AddRef();
-        }
-    }
+            if (!selected) {
+                ImGui::TextDisabled("No active textures bound yet.");
+            } else {
+                if (ImGui::Button("Previous")) {
+                    std::lock_guard<std::recursive_mutex> lock(m_mtx);
+                    if (!m_browserTextures.empty()) {
+                        if (m_selectedIndex > 0)
+                            m_selectedIndex--;
+                        else
+                            m_selectedIndex = (int)m_browserTextures.size() - 1;
+                        currentSelectedIndex = m_selectedIndex;
+                    }
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Next")) {
+                    std::lock_guard<std::recursive_mutex> lock(m_mtx);
+                    if (!m_browserTextures.empty()) {
+                        if (m_selectedIndex < (int)m_browserTextures.size() - 1)
+                            m_selectedIndex++;
+                        else
+                            m_selectedIndex = 0;
+                        currentSelectedIndex = m_selectedIndex;
+                    }
+                }
 
-    if (imgTex) {
-        float maxDim = 200.0f;
-        float w = (float)selected->GetWidth();
-        float h = (float)selected->GetHeight();
-        float aspect = w / h;
-        ImVec2 displaySize;
-        if (w > h) {
-            displaySize.x = maxDim;
-            displaySize.y = maxDim / aspect;
-        } else {
-            displaySize.x = maxDim * aspect;
-            displaySize.y = maxDim;
-        }
-        ImGui::Image((ImTextureID)imgTex, displaySize);
-        imgTex->Release();
-    }
+                ProxyTexture9* nextSelected = nullptr;
+                {
+                    std::lock_guard<std::recursive_mutex> lock(m_mtx);
+                    totalTextures = (int)m_browserTextures.size();
+                    if (totalTextures > 0) {
+                        if (m_selectedIndex < 0 || m_selectedIndex >= totalTextures) {
+                            m_selectedIndex = 0;
+                        }
+                        currentSelectedIndex = m_selectedIndex;
+                        nextSelected = m_browserTextures[currentSelectedIndex];
+                        nextSelected->AddRef();
+                    }
+                }
 
-    selected->Release();
+                selected->Release();
+                selected = nextSelected;
+
+                if (!selected) {
+                    ImGui::TextDisabled("No active textures bound yet.");
+                } else {
+                    ImGui::Text("Index: %d / %d", currentSelectedIndex + 1, totalTextures);
+                    ImGui::Text("Dimensions: %d x %d (Mips: %d)", selected->GetWidth(), selected->GetHeight(), selected->GetLevelCount());
+
+                    const char* fmtStr = "Unknown";
+                    switch (selected->GetFormat()) {
+                    case D3DFMT_A8R8G8B8:
+                        fmtStr = "A8R8G8B8";
+                        break;
+                    case D3DFMT_X8R8G8B8:
+                        fmtStr = "X8R8G8B8";
+                        break;
+                    case D3DFMT_R8G8B8:
+                        fmtStr = "R8G8B8";
+                        break;
+                    case D3DFMT_A1R5G5B5:
+                        fmtStr = "A1R5G5B5";
+                        break;
+                    case D3DFMT_X1R5G5B5:
+                        fmtStr = "X1R5G5B5";
+                        break;
+                    case D3DFMT_R5G6B5:
+                        fmtStr = "R5G6B5";
+                        break;
+                    case D3DFMT_A8:
+                        fmtStr = "A8";
+                        break;
+                    case D3DFMT_L8:
+                        fmtStr = "L8";
+                        break;
+                    case D3DFMT_DXT1:
+                        fmtStr = "DXT1";
+                        break;
+                    case D3DFMT_DXT2:
+                        fmtStr = "DXT2";
+                        break;
+                    case D3DFMT_DXT3:
+                        fmtStr = "DXT3";
+                        break;
+                    case D3DFMT_DXT4:
+                        fmtStr = "DXT4";
+                        break;
+                    case D3DFMT_DXT5:
+                        fmtStr = "DXT5";
+                        break;
+                    }
+                    ImGui::Text("Format: %s", fmtStr);
+
+                    if (selected->IsHashComputed()) {
+                        ImGui::Text("Hash: %08X", selected->GetHash());
+
+                        if (ImGui::Button("Manual Dump")) {
+                            char hashStr[16];
+                            sprintf_s(hashStr, sizeof(hashStr), "%08X", selected->GetHash());
+                            std::filesystem::path dumpPath = m_dumpsDir / (std::string(hashStr) + ".dds");
+
+                            IDirect3DTexture9* pReal = selected->GetRealTexture();
+                            D3DLOCKED_RECT locked;
+                            if (SUCCEEDED(pReal->LockRect(0, &locked, NULL, D3DLOCK_READONLY))) {
+                                if (SaveDDS(dumpPath, locked.pBits, locked.Pitch, selected->GetWidth(), selected->GetHeight(),
+                                        selected->GetFormat())) {
+                                    Logger::info("Manual Dump: Saved texture to {}", dumpPath.string());
+                                } else {
+                                    Logger::error("Manual Dump: Failed to write DDS file.");
+                                }
+                                pReal->UnlockRect(0);
+                            } else {
+                                Logger::error("Manual Dump: Failed to lock texture for reading.");
+                            }
+                        }
+                    } else {
+                        if (selected->GetUsage() & D3DUSAGE_RENDERTARGET) {
+                            ImGui::Text("Hash: Render Target (Dynamic)");
+                        } else if (selected->GetUsage() & D3DUSAGE_DYNAMIC) {
+                            ImGui::Text("Hash: Dynamic Texture");
+                        } else {
+                            ImGui::Text("Hash: Not Computed (Never Locked)");
+                        }
+                    }
+
+                    IDirect3DTexture9* imgTex = nullptr;
+                    {
+                        std::lock_guard<std::recursive_mutex> lock(m_mtx);
+                        imgTex = selected->GetReplacedReal();
+                        if (imgTex) {
+                            imgTex->AddRef();
+                        }
+                    }
+
+                    if (imgTex) {
+                        float maxDim = 200.0f;
+                        float w = (float)selected->GetWidth();
+                        float h = (float)selected->GetHeight();
+                        float aspect = w / h;
+                        ImVec2 displaySize;
+                        if (w > h) {
+                            displaySize.x = maxDim;
+                            displaySize.y = maxDim / aspect;
+                        } else {
+                            displaySize.x = maxDim * aspect;
+                            displaySize.y = maxDim;
+                        }
+                        ImGui::Image((ImTextureID)imgTex, displaySize);
+                        imgTex->Release();
+                    }
+                }
+            }
+            ImGui::Unindent();
+        }
+        ImGui::Unindent();
+    }
 }
 
 } // namespace GamePlug

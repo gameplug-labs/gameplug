@@ -165,6 +165,10 @@ void ProxyTexture9::OnLevelUnlocked(UINT level) {
 
     m_locks[0].locked = false;
 
+    if (!TextureReplacer::Get().IsReplacementEnabled() && !TextureReplacer::Get().IsDumperEnabled()) {
+        return;
+    }
+
     if (!m_locks[0].lockedRect.pBits) {
         return;
     }

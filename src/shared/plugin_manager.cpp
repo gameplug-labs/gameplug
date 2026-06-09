@@ -69,7 +69,7 @@ void PluginManager::LoadPlugins() {
     Logger::info("PluginManager: Searching for plugins in " + pluginsPath.string());
 
     if (!std::filesystem::exists(pluginsPath)) {
-        Logger::error("PluginManager: Plugins directory NOT found: " + pluginsPath.string());
+        Logger::warn("PluginManager: Plugins directory NOT found: " + pluginsPath.string());
         m_searchDone = true;
         return;
     }

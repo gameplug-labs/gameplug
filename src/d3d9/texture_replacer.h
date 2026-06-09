@@ -36,6 +36,7 @@ public:
     const std::unordered_set<ProxySurface9*>& GetActiveSurfaces() const { return m_activeSurfaces; }
 
     bool IsReplacementEnabled() const { return m_enableReplacement; }
+    bool IsDumperEnabled() const { return m_enableDumper; }
     bool IsAutoDumpEnabled() const { return m_enableAutoDump; }
 
     std::filesystem::path GetDumpsDir() const { return m_dumpsDir; }
@@ -59,7 +60,8 @@ private:
     std::filesystem::path m_dumpsDir;
     std::filesystem::path m_replacementsDir;
 
-    bool m_enableReplacement = true; // Default to true
+    bool m_enableReplacement = false; // Default to false
+    bool m_enableDumper = false;
     bool m_enableAutoDump = false;
 
     // Set of all active texture proxies

@@ -91,7 +91,6 @@ add_subdirectory(d3d11)
 
 # --- DirectX Framework (x64 only) ---
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
-
     # --- D3D12 Framework ---
     add_library(framework_d3d12 STATIC
         ${SHARED_SOURCES}
@@ -137,8 +136,8 @@ endif()
 
 # --- Post-build naming ---
 set_target_properties(framework_vk PROPERTIES OUTPUT_NAME "framework_vk")
+set_target_properties(framework_d3d11 PROPERTIES OUTPUT_NAME "framework_d3d11")
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
-    set_target_properties(framework_d3d11 PROPERTIES OUTPUT_NAME "framework_d3d11")
     set_target_properties(framework_d3d12 PROPERTIES OUTPUT_NAME "framework_d3d12")
 endif()
 

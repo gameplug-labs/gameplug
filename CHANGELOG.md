@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
+## [1.0.2] - 2026-06-09
+
+### Added
+- Added proxy DLL support via `version.dll` for all renderer backends (D3D9, D3D9 Skyrim, D3D10, D3D11, and D3D12).
+- Added support for 32-bit (x32) D3D11 architecture.
+
+
 ## [1.0.1] - 2026-05-28
 
 ### Fixed

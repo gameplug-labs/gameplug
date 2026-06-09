@@ -52,7 +52,7 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 8)
     set(REF_BUILD_DEPENDENCIES ON CACHE BOOL "" FORCE)
     
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/sub_projects/skyrim-skse-plugin/CMakeLists.txt")
-        add_subdirectory(sub_projects/skyrim-skse-plugin)
+        # add_subdirectory(sub_projects/skyrim-skse-plugin)
     endif()
 endif()
 

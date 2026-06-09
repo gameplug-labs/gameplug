@@ -387,10 +387,10 @@ void DXUpscalerManager::CleanupPlugin() {
 }
 
 bool DXUpscalerManager::IsLoadingDelayActive() const {
-    //return false;
     static auto start_time = std::chrono::steady_clock::now();
     return std::chrono::duration_cast<std::chrono::seconds>(
-        std::chrono::steady_clock::now() - start_time).count() < 8;
+        std::chrono::steady_clock::now() - start_time).count() < 12;
+    // return false;
 }
 
 bool DXUpscalerManager::IsUpscalingEnabled() const {

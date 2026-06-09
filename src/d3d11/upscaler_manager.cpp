@@ -439,8 +439,38 @@ void DXUpscalerManager::RenderUI(float fps, uint32_t width, uint32_t height) {
                         continue;
                     }
 
+                    bool isBatman = false;
+                    static bool checkedBatman = false;
+                    static bool isBatmanCached = false;
+                    if (!checkedBatman) {
+                        char exePath[MAX_PATH];
+                        GetModuleFileNameA(NULL, exePath, MAX_PATH);
+                        std::string exeName = std::filesystem::path(exePath).filename().string();
+                        std::transform(exeName.begin(), exeName.end(), exeName.begin(), ::tolower);
+                        isBatmanCached = (exeName.find("batman") != std::string::npos);
+                        checkedBatman = true;
+                    }
+                    isBatman = isBatmanCached;
+
+                    if (isBatman && f.Name && (std::string(f.Name) == "Upscale Quality" || std::string(f.Name) == "Quality Type" || std::string(f.Name) == "Quality")) {
+                        continue;
+                    }
+
                     ImGui::PushID(f.Name);
                     bool changed = false;
+                    bool isNativeField = false;
+                    if (isBatman && f.Name) {
+                        std::string name(f.Name);
+                        if (name == "Native AA" || name == "Native Rendering" || name == "DLAA") {
+                            isNativeField = true;
+                            *(bool*)f.Data = true;
+                        }
+                    }
+
+                    if (isNativeField) {
+                        ImGui::BeginDisabled();
+                    }
+
                     switch (f.Type) {
                     case 0:
                         changed = ImGui::Checkbox(f.Name, (bool*)f.Data);
@@ -483,9 +513,15 @@ void DXUpscalerManager::RenderUI(float fps, uint32_t width, uint32_t height) {
                             }
                             items.push_back(options.substr(start));
                             int* current = (int*)f.Data;
+                            if (isBatman && f.Name && std::string(f.Name) == "Upscaler Type" && *current == 2) {
+                                *current = 0; // reset from FSR 2 to None
+                            }
                             const char* preview = (*current >= 0 && *current < (int)items.size()) ? items[*current].c_str() : "Unknown";
                             if (ImGui::BeginCombo(f.Name, preview)) {
                                 for (int n = 0; n < (int)items.size(); n++) {
+                                    if (isBatman && f.Name && std::string(f.Name) == "Upscaler Type" && items[n] == "FSR 2") {
+                                        continue;
+                                    }
                                     if (ImGui::Selectable(items[n].c_str(), *current == n)) {
                                         *current = n;
                                         changed = true;
@@ -496,6 +532,12 @@ void DXUpscalerManager::RenderUI(float fps, uint32_t width, uint32_t height) {
                         }
                         break;
                     }
+
+                    if (isNativeField) {
+                        *(bool*)f.Data = true;
+                        ImGui::EndDisabled();
+                    }
+
                     if (changed && m_pInterface->OnFieldsChanged)
                         m_pInterface->OnFieldsChanged();
                     ImGui::PopID();
@@ -615,6 +657,22 @@ void DXUpscalerManager::GetTargetResolution(uint32_t width, uint32_t height, uin
                 std::string name(fields[i].Name);
 
                 if (name == "Native AA" || name == "Native Rendering" || name == "DLAA") {
+                    bool isBatman = false;
+                    static bool checkedBatman = false;
+                    static bool isBatmanCached = false;
+                    if (!checkedBatman) {
+                        char exePath[MAX_PATH];
+                        GetModuleFileNameA(NULL, exePath, MAX_PATH);
+                        std::string exeName = std::filesystem::path(exePath).filename().string();
+                        std::transform(exeName.begin(), exeName.end(), exeName.begin(), ::tolower);
+                        isBatmanCached = (exeName.find("batman") != std::string::npos);
+                        checkedBatman = true;
+                    }
+                    isBatman = isBatmanCached;
+
+                    if (isBatman) {
+                        *(bool*)fields[i].Data = true;
+                    }
 
                     if (*(bool*)fields[i].Data) {
                         return;

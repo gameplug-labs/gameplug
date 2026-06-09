@@ -126,9 +126,12 @@ bool UpscalerManager::IsNativeRenderingEnabled() const {
     GamePlugUpscalerInterface::FieldDescriptor* fields = nullptr;
     int count = m_pInterface->GetFields(&fields);
     for (int i = 0; i < count; i++) {
-        if (fields[i].Name && strcmp(fields[i].Name, "Native Rendering") == 0) {
-            bool native = *(bool*)fields[i].Data;
-            return native;
+        if (fields[i].Name) {
+            std::string name(fields[i].Name);
+            if (name == "Native AA" || name == "Native Rendering" || name == "DLAA") {
+                bool native = *(bool*)fields[i].Data;
+                return native;
+            }
         }
     }
     return false;

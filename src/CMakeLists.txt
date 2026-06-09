@@ -179,8 +179,8 @@ endif()
 
 # --- Post-build naming ---
 set_target_properties(framework_vk PROPERTIES OUTPUT_NAME "framework_vk")
+set_target_properties(framework_d3d11 PROPERTIES OUTPUT_NAME "framework_d3d11")
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
-    set_target_properties(framework_d3d11 PROPERTIES OUTPUT_NAME "framework_d3d11")
     set_target_properties(framework_d3d11_skyrim_ae PROPERTIES OUTPUT_NAME "framework_d3d11_skyrim_ae")
     set_target_properties(framework_d3d12 PROPERTIES OUTPUT_NAME "framework_d3d12")
 endif()

@@ -128,7 +128,7 @@ jobs:
           Place the any 1 file dinput8.dll or version.dll in your game executable folder
 
           x32 games
-          d3d9, d3d10
+          d3d9, d3d10, d3d11
 
           x64 games
           d3d11, d3d12

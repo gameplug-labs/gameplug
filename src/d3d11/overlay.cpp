@@ -166,6 +166,11 @@ void SetCurrentDXSwapChain(IDXGISwapChain* swapChain) {
 
 void OnDXPresent(IDXGISwapChain* pSwapChain) {
     std::lock_guard<std::recursive_mutex> lock(g_DXMtx);
+
+    if (DXUpscalerManager::Get().IsLoadingDelayActive()) {
+        return;
+    }
+
     DXUpscalerManager::Get().NewFrame();
     if (g_pendingResize) {
         Logger::info("DX11: Handling deferred resize safely");

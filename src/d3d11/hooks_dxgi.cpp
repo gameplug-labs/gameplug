@@ -4,6 +4,9 @@
 #include <psapi.h>
 #include <sstream>
 #include <string>
+#include <chrono>
+#include <thread>
+
 
 namespace GamePlug {
 
@@ -67,6 +70,11 @@ HRESULT STDMETHODCALLTYPE HookedPresent(IDXGISwapChain* pSwapChain, UINT SyncInt
     // Logger::info("HookedPresent D3D11 Entry [SC=" + std::to_string((uintptr_t)pSwapChain) +
     //              " VT=" + std::to_string((uintptr_t)(*(void***)pSwapChain)) + "]");
     OnDXPresent(pSwapChain);
+
+    if (!Config::Get().GetBool("VSync", true)) {
+        SyncInterval = 0;
+    }
+
     return g_OriginalPresent(pSwapChain, SyncInterval, Flags);
 }
 
@@ -82,6 +90,11 @@ HRESULT STDMETHODCALLTYPE HookedPresent1(
     }
     g_frameCount++;
     OnDXPresent(pSwapChain);
+
+    if (!Config::Get().GetBool("VSync", true)) {
+        SyncInterval = 0;
+    }
+
     return g_OriginalPresent1(pSwapChain, SyncInterval, PresentFlags, pPresentParameters);
 }
 
@@ -224,6 +237,10 @@ HRESULT STDMETHODCALLTYPE HookedGetBuffer(IDXGISwapChain* pSwapChain, UINT Buffe
     ScopedRecursionGuard guard;
 
     if (Buffer == 0) {
+        if (DXUpscalerManager::Get().IsLoadingDelayActive()) {
+            return g_OriginalGetBuffer(pSwapChain, Buffer, riid, ppSurface);
+        }
+
         Logger::info("HookedGetBuffer: Buffer=0 requested.");
         if (!DXUpscalerManager::Get().GetDevice()) {
             Logger::info("HookedGetBuffer: Device is NULL, initializing...");

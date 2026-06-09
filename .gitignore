@@ -1,4 +1,6 @@
 build
+build-root
+build-plugin
 build32
 build64
 bin/

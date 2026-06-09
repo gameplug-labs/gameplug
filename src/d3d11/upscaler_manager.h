@@ -42,6 +42,7 @@ public:
     bool WasUpscaledThisFrame() const { return m_frameUpscaled; }
 
     bool IsLoaded() const { return m_handle != nullptr; }
+    bool IsLoadingDelayActive() const;
     bool IsUpscalingEnabled() const;
     bool IsShowDebugImageEnabled() const;
     void SetShowDebugImageEnabled(bool enabled);

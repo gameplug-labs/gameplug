@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <sstream>
 #include <vector>
+#include <chrono>
 
 namespace GamePlug {
 extern void PatchDeviceContextVTable(ID3D11DeviceContext* context);
@@ -385,7 +386,18 @@ void DXUpscalerManager::CleanupPlugin() {
     m_pd3dDeviceContext = nullptr;
 }
 
+bool DXUpscalerManager::IsLoadingDelayActive() const {
+    //return false;
+    static auto start_time = std::chrono::steady_clock::now();
+    return std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::steady_clock::now() - start_time).count() < 8;
+}
+
 bool DXUpscalerManager::IsUpscalingEnabled() const {
+    if (IsLoadingDelayActive()) {
+        return false;
+    }
+
     if (!m_pInterface || !m_pInterface->GetFields)
         return false;
     GamePlugUpscalerInterface::FieldDescriptor* fields = nullptr;
@@ -774,25 +786,25 @@ void DXUpscalerManager::RenderFrameDX11(
     m_frameUpscaled = true;
     UpdateDimensions(width, height);
 
-#ifdef SKYRIM_AE
-    uint64_t depthPtr = 0;
-    uint64_t mvPtr = 0;
-    float jitX = 0.0f;
-    float jitY = 0.0f;
+// #ifdef SKYRIM_AE
+//     uint64_t depthPtr = 0;
+//     uint64_t mvPtr = 0;
+//     float jitX = 0.0f;
+//     float jitY = 0.0f;
 
-    if (m_hasSkyrimData) {
-        depthPtr = (uint64_t)m_skyrimDepthSRV;
-        mvPtr = (uint64_t)m_skyrimMotionVectorSRV;
-        jitX = m_skyrimData.jitterX;
-        jitY = m_skyrimData.jitterY;
-    }
+//     if (m_hasSkyrimData) {
+//         depthPtr = (uint64_t)m_skyrimDepthSRV;
+//         mvPtr = (uint64_t)m_skyrimMotionVectorSRV;
+//         jitX = m_skyrimData.jitterX;
+//         jitY = m_skyrimData.jitterY;
+//     }
 
-    m_pInterface->OnRenderFrame((uintptr_t)context, (uint64_t)sourceSRV, (uint64_t)targetRTV, 0, width, height, m_renderWidth,
-        m_renderHeight, depthPtr, 0, mvPtr, 0, jitX, jitY);
-#else
-    m_pInterface->OnRenderFrame((uintptr_t)context, (uint64_t)sourceSRV, (uint64_t)targetRTV, 0, width, height, m_renderWidth,
-        m_renderHeight, 0, 0, 0, 0, 0.0f, 0.0f);
-#endif
+//     m_pInterface->OnRenderFrame((uintptr_t)context, (uint64_t)sourceSRV, (uint64_t)targetRTV, 0, width, height, m_renderWidth,
+//         m_renderHeight, depthPtr, 0, mvPtr, 0, jitX, jitY);
+// #else
+//     m_pInterface->OnRenderFrame((uintptr_t)context, (uint64_t)sourceSRV, (uint64_t)targetRTV, 0, width, height, m_renderWidth,
+//         m_renderHeight, 0, 0, 0, 0, 0.0f, 0.0f);
+// #endif
     m_projScanCounter++;
     if (m_projScanCounter >= 120 || m_projScanCounter == 1) {
         m_projScanCounter = 1;

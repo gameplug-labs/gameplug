@@ -140,6 +140,11 @@ jobs:
           # Zip Nexus Mods package
           (cd nexus && zip -r ../GamePlug.zip GamePlug)
 
+          # Clean the version string and save it to the global environment
+          INPUT_VERSION="${{ github.event.inputs.version }}"
+          CLEAN_VERSION="${INPUT_VERSION#v}"
+          echo "NEXUS_CLEAN_VERSION=$CLEAN_VERSION" >> $GITHUB_ENV
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -156,4 +161,4 @@ jobs:
           api_key: ${{ secrets.NEXUSMODS_API_KEY }}
           file_group_id: ${{ secrets.NEXUSMODS_FILE_GROUP_ID }}
           filename: GamePlug.zip
-          version: ${{ github.event.inputs.version }}
+          version: ${{ env.NEXUS_CLEAN_VERSION }}

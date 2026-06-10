@@ -1,4 +1,6 @@
 #include "d3d9_proxy_swapchain.h"
+#include "d3d9_proxy_device.h"
+#include "d3d9_proxy_surface.h"
 
 ProxyDirect3DSwapChain9::ProxyDirect3DSwapChain9(IDirect3DSwapChain9* pReal, IDirect3DDevice9* pProxyDevice)
     : m_pReal(pReal)
@@ -35,6 +37,14 @@ STDMETHODIMP ProxyDirect3DSwapChain9::GetFrontBufferData(IDirect3DSurface9* pDes
 }
 
 STDMETHODIMP ProxyDirect3DSwapChain9::GetBackBuffer(UINT iBackBuffer, D3DBACKBUFFER_TYPE Type, IDirect3DSurface9** ppBackBuffer) {
+    if (!ppBackBuffer)
+        return D3DERR_INVALIDCALL;
+    ProxyDirect3DDevice9* pProxyDevice = (ProxyDirect3DDevice9*)m_pProxyDevice;
+    if (pProxyDevice->IsUpscaling() && pProxyDevice->GetFakeBackBuffer() && iBackBuffer == 0) {
+        *ppBackBuffer = pProxyDevice->GetFakeBackBuffer();
+        (*ppBackBuffer)->AddRef();
+        return S_OK;
+    }
     return m_pReal->GetBackBuffer(iBackBuffer, Type, ppBackBuffer);
 }
 

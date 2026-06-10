@@ -1,6 +1,72 @@
 #include "d3d9_proxy_device.h"
 #include "d3d9_proxy_surface.h"
 #include "d3d9_proxy_swapchain.h"
+#include "d3d9_proxy_texture.h"
+#include "texture_replacer.h"
+
+static IDirect3DBaseTexture9* GetRealTexture(IDirect3DBaseTexture9* pTex) {
+    if (!pTex)
+        return nullptr;
+    if (GamePlug::TextureReplacer::Get().IsProxyTexture(pTex)) {
+        return ((ProxyTexture9*)pTex)->GetReplacedReal();
+    }
+    return pTex;
+}
+
+static IDirect3DSurface9* GetRealSurface(IDirect3DSurface9* pSurf) {
+    if (pSurf && GamePlug::TextureReplacer::Get().IsProxySurface(pSurf)) {
+        return ((ProxySurface9*)pSurf)->GetInternalSurface();
+    }
+    return pSurf;
+}
+
+static void LogActiveDefaultPoolResources() {
+    auto& replacer = GamePlug::TextureReplacer::Get();
+    std::lock_guard<std::recursive_mutex> lock(replacer.GetMutex());
+
+    Logger::info("--- Active Default/Managed Pool Resources (Before Reset) ---");
+
+    const auto& activeTextures = replacer.GetActiveTextures();
+    for (auto* pTex : activeTextures) {
+        if (pTex->GetPool() == D3DPOOL_DEFAULT) {
+            IDirect3DTexture9* pReal = pTex->GetRealTexture();
+            ULONG realRef = 0;
+            if (pReal) {
+                pReal->AddRef();
+                realRef = pReal->Release();
+            }
+            ULONG wrapRef = pTex->AddRef();
+            pTex->Release();
+
+            Logger::info("Active Texture: {:p} (Real: {:p}), Size: {}x{}, Format: {}, WrapperRef: {}, RealRef: {}", (void*)pTex,
+                (void*)pReal, pTex->GetWidth(), pTex->GetHeight(), (int)pTex->GetFormat(), wrapRef, realRef);
+        }
+    }
+
+    const auto& activeSurfaces = replacer.GetActiveSurfaces();
+    for (auto* pSurf : activeSurfaces) {
+        IDirect3DSurface9* pReal = pSurf->GetInternalSurface();
+        D3DSURFACE_DESC desc = {};
+        D3DPOOL pool = (D3DPOOL)-1;
+        if (pReal) {
+            pReal->GetDesc(&desc);
+            pool = desc.Pool;
+        }
+        if (pool == D3DPOOL_DEFAULT) {
+            ULONG realRef = 0;
+            if (pReal) {
+                pReal->AddRef();
+                realRef = pReal->Release();
+            }
+            ULONG wrapRef = pSurf->AddRef();
+            pSurf->Release();
+
+            Logger::info("Active Surface: {:p} (Real: {:p}), Size: {}x{}, Format: {}, WrapperRef: {}, RealRef: {}", (void*)pSurf,
+                (void*)pReal, desc.Width, desc.Height, (int)desc.Format, wrapRef, realRef);
+        }
+    }
+    Logger::info("------------------------------------------------------------");
+}
 
 void ProxyDirect3DDevice9::UpdateScaledResolution() {
     int sw = m_displayW;
@@ -37,9 +103,10 @@ void ProxyDirect3DDevice9::UpdateScaledResolution() {
 }
 
 ProxyDirect3DDevice9::ProxyDirect3DDevice9(
-    IDirect3DDevice9* pReal, IDirect3D9* pParent, uint32_t rw, uint32_t rh, uint32_t dw, uint32_t dh, bool upscale)
+    IDirect3DDevice9* pReal, IDirect3D9* pParent, HWND hFocusWindow, uint32_t rw, uint32_t rh, uint32_t dw, uint32_t dh, bool upscale)
     : m_pReal(pReal)
     , m_pParent(pParent)
+    , m_hFocusWindow(hFocusWindow)
     , m_renderW(rw)
     , m_renderH(rh)
     , m_displayW(dw)
@@ -48,7 +115,9 @@ ProxyDirect3DDevice9::ProxyDirect3DDevice9(
     , m_pFakeBackBuffer(nullptr)
     , m_pFakeBackBufferTex(nullptr) {
 
-    m_pReal->QueryInterface(IID_IDirect3DDevice9Ex, (void**)&m_pRealEx);
+    if (SUCCEEDED(m_pReal->QueryInterface(IID_IDirect3DDevice9Ex, (void**)&m_pRealEx))) {
+        m_pRealEx->Release();
+    }
 
     Logger::info("ProxyDirect3DDevice9: Created. Render: {}x{}, Display: {}x{}, Upscale: {}, RealEx: {}", m_renderW, m_renderH, m_displayW,
         m_displayH, m_isUpscaling, (void*)m_pRealEx);
@@ -61,8 +130,6 @@ ProxyDirect3DDevice9::~ProxyDirect3DDevice9() {
         m_pFakeBackBuffer->Release();
     if (m_pFakeBackBufferTex)
         m_pFakeBackBufferTex->Release();
-    if (m_pRealEx)
-        m_pRealEx->Release();
 }
 
 // IUnknown
@@ -129,7 +196,7 @@ STDMETHODIMP ProxyDirect3DDevice9::GetCreationParameters(D3DDEVICE_CREATION_PARA
 }
 
 STDMETHODIMP ProxyDirect3DDevice9::SetCursorProperties(UINT XHotSpot, UINT YHotSpot, IDirect3DSurface9* pCursorBitmap) {
-    return m_pReal->SetCursorProperties(XHotSpot, YHotSpot, pCursorBitmap);
+    return m_pReal->SetCursorProperties(XHotSpot, YHotSpot, GetRealSurface(pCursorBitmap));
 }
 
 STDMETHODIMP_(void) ProxyDirect3DDevice9::SetCursorPosition(int X, int Y, DWORD Flags) {
@@ -158,11 +225,43 @@ STDMETHODIMP_(UINT) ProxyDirect3DDevice9::GetNumberOfSwapChains() {
     return m_pReal->GetNumberOfSwapChains();
 }
 
+static void LogPresentParameters(const char* prefix, const D3DPRESENT_PARAMETERS* pPP) {
+    if (!pPP)
+        return;
+    Logger::info("{}: W={}, H={}, Fmt={}, Cnt={}, MSType={}, MSQual={}, Swap={}, hWnd={:p}, Wnd={}, Depth={}, DSFormat={}, Flags={}, "
+                 "Refresh={}, Interval={}",
+        prefix, pPP->BackBufferWidth, pPP->BackBufferHeight, (int)pPP->BackBufferFormat, pPP->BackBufferCount, (int)pPP->MultiSampleType,
+        pPP->MultiSampleQuality, (int)pPP->SwapEffect, (void*)pPP->hDeviceWindow, pPP->Windowed, pPP->EnableAutoDepthStencil,
+        (int)pPP->AutoDepthStencilFormat, pPP->Flags, pPP->FullScreen_RefreshRateInHz, pPP->PresentationInterval);
+}
+
 STDMETHODIMP ProxyDirect3DDevice9::Reset(D3DPRESENT_PARAMETERS* pPP) {
+    // Unbind any potentially bound resources on the real device to clear device state references
+    IDirect3DSurface9* pOrigBB = nullptr;
+    if (SUCCEEDED(m_pReal->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &pOrigBB))) {
+        m_pReal->SetRenderTarget(0, pOrigBB);
+        pOrigBB->Release();
+    }
+    for (DWORD i = 1; i < 4; ++i) {
+        m_pReal->SetRenderTarget(i, nullptr);
+    }
+    m_pReal->SetDepthStencilSurface(nullptr);
+
+    for (DWORD i = 0; i < 16; ++i) {
+        m_pReal->SetTexture(i, nullptr);
+    }
+    for (DWORD i = 0; i < 4; ++i) {
+        m_pReal->SetTexture(D3DVERTEXTEXTURESAMPLER0 + i, nullptr);
+    }
+
+    for (DWORD i = 0; i < 16; ++i) {
+        m_pReal->SetStreamSource(i, nullptr, 0, 0);
+    }
+    m_pReal->SetIndices(nullptr);
+
     OverlayRenderer::Get().OnReset();
     if (m_pFakeBackBuffer) {
-        m_pFakeBackBuffer->Release();
-        m_pFakeBackBuffer = nullptr;
+        m_pFakeBackBuffer->SetInternalSurface(nullptr);
     }
     if (m_pFakeBackBufferTex) {
         m_pFakeBackBufferTex->Release();
@@ -190,6 +289,9 @@ STDMETHODIMP ProxyDirect3DDevice9::Reset(D3DPRESENT_PARAMETERS* pPP) {
     D3DPRESENT_PARAMETERS realPP = *pPP;
     realPP.BackBufferWidth = nativeW;
     realPP.BackBufferHeight = nativeH;
+    if (realPP.hDeviceWindow == NULL) {
+        realPP.hDeviceWindow = m_hFocusWindow;
+    }
 
     m_renderW = scaledW;
     m_renderH = scaledH;
@@ -200,7 +302,13 @@ STDMETHODIMP ProxyDirect3DDevice9::Reset(D3DPRESENT_PARAMETERS* pPP) {
     Logger::info("Reset: Game requested {}x{}, Proxy created device at {}x{}, Game sees {}x{}", pPP->BackBufferWidth, pPP->BackBufferHeight,
         nativeW, nativeH, scaledW, scaledH);
 
+    LogPresentParameters("Reset (Game input)", pPP);
+    LogPresentParameters("Reset (Real output)", &realPP);
+
+    LogActiveDefaultPoolResources();
+
     HRESULT hr = m_pReal->Reset(&realPP);
+    Logger::info("Reset: m_pReal->Reset returned hr={:08X}", (uint32_t)hr);
     if (SUCCEEDED(hr)) {
         pPP->BackBufferWidth = scaledW;
         pPP->BackBufferHeight = scaledH;
@@ -277,7 +385,19 @@ STDMETHODIMP_(void) ProxyDirect3DDevice9::GetGammaRamp(UINT iSC, D3DGAMMARAMP* p
 
 STDMETHODIMP ProxyDirect3DDevice9::CreateTexture(
     UINT W, UINT H, UINT L, DWORD U, D3DFORMAT F, D3DPOOL P, IDirect3DTexture9** ppT, HANDLE* pS) {
-    return m_pReal->CreateTexture(W, H, L, U, F, P, ppT, pS);
+    if (!ppT)
+        return D3DERR_INVALIDCALL;
+
+    IDirect3DTexture9* pRealTex = nullptr;
+    HRESULT hr = m_pReal->CreateTexture(W, H, L, U, F, P, &pRealTex, pS);
+    if (SUCCEEDED(hr) && pRealTex) {
+        UINT actualLevels = pRealTex->GetLevelCount();
+        *ppT = new ProxyTexture9(pRealTex, this, W, H, actualLevels, U, F, P);
+        pRealTex->Release();
+    } else {
+        *ppT = nullptr;
+    }
+    return hr;
 }
 
 STDMETHODIMP ProxyDirect3DDevice9::CreateVolumeTexture(
@@ -309,32 +429,54 @@ STDMETHODIMP ProxyDirect3DDevice9::CreateDepthStencilSurface(
 }
 
 STDMETHODIMP ProxyDirect3DDevice9::UpdateSurface(IDirect3DSurface9* pSS, CONST RECT* pSR, IDirect3DSurface9* pDS, CONST POINT* pDP) {
-    return m_pReal->UpdateSurface(pSS, pSR, pDS, pDP);
+    HRESULT hr = m_pReal->UpdateSurface(GetRealSurface(pSS), pSR, GetRealSurface(pDS), pDP);
+    if (SUCCEEDED(hr) && pSS && pDS) {
+        if (GamePlug::TextureReplacer::Get().IsProxySurface(pSS) && GamePlug::TextureReplacer::Get().IsProxySurface(pDS)) {
+            ProxySurface9* pProxySrc = (ProxySurface9*)pSS;
+            ProxySurface9* pProxyDst = (ProxySurface9*)pDS;
+            ProxyTexture9* pSrcTex = pProxySrc->GetParentTexture();
+            ProxyTexture9* pDstTex = pProxyDst->GetParentTexture();
+            if (pSrcTex && pDstTex) {
+                pDstTex->PropagateFrom(pSrcTex);
+            }
+        }
+    }
+    return hr;
 }
 
 STDMETHODIMP ProxyDirect3DDevice9::UpdateTexture(IDirect3DBaseTexture9* pST, IDirect3DBaseTexture9* pDT) {
-    return m_pReal->UpdateTexture(pST, pDT);
+    if (!pST || !pDT)
+        return m_pReal->UpdateTexture(pST, pDT);
+
+    ProxyTexture9* pProxySrc = GamePlug::TextureReplacer::Get().IsProxyTexture(pST) ? (ProxyTexture9*)pST : nullptr;
+    ProxyTexture9* pProxyDst = GamePlug::TextureReplacer::Get().IsProxyTexture(pDT) ? (ProxyTexture9*)pDT : nullptr;
+
+    IDirect3DBaseTexture9* pRealSrc = pProxySrc ? pProxySrc->GetRealTexture() : pST;
+    IDirect3DBaseTexture9* pRealDst = pProxyDst ? pProxyDst->GetRealTexture() : pDT;
+
+    HRESULT hr = m_pReal->UpdateTexture(pRealSrc, pRealDst);
+
+    if (SUCCEEDED(hr) && pProxySrc && pProxyDst) {
+        pProxyDst->PropagateFrom(pProxySrc);
+    }
+    return hr;
 }
 
 STDMETHODIMP ProxyDirect3DDevice9::GetRenderTargetData(IDirect3DSurface9* pRT, IDirect3DSurface9* pDS) {
-    IDirect3DSurface9* pActualRT = (pRT == (IDirect3DSurface9*)m_pFakeBackBuffer) ? m_pFakeBackBuffer->GetInternalSurface() : pRT;
-    return m_pReal->GetRenderTargetData(pActualRT, pDS);
+    return m_pReal->GetRenderTargetData(GetRealSurface(pRT), GetRealSurface(pDS));
 }
 
 STDMETHODIMP ProxyDirect3DDevice9::GetFrontBufferData(UINT iSC, IDirect3DSurface9* pDS) {
-    return m_pReal->GetFrontBufferData(iSC, pDS);
+    return m_pReal->GetFrontBufferData(iSC, GetRealSurface(pDS));
 }
 
 STDMETHODIMP ProxyDirect3DDevice9::StretchRect(
     IDirect3DSurface9* pSS, CONST RECT* pSR, IDirect3DSurface9* pDS, CONST RECT* pDR, D3DTEXTUREFILTERTYPE F) {
-    IDirect3DSurface9* pActualSS = (pSS == (IDirect3DSurface9*)m_pFakeBackBuffer) ? m_pFakeBackBuffer->GetInternalSurface() : pSS;
-    IDirect3DSurface9* pActualDS = (pDS == (IDirect3DSurface9*)m_pFakeBackBuffer) ? m_pFakeBackBuffer->GetInternalSurface() : pDS;
-    return m_pReal->StretchRect(pActualSS, pSR, pActualDS, pDR, F);
+    return m_pReal->StretchRect(GetRealSurface(pSS), pSR, GetRealSurface(pDS), pDR, F);
 }
 
 STDMETHODIMP ProxyDirect3DDevice9::ColorFill(IDirect3DSurface9* pS, CONST RECT* pR, D3DCOLOR c) {
-    IDirect3DSurface9* pActualS = (pS == (IDirect3DSurface9*)m_pFakeBackBuffer) ? m_pFakeBackBuffer->GetInternalSurface() : pS;
-    return m_pReal->ColorFill(pActualS, pR, c);
+    return m_pReal->ColorFill(GetRealSurface(pS), pR, c);
 }
 
 STDMETHODIMP ProxyDirect3DDevice9::CreateOffscreenPlainSurface(
@@ -343,28 +485,39 @@ STDMETHODIMP ProxyDirect3DDevice9::CreateOffscreenPlainSurface(
 }
 
 STDMETHODIMP ProxyDirect3DDevice9::SetRenderTarget(DWORD RTI, IDirect3DSurface9* pRT) {
-    IDirect3DSurface9* pActual = (pRT == (IDirect3DSurface9*)m_pFakeBackBuffer) ? m_pFakeBackBuffer->GetInternalSurface() : pRT;
-    return m_pReal->SetRenderTarget(RTI, pActual);
+    return m_pReal->SetRenderTarget(RTI, GetRealSurface(pRT));
 }
 
 STDMETHODIMP ProxyDirect3DDevice9::GetRenderTarget(DWORD RTI, IDirect3DSurface9** ppRT) {
+    if (!ppRT)
+        return D3DERR_INVALIDCALL;
     HRESULT hr = m_pReal->GetRenderTarget(RTI, ppRT);
-    if (SUCCEEDED(hr) && ppRT && *ppRT) {
-        if (m_pFakeBackBuffer && *ppRT == m_pFakeBackBuffer->GetInternalSurface()) {
+    if (SUCCEEDED(hr) && *ppRT) {
+        ProxySurface9* pProxy = GamePlug::TextureReplacer::Get().FindProxySurfaceByReal(*ppRT);
+        if (pProxy) {
             (*ppRT)->Release();
-            *ppRT = (IDirect3DSurface9*)m_pFakeBackBuffer;
-            (*ppRT)->AddRef();
+            *ppRT = pProxy;
         }
     }
     return hr;
 }
 
 STDMETHODIMP ProxyDirect3DDevice9::SetDepthStencilSurface(IDirect3DSurface9* pNZS) {
-    return m_pReal->SetDepthStencilSurface(pNZS);
+    return m_pReal->SetDepthStencilSurface(GetRealSurface(pNZS));
 }
 
 STDMETHODIMP ProxyDirect3DDevice9::GetDepthStencilSurface(IDirect3DSurface9** ppZSS) {
-    return m_pReal->GetDepthStencilSurface(ppZSS);
+    if (!ppZSS)
+        return D3DERR_INVALIDCALL;
+    HRESULT hr = m_pReal->GetDepthStencilSurface(ppZSS);
+    if (SUCCEEDED(hr) && *ppZSS) {
+        ProxySurface9* pProxy = GamePlug::TextureReplacer::Get().FindProxySurfaceByReal(*ppZSS);
+        if (pProxy) {
+            (*ppZSS)->Release();
+            *ppZSS = pProxy;
+        }
+    }
+    return hr;
 }
 
 STDMETHODIMP ProxyDirect3DDevice9::BeginScene() {
@@ -511,10 +664,46 @@ STDMETHODIMP ProxyDirect3DDevice9::GetClipStatus(D3DCLIPSTATUS9* pCS) {
 }
 
 STDMETHODIMP ProxyDirect3DDevice9::GetTexture(DWORD S, IDirect3DBaseTexture9** ppT) {
-    return m_pReal->GetTexture(S, ppT);
+    if (!ppT)
+        return D3DERR_INVALIDCALL;
+    IDirect3DBaseTexture9* pRealTex = nullptr;
+    HRESULT hr = m_pReal->GetTexture(S, &pRealTex);
+    if (SUCCEEDED(hr) && pRealTex) {
+        ProxyTexture9* pProxy = TextureReplacer::Get().FindProxyByReal(pRealTex);
+        if (pProxy) {
+            *ppT = pProxy;
+            // FindProxyByReal already incremented the reference count under the lock!
+            pRealTex->Release();
+        } else {
+            *ppT = pRealTex;
+        }
+    } else {
+        *ppT = nullptr;
+    }
+    return hr;
 }
 
 STDMETHODIMP ProxyDirect3DDevice9::SetTexture(DWORD S, IDirect3DBaseTexture9* pT) {
+    if (pT && GamePlug::TextureReplacer::Get().IsProxyTexture(pT)) {
+        ProxyTexture9* pProxyTex = (ProxyTexture9*)pT;
+        TextureReplacer::Get().OnTextureBound(pProxyTex);
+
+        IDirect3DTexture9* pRealTex = nullptr;
+        {
+            std::lock_guard<std::recursive_mutex> lock(TextureReplacer::Get().GetMutex());
+            pRealTex = pProxyTex->GetReplacedReal();
+            if (pRealTex) {
+                pRealTex->AddRef();
+            }
+        }
+
+        HRESULT hr = m_pReal->SetTexture(S, pRealTex);
+
+        if (pRealTex) {
+            pRealTex->Release();
+        }
+        return hr;
+    }
     return m_pReal->SetTexture(S, pT);
 }
 
@@ -801,7 +990,7 @@ STDMETHODIMP ProxyDirect3DDevice9::ComposeRects(IDirect3DSurface9* pS, IDirect3D
     IDirect3DVertexBuffer9* pDRD, D3DCOMPOSERECTSOP O, int XO, int YO) {
     if (!m_pRealEx)
         return E_NOTIMPL;
-    return m_pRealEx->ComposeRects(pS, pD, pSRD, NR, pDRD, O, XO, YO);
+    return m_pRealEx->ComposeRects(GetRealSurface(pS), GetRealSurface(pD), pSRD, NR, pDRD, O, XO, YO);
 }
 
 STDMETHODIMP ProxyDirect3DDevice9::PresentEx(CONST RECT* pSR, CONST RECT* pDR, HWND hW, CONST RGNDATA* pR, DWORD F) {
@@ -895,7 +1084,40 @@ STDMETHODIMP ProxyDirect3DDevice9::CreateDepthStencilSurfaceEx(
 }
 
 STDMETHODIMP ProxyDirect3DDevice9::ResetEx(D3DPRESENT_PARAMETERS* pPP, D3DDISPLAYMODEEX* pFDM) {
+    if (!m_pRealEx)
+        return E_NOTIMPL;
+
+    // Unbind any potentially bound resources on the real device to clear device state references
+    IDirect3DSurface9* pOrigBB = nullptr;
+    if (SUCCEEDED(m_pRealEx->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &pOrigBB))) {
+        m_pRealEx->SetRenderTarget(0, pOrigBB);
+        pOrigBB->Release();
+    }
+    for (DWORD i = 1; i < 4; ++i) {
+        m_pRealEx->SetRenderTarget(i, nullptr);
+    }
+    m_pRealEx->SetDepthStencilSurface(nullptr);
+
+    for (DWORD i = 0; i < 16; ++i) {
+        m_pRealEx->SetTexture(i, nullptr);
+    }
+    for (DWORD i = 0; i < 4; ++i) {
+        m_pRealEx->SetTexture(D3DVERTEXTEXTURESAMPLER0 + i, nullptr);
+    }
+
+    for (DWORD i = 0; i < 16; ++i) {
+        m_pRealEx->SetStreamSource(i, nullptr, 0, 0);
+    }
+    m_pRealEx->SetIndices(nullptr);
+
     OverlayRenderer::Get().OnReset();
+    if (m_pFakeBackBuffer) {
+        m_pFakeBackBuffer->SetInternalSurface(nullptr);
+    }
+    if (m_pFakeBackBufferTex) {
+        m_pFakeBackBufferTex->Release();
+        m_pFakeBackBufferTex = nullptr;
+    }
 
     int scaledW = pPP->BackBufferWidth;
     int scaledH = pPP->BackBufferHeight;
@@ -911,13 +1133,48 @@ STDMETHODIMP ProxyDirect3DDevice9::ResetEx(D3DPRESENT_PARAMETERS* pPP, D3DDISPLA
     D3DPRESENT_PARAMETERS realPP = *pPP;
     realPP.BackBufferWidth = nativeW;
     realPP.BackBufferHeight = nativeH;
+    if (realPP.hDeviceWindow == NULL) {
+        realPP.hDeviceWindow = m_hFocusWindow;
+    }
 
-    if (!m_pRealEx)
-        return E_NOTIMPL;
+    m_renderW = scaledW;
+    m_renderH = scaledH;
+    m_displayW = nativeW;
+    m_displayH = nativeH;
+    m_isUpscaling = true;
+
+    Logger::info("ResetEx: Game requested {}x{}, Proxy created device at {}x{}, Game sees {}x{}", pPP->BackBufferWidth,
+        pPP->BackBufferHeight, nativeW, nativeH, scaledW, scaledH);
+
+    LogPresentParameters("ResetEx (Game input)", pPP);
+    LogPresentParameters("ResetEx (Real output)", &realPP);
+
+    LogActiveDefaultPoolResources();
+
     HRESULT hr = m_pRealEx->ResetEx(&realPP, pFDM);
+    Logger::info("ResetEx: m_pRealEx->ResetEx returned hr={:08X}", (uint32_t)hr);
     if (SUCCEEDED(hr)) {
         pPP->BackBufferWidth = scaledW;
         pPP->BackBufferHeight = scaledH;
+        if (m_isUpscaling) {
+            if (m_pFakeBackBufferTex) {
+                m_pFakeBackBufferTex->Release();
+                m_pFakeBackBufferTex = nullptr;
+            }
+            if (SUCCEEDED(m_pRealEx->CreateTexture(
+                    m_renderW, m_renderH, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &m_pFakeBackBufferTex, nullptr))) {
+                IDirect3DSurface9* pRealSurf = nullptr;
+                m_pFakeBackBufferTex->GetSurfaceLevel(0, &pRealSurf);
+                if (!m_pFakeBackBuffer) {
+                    m_pFakeBackBuffer = new ProxySurface9(pRealSurf, this, m_displayW, m_displayH);
+                } else {
+                    m_pFakeBackBuffer->SetInternalSurface(pRealSurf);
+                }
+                if (pRealSurf)
+                    pRealSurf->Release();
+                Logger::info("Proxy: Fake backbuffer re-created at {}x{} (ResetEx path)", m_renderW, m_renderH);
+            }
+        }
         OverlayRenderer::Get().OnPostReset();
     }
     return hr;

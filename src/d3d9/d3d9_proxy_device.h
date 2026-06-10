@@ -11,6 +11,7 @@ class ProxyDirect3DDevice9 : public IDirect3DDevice9Ex {
     IDirect3DDevice9* m_pReal;
     IDirect3DDevice9Ex* m_pRealEx;
     IDirect3D9* m_pParent;
+    HWND m_hFocusWindow;
     ProxySurface9* m_pFakeBackBuffer;
     IDirect3DTexture9* m_pFakeBackBufferTex;
     uint32_t m_renderW, m_renderH;
@@ -20,7 +21,11 @@ class ProxyDirect3DDevice9 : public IDirect3DDevice9Ex {
     void UpdateScaledResolution();
 
 public:
-    ProxyDirect3DDevice9(IDirect3DDevice9* pReal, IDirect3D9* pParent, uint32_t rw, uint32_t rh, uint32_t dw, uint32_t dh, bool upscale);
+    IDirect3DDevice9* GetRealDevice() const { return m_pReal; }
+    bool IsUpscaling() const { return m_isUpscaling; }
+    ProxySurface9* GetFakeBackBuffer() const { return m_pFakeBackBuffer; }
+    ProxyDirect3DDevice9(
+        IDirect3DDevice9* pReal, IDirect3D9* pParent, HWND hFocusWindow, uint32_t rw, uint32_t rh, uint32_t dw, uint32_t dh, bool upscale);
     virtual ~ProxyDirect3DDevice9();
 
     // IUnknown

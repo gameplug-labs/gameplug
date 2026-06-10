@@ -53,6 +53,10 @@ void ImGuiOverlayShared::DrawUI(uint32_t width, uint32_t height, std::function<v
             ImGui::Spacing();
             ImGui::TextDisabled("No modules or plugins active.");
         }
+
+        if (apiSpecificUI) {
+            apiSpecificUI();
+        }
     }
     ImGui::End();
 }

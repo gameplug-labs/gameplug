@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <sstream>
 #include <vector>
+#include <d3dcompiler.h>
 
 namespace GamePlug {
 extern void PatchDeviceContextVTable(ID3D11DeviceContext* context);
@@ -589,15 +590,29 @@ void DXUpscalerManager::RenderUI(float fps, uint32_t width, uint32_t height) {
     //             debugSRV = m_fakeBackBufferSRV;
     //             targetName = "Fake Back Buffer";
     //         } else if (m_debugPreviewIndex == 1) {
-    //             dw = m_depthWidth;
-    //             dh = m_depthHeight;
-    //             debugSRV = m_depthSRV;
-    //             targetName = "Depth Buffer";
+    //             if (m_downsampledDepthSRV && m_depthWidth != m_renderWidth) {
+    //                 dw = m_renderWidth;
+    //                 dh = m_renderHeight;
+    //                 debugSRV = m_downsampledDepthSRV;
+    //                 targetName = "Depth Buffer (Downsampled)";
+    //             } else {
+    //                 dw = m_depthWidth;
+    //                 dh = m_depthHeight;
+    //                 debugSRV = m_depthSRV;
+    //                 targetName = "Depth Buffer";
+    //             }
     //         } else if (m_debugPreviewIndex == 2) {
-    //             dw = m_mvWidth;
-    //             dh = m_mvHeight;
-    //             debugSRV = m_mvSRV;
-    //             targetName = "Motion Vectors";
+    //             if (m_downsampledMVSRV && m_mvWidth != m_renderWidth) {
+    //                 dw = m_renderWidth;
+    //                 dh = m_renderHeight;
+    //                 debugSRV = m_downsampledMVSRV;
+    //                 targetName = "Motion Vectors (Downsampled)";
+    //             } else {
+    //                 dw = m_mvWidth;
+    //                 dh = m_mvHeight;
+    //                 debugSRV = m_mvSRV;
+    //                 targetName = "Motion Vectors";
+    //             }
     //         }
     //     }
 
@@ -805,31 +820,216 @@ void DXUpscalerManager::RenderFrameDX11(
         Logger::info("DXUpscalerManager::RenderFrameDX11 [Jitter] x=" + std::to_string(jitterX) + " y=" + std::to_string(jitterY));
     }
 
+    // 1. Compile downsampling compute shader if not done
+    if (!m_downsampleCS && m_pd3dDevice) {
+        const char* shaderSrc = R"(
+Texture2D<float4> InputTex : register(t0);
+RWTexture2D<float4> OutputTex : register(u0);
+
+[numthreads(8, 8, 1)]
+void main(uint3 dispatchThreadID : SV_DispatchThreadID) {
+    uint2 dstSize;
+    OutputTex.GetDimensions(dstSize.x, dstSize.y);
+    if (dispatchThreadID.x >= dstSize.x || dispatchThreadID.y >= dstSize.y) return;
+    
+    uint2 srcSize;
+    InputTex.GetDimensions(srcSize.x, srcSize.y);
+    
+    float2 uv = (float2(dispatchThreadID.xy) + 0.5f) / float2(dstSize);
+    uint2 srcPos = uint2(uv * float2(srcSize));
+    OutputTex[dispatchThreadID.xy] = InputTex[srcPos];
+}
+)";
+        ID3DBlob* csBlob = nullptr;
+        ID3DBlob* errorBlob = nullptr;
+        HRESULT hr = D3DCompile(shaderSrc, strlen(shaderSrc), nullptr, nullptr, nullptr, "main", "cs_5_0", 0, 0, &csBlob, &errorBlob);
+        if (SUCCEEDED(hr)) {
+            m_pd3dDevice->CreateComputeShader(csBlob->GetBufferPointer(), csBlob->GetBufferSize(), nullptr, &m_downsampleCS);
+            csBlob->Release();
+        } else {
+            if (errorBlob) {
+                Logger::error("DXUpscalerManager: Failed to compile downsample CS: " + std::string((char*)errorBlob->GetBufferPointer()));
+                errorBlob->Release();
+            }
+        }
+    }
+
+    // 2. Fetch tracked resources under lock
+    ID3D11Texture2D* depthTexToDownsample = nullptr;
+    ID3D11ShaderResourceView* depthSRVToDownsample = nullptr;
+    uint32_t depthW = 0, depthH = 0;
+    DXGI_FORMAT depthFmt = DXGI_FORMAT_UNKNOWN;
+
+    ID3D11Texture2D* mvTexToDownsample = nullptr;
+    ID3D11ShaderResourceView* mvSRVToDownsample = nullptr;
+    uint32_t mvW = 0, mvH = 0;
+    DXGI_FORMAT mvFmt = DXGI_FORMAT_UNKNOWN;
+
+    {
+        std::lock_guard<std::mutex> lock(m_trackerMtx);
+        if (m_depthTexture) {
+            depthTexToDownsample = m_depthTexture;
+            depthTexToDownsample->AddRef();
+            depthSRVToDownsample = m_depthSRV;
+            if (depthSRVToDownsample) depthSRVToDownsample->AddRef();
+            depthW = m_depthWidth;
+            depthH = m_depthHeight;
+            depthFmt = m_depthFormat;
+        }
+        if (m_mvTexture) {
+            mvTexToDownsample = m_mvTexture;
+            mvTexToDownsample->AddRef();
+            mvSRVToDownsample = m_mvSRV;
+            if (mvSRVToDownsample) mvSRVToDownsample->AddRef();
+            mvW = m_mvWidth;
+            mvH = m_mvHeight;
+            mvFmt = m_mvFormat;
+        }
+    }
+
+    // 3. Downsample Depth
+    bool didDownsampleDepth = false;
+    if (m_downsampleCS && depthTexToDownsample && depthSRVToDownsample && 
+        (depthW != m_renderWidth || depthH != m_renderHeight) && m_renderWidth > 0 && m_renderHeight > 0) {
+        
+        // Recreate UAV/SRV if dimensions or format changed
+        D3D11_TEXTURE2D_DESC desc = {};
+        if (m_downsampledDepthTex) m_downsampledDepthTex->GetDesc(&desc);
+        
+        if (!m_downsampledDepthTex || desc.Width != m_renderWidth || desc.Height != m_renderHeight) {
+            if (m_downsampledDepthTex) m_downsampledDepthTex->Release();
+            if (m_downsampledDepthSRV) m_downsampledDepthSRV->Release();
+            if (m_downsampledDepthUAV) m_downsampledDepthUAV->Release();
+            m_downsampledDepthTex = nullptr;
+            m_downsampledDepthSRV = nullptr;
+            m_downsampledDepthUAV = nullptr;
+
+            D3D11_TEXTURE2D_DESC newDesc = {};
+            newDesc.Width = m_renderWidth;
+            newDesc.Height = m_renderHeight;
+            newDesc.MipLevels = 1;
+            newDesc.ArraySize = 1;
+            newDesc.Format = DXGI_FORMAT_R32_FLOAT;
+            newDesc.SampleDesc.Count = 1;
+            newDesc.Usage = D3D11_USAGE_DEFAULT;
+            newDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
+
+            HRESULT hr = m_pd3dDevice->CreateTexture2D(&newDesc, nullptr, &m_downsampledDepthTex);
+            if (SUCCEEDED(hr)) {
+                m_pd3dDevice->CreateShaderResourceView(m_downsampledDepthTex, nullptr, &m_downsampledDepthSRV);
+                m_pd3dDevice->CreateUnorderedAccessView(m_downsampledDepthTex, nullptr, &m_downsampledDepthUAV);
+            }
+        }
+
+        if (m_downsampledDepthUAV) {
+            context->CSSetShader(m_downsampleCS, nullptr, 0);
+            context->CSSetShaderResources(0, 1, &depthSRVToDownsample);
+            context->CSSetUnorderedAccessViews(0, 1, &m_downsampledDepthUAV, nullptr);
+
+            UINT groupX = (m_renderWidth + 7) / 8;
+            UINT groupY = (m_renderHeight + 7) / 8;
+            context->Dispatch(groupX, groupY, 1);
+
+            ID3D11ShaderResourceView* nullSRV = nullptr;
+            ID3D11UnorderedAccessView* nullUAV = nullptr;
+            context->CSSetShaderResources(0, 1, &nullSRV);
+            context->CSSetUnorderedAccessViews(0, 1, &nullUAV, nullptr);
+
+            didDownsampleDepth = true;
+        }
+    }
+
+    // 4. Downsample Motion Vectors
+    bool didDownsampleMV = false;
+    if (m_downsampleCS && mvTexToDownsample && mvSRVToDownsample && 
+        (mvW != m_renderWidth || mvH != m_renderHeight) && m_renderWidth > 0 && m_renderHeight > 0) {
+        
+        // Recreate UAV/SRV if dimensions or format changed
+        D3D11_TEXTURE2D_DESC desc = {};
+        if (m_downsampledMVTex) m_downsampledMVTex->GetDesc(&desc);
+        
+        if (!m_downsampledMVTex || desc.Width != m_renderWidth || desc.Height != m_renderHeight) {
+            if (m_downsampledMVTex) m_downsampledMVTex->Release();
+            if (m_downsampledMVSRV) m_downsampledMVSRV->Release();
+            if (m_downsampledMVUAV) m_downsampledMVUAV->Release();
+            m_downsampledMVTex = nullptr;
+            m_downsampledMVSRV = nullptr;
+            m_downsampledMVUAV = nullptr;
+
+            D3D11_TEXTURE2D_DESC newDesc = {};
+            newDesc.Width = m_renderWidth;
+            newDesc.Height = m_renderHeight;
+            newDesc.MipLevels = 1;
+            newDesc.ArraySize = 1;
+            newDesc.Format = DXGI_FORMAT_R16G16_FLOAT;
+            newDesc.SampleDesc.Count = 1;
+            newDesc.Usage = D3D11_USAGE_DEFAULT;
+            newDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
+
+            HRESULT hr = m_pd3dDevice->CreateTexture2D(&newDesc, nullptr, &m_downsampledMVTex);
+            if (SUCCEEDED(hr)) {
+                m_pd3dDevice->CreateShaderResourceView(m_downsampledMVTex, nullptr, &m_downsampledMVSRV);
+                m_pd3dDevice->CreateUnorderedAccessView(m_downsampledMVTex, nullptr, &m_downsampledMVUAV);
+            }
+        }
+
+        if (m_downsampledMVUAV) {
+            context->CSSetShader(m_downsampleCS, nullptr, 0);
+            context->CSSetShaderResources(0, 1, &mvSRVToDownsample);
+            context->CSSetUnorderedAccessViews(0, 1, &m_downsampledMVUAV, nullptr);
+
+            UINT groupX = (m_renderWidth + 7) / 8;
+            UINT groupY = (m_renderHeight + 7) / 8;
+            context->Dispatch(groupX, groupY, 1);
+
+            ID3D11ShaderResourceView* nullSRV = nullptr;
+            ID3D11UnorderedAccessView* nullUAV = nullptr;
+            context->CSSetShaderResources(0, 1, &nullSRV);
+            context->CSSetUnorderedAccessViews(0, 1, &nullUAV, nullptr);
+
+            didDownsampleMV = true;
+        }
+    }
+
     uint64_t depthImage = 0;
     uint32_t depthFormatVal = 0;
     uint64_t mvImage = 0;
     uint32_t mvFormatVal = 0;
 
-    {
-        std::lock_guard<std::mutex> lock(m_trackerMtx);
-        depthImage = m_depthTexture ? (uint64_t)m_depthTexture : 0;
-        depthFormatVal = m_depthTexture ? (uint32_t)m_depthFormat : 0;
-        mvImage = m_mvTexture ? (uint64_t)m_mvTexture : 0;
-        mvFormatVal = m_mvTexture ? (uint32_t)m_mvFormat : 0;
+    if (didDownsampleDepth) {
+        depthImage = (uint64_t)m_downsampledDepthTex;
+        depthFormatVal = (uint32_t)DXGI_FORMAT_R32_FLOAT;
+    } else if (depthTexToDownsample) {
+        depthImage = (uint64_t)depthTexToDownsample;
+        depthFormatVal = (uint32_t)depthFmt;
+    }
 
-        if (shouldLog) {
-            std::string depthName = m_depthTexture ? DXGIFormatToString(m_depthFormat) : "DXGI_FORMAT_UNKNOWN";
-            std::string mvName = m_mvTexture ? DXGIFormatToString(m_mvFormat) : "DXGI_FORMAT_UNKNOWN";
+    if (didDownsampleMV) {
+        mvImage = (uint64_t)m_downsampledMVTex;
+        mvFormatVal = (uint32_t)DXGI_FORMAT_R16G16_FLOAT;
+    } else if (mvTexToDownsample) {
+        mvImage = (uint64_t)mvTexToDownsample;
+        mvFormatVal = (uint32_t)mvFmt;
+    }
 
-            Logger::info("DXUpscalerManager::RenderFrameDX11 [Buffers] depth=" + std::to_string(depthImage) + " (" +
-                         std::to_string(m_depthWidth) + "x" + std::to_string(m_depthHeight) + ", fmt=" + depthName +
-                         "), mv=" + std::to_string(mvImage) + " (fmt=" + mvName + ")");
-        }
+    if (shouldLog) {
+        std::string depthName = didDownsampleDepth ? "DXGI_FORMAT_R32_FLOAT (Downsampled)" : (depthTexToDownsample ? DXGIFormatToString(depthFmt) : "DXGI_FORMAT_UNKNOWN");
+        std::string mvName = didDownsampleMV ? "DXGI_FORMAT_R16G16_FLOAT (Downsampled)" : (mvTexToDownsample ? DXGIFormatToString(mvFmt) : "DXGI_FORMAT_UNKNOWN");
+
+        Logger::info("DXUpscalerManager::RenderFrameDX11 [Buffers] depth=" + std::to_string(depthImage) + " (" +
+                     std::to_string(didDownsampleDepth ? m_renderWidth : depthW) + "x" + std::to_string(didDownsampleDepth ? m_renderHeight : depthH) + ", fmt=" + depthName +
+                     "), mv=" + std::to_string(mvImage) + " (fmt=" + mvName + ")");
     }
 
     m_pInterface->OnRenderFrame((uintptr_t)context, (uint64_t)sourceSRV, (uint64_t)targetRTV, 0, width, height, m_renderWidth,
-        m_renderHeight, depthImage, depthFormatVal, mvImage, mvFormatVal, jitterX, jitterY, m_cameraNear, m_cameraFar, m_cameraFov,
+        m_renderHeight, depthImage, depthFormatVal, mvImage, mvFormatVal, 0.0f, 0.0f, m_cameraNear, m_cameraFar, m_cameraFov,
         m_viewSpaceToMetersFactor, m_detectedInvertedDepth, m_detectedHDR);
+
+    // 5. Clean up local references
+    if (depthTexToDownsample) depthTexToDownsample->Release();
+    if (depthSRVToDownsample) depthSRVToDownsample->Release();
+    if (mvTexToDownsample) mvTexToDownsample->Release();
+    if (mvSRVToDownsample) mvSRVToDownsample->Release();
 
     lastW = width;
     lastH = height;
@@ -944,6 +1144,36 @@ void DXUpscalerManager::ResetTracker() {
         m_mvSRV->Release();
         m_mvSRV = nullptr;
     }
+
+    if (m_downsampleCS) {
+        m_downsampleCS->Release();
+        m_downsampleCS = nullptr;
+    }
+    if (m_downsampledDepthTex) {
+        m_downsampledDepthTex->Release();
+        m_downsampledDepthTex = nullptr;
+    }
+    if (m_downsampledDepthSRV) {
+        m_downsampledDepthSRV->Release();
+        m_downsampledDepthSRV = nullptr;
+    }
+    if (m_downsampledDepthUAV) {
+        m_downsampledDepthUAV->Release();
+        m_downsampledDepthUAV = nullptr;
+    }
+    if (m_downsampledMVTex) {
+        m_downsampledMVTex->Release();
+        m_downsampledMVTex = nullptr;
+    }
+    if (m_downsampledMVSRV) {
+        m_downsampledMVSRV->Release();
+        m_downsampledMVSRV = nullptr;
+    }
+    if (m_downsampledMVUAV) {
+        m_downsampledMVUAV->Release();
+        m_downsampledMVUAV = nullptr;
+    }
+
     m_bestDepthScore = -1.0f;
     m_bestMVScore = -1.0f;
     m_depthWidth = 0;
@@ -997,7 +1227,7 @@ void DXUpscalerManager::CreateFakeBackBuffer(IDXGISwapChain* swapChain) {
     desc.SampleDesc.Count = 1;
     desc.SampleDesc.Quality = 0;
     desc.Usage = D3D11_USAGE_DEFAULT;
-    desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+    desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
     desc.CPUAccessFlags = 0;
     desc.MiscFlags = 0;
 

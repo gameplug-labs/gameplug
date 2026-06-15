@@ -27,6 +27,7 @@ public:
     ID3D11Texture2D* GetFakeBackBuffer() { return m_fakeBackBuffer; }
     ID3D11ShaderResourceView* GetFakeBackBufferSRV() { return m_fakeBackBufferSRV; }
     ID3D11Device* GetDevice() { return m_pd3dDevice; }
+    ID3D11ComputeShader* GetDownsampleCS() const { return m_downsampleCS; }
 
     void RenderUI(float fps, uint32_t width, uint32_t height);
 
@@ -125,6 +126,14 @@ private:
     int m_debugPreviewIndex;
     ID3D11ShaderResourceView* m_depthSRV;
     ID3D11ShaderResourceView* m_mvSRV;
+
+    ID3D11ComputeShader* m_downsampleCS = nullptr;
+    ID3D11Texture2D* m_downsampledDepthTex = nullptr;
+    ID3D11ShaderResourceView* m_downsampledDepthSRV = nullptr;
+    ID3D11UnorderedAccessView* m_downsampledDepthUAV = nullptr;
+    ID3D11Texture2D* m_downsampledMVTex = nullptr;
+    ID3D11ShaderResourceView* m_downsampledMVSRV = nullptr;
+    ID3D11UnorderedAccessView* m_downsampledMVUAV = nullptr;
 
     std::mutex m_trackerMtx;
     uint32_t m_jitterIndex;

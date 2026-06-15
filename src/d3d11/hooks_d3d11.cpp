@@ -52,6 +52,19 @@ HRESULT STDMETHODCALLTYPE HookedCreateTexture2D(
 // coordinates proportionally from display resolution to render resolution.
 // -------------------------------------------------------------------------
 
+static bool IsSameResource(ID3D11Resource* pResA, ID3D11Resource* pResB) {
+    if (!pResA || !pResB) return false;
+    if (pResA == pResB) return true;
+    IUnknown* pUnkA = nullptr;
+    IUnknown* pUnkB = nullptr;
+    pResA->QueryInterface(__uuidof(IUnknown), (void**)&pUnkA);
+    pResB->QueryInterface(__uuidof(IUnknown), (void**)&pUnkB);
+    bool isSame = (pUnkA == pUnkB);
+    if (pUnkA) pUnkA->Release();
+    if (pUnkB) pUnkB->Release();
+    return isSame;
+}
+
 static bool IsFakeBackBufferBound(ID3D11DeviceContext* pCtx) {
     DXUpscalerManager& mgr = DXUpscalerManager::Get();
     ID3D11Texture2D* fakeBB = mgr.GetFakeBackBuffer();
@@ -68,7 +81,7 @@ static bool IsFakeBackBufferBound(ID3D11DeviceContext* pCtx) {
     pRTV->GetResource(&pRes);
     pRTV->Release();
 
-    bool isFake = (pRes == (ID3D11Resource*)fakeBB);
+    bool isFake = IsSameResource(pRes, (ID3D11Resource*)fakeBB);
     if (pRes)
         pRes->Release();
     return isFake;
@@ -79,6 +92,18 @@ static std::unordered_map<void**, PFN_RSSetScissorRects> g_OriginalRSSetScissorR
 static std::unordered_map<void**, PFN_OMSetRenderTargets> g_OriginalOMSetRenderTargetsMap;
 static std::unordered_map<void**, PFN_ClearDepthStencilView> g_OriginalClearDepthStencilViewMap;
 static std::unordered_map<void**, PFN_QueryInterface> g_OriginalContextQIMap;
+
+typedef void (STDMETHODCALLTYPE* PFN_CopyResource)(ID3D11DeviceContext* pCtx, ID3D11Resource* pDstResource, ID3D11Resource* pSrcResource);
+typedef void (STDMETHODCALLTYPE* PFN_ResolveSubresource)(ID3D11DeviceContext* pCtx, ID3D11Resource* pDstResource, UINT DstSubresource, ID3D11Resource* pSrcResource, UINT SrcSubresource, DXGI_FORMAT Format);
+typedef void (STDMETHODCALLTYPE* PFN_CopySubresourceRegion)(ID3D11DeviceContext* pCtx, ID3D11Resource* pDstResource, UINT DstSubresource, UINT DstX, UINT DstY, UINT DstZ, ID3D11Resource* pSrcResource, UINT SrcSubresource, const D3D11_BOX* pSrcBox);
+
+static std::unordered_map<void**, PFN_CopyResource> g_OriginalCopyResourceMap;
+static std::unordered_map<void**, PFN_ResolveSubresource> g_OriginalResolveSubresourceMap;
+static std::unordered_map<void**, PFN_CopySubresourceRegion> g_OriginalCopySubresourceRegionMap;
+
+static PFN_CopyResource g_OriginalCopyResource = nullptr;
+static PFN_ResolveSubresource g_OriginalResolveSubresource = nullptr;
+static PFN_CopySubresourceRegion g_OriginalCopySubresourceRegion = nullptr;
 
 void STDMETHODCALLTYPE HookedRSSetViewports(ID3D11DeviceContext* pCtx, UINT NumViewports, const D3D11_VIEWPORT* pViewports) {
     PFN_RSSetViewports originalFn = nullptr;
@@ -254,6 +279,295 @@ void STDMETHODCALLTYPE HookedRSSetScissorRects(ID3D11DeviceContext* pCtx, UINT N
     }
 }
 
+void PerformScalingCopy(ID3D11DeviceContext* pCtx, ID3D11Resource* pDstRes, ID3D11Resource* pSrcRes) {
+    ID3D11Device* device = nullptr;
+    pCtx->GetDevice(&device);
+    if (!device) return;
+
+    ID3D11ShaderResourceView* srcSRV = nullptr;
+    HRESULT hr = device->CreateShaderResourceView(pSrcRes, nullptr, &srcSRV);
+    if (FAILED(hr)) {
+        D3D11_TEXTURE2D_DESC srcDesc;
+        ID3D11Texture2D* srcTex = (ID3D11Texture2D*)pSrcRes;
+        srcTex->GetDesc(&srcDesc);
+        
+        D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+        srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+        srvDesc.Texture2D.MostDetailedMip = 0;
+        srvDesc.Texture2D.MipLevels = 1;
+        
+        if (srcDesc.Format == DXGI_FORMAT_R8G8B8A8_TYPELESS) {
+            srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        } else if (srcDesc.Format == DXGI_FORMAT_R10G10B10A2_TYPELESS) {
+            srvDesc.Format = DXGI_FORMAT_R10G10B10A2_UNORM;
+        } else if (srcDesc.Format == DXGI_FORMAT_R16G16B16A16_TYPELESS) {
+            srvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        } else {
+            srvDesc.Format = srcDesc.Format;
+        }
+        
+        hr = device->CreateShaderResourceView(pSrcRes, &srvDesc, &srcSRV);
+    }
+
+    ID3D11UnorderedAccessView* dstUAV = nullptr;
+    hr = device->CreateUnorderedAccessView(pDstRes, nullptr, &dstUAV);
+    if (FAILED(hr)) {
+        D3D11_TEXTURE2D_DESC dstDesc;
+        ID3D11Texture2D* dstTex = (ID3D11Texture2D*)pDstRes;
+        dstTex->GetDesc(&dstDesc);
+        
+        D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+        uavDesc.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2D;
+        uavDesc.Texture2D.MipSlice = 0;
+        
+        if (dstDesc.Format == DXGI_FORMAT_R8G8B8A8_TYPELESS || dstDesc.Format == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB) {
+            uavDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        } else if (dstDesc.Format == DXGI_FORMAT_R10G10B10A2_TYPELESS) {
+            uavDesc.Format = DXGI_FORMAT_R10G10B10A2_UNORM;
+        } else if (dstDesc.Format == DXGI_FORMAT_R16G16B16A16_TYPELESS) {
+            uavDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        } else {
+            uavDesc.Format = dstDesc.Format;
+        }
+        
+        hr = device->CreateUnorderedAccessView(pDstRes, &uavDesc, &dstUAV);
+    }
+
+    if (srcSRV && dstUAV) {
+        ID3D11ComputeShader* cs = DXUpscalerManager::Get().GetDownsampleCS();
+        if (cs) {
+            // Save state
+            ID3D11ComputeShader* oldCS = nullptr;
+            ID3D11ClassInstance* oldInstances[256] = {};
+            UINT oldNumInstances = 0;
+            pCtx->CSGetShader(&oldCS, oldInstances, &oldNumInstances);
+            
+            ID3D11ShaderResourceView* oldSRV = nullptr;
+            pCtx->CSGetShaderResources(0, 1, &oldSRV);
+            
+            ID3D11UnorderedAccessView* oldUAV = nullptr;
+            pCtx->CSGetUnorderedAccessViews(0, 1, &oldUAV);
+
+            // Set state and dispatch
+            pCtx->CSSetShader(cs, nullptr, 0);
+            pCtx->CSSetShaderResources(0, 1, &srcSRV);
+            pCtx->CSSetUnorderedAccessViews(0, 1, &dstUAV, nullptr);
+
+            uint32_t rendW = DXUpscalerManager::Get().GetRenderWidth();
+            uint32_t rendH = DXUpscalerManager::Get().GetRenderHeight();
+            UINT groupX = (rendW + 7) / 8;
+            UINT groupY = (rendH + 7) / 8;
+            pCtx->Dispatch(groupX, groupY, 1);
+
+            // Restore state
+            pCtx->CSSetShader(oldCS, oldInstances, oldNumInstances);
+            pCtx->CSSetShaderResources(0, 1, &oldSRV);
+            pCtx->CSSetUnorderedAccessViews(0, 1, &oldUAV, nullptr);
+
+            if (oldCS) oldCS->Release();
+            for (UINT i = 0; i < oldNumInstances; ++i) {
+                if (oldInstances[i]) oldInstances[i]->Release();
+            }
+            if (oldSRV) oldSRV->Release();
+            if (oldUAV) oldUAV->Release();
+        }
+    }
+
+    if (srcSRV) srcSRV->Release();
+    if (dstUAV) dstUAV->Release();
+    device->Release();
+}
+
+void STDMETHODCALLTYPE HookedCopyResource(ID3D11DeviceContext* pCtx, ID3D11Resource* pDstResource, ID3D11Resource* pSrcResource) {
+    PFN_CopyResource originalFn = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_HookMtx);
+        if (pCtx) {
+            void** pVTable = *(void***)pCtx;
+            auto it = g_OriginalCopyResourceMap.find(pVTable);
+            if (it != g_OriginalCopyResourceMap.end()) {
+                originalFn = it->second;
+            }
+        }
+    }
+    if (!originalFn) {
+        originalFn = g_OriginalCopyResource;
+    }
+
+    if (g_InHook || !pDstResource || !pSrcResource) {
+        if (originalFn) {
+            originalFn(pCtx, pDstResource, pSrcResource);
+        }
+        return;
+    }
+    ScopedRecursionGuard guard;
+
+    IDXGISwapChain* swapChain = GetCurrentDXSwapChain();
+    ID3D11Texture2D* realBB = nullptr;
+    if (swapChain) {
+        g_OriginalGetBuffer(swapChain, 0, __uuidof(ID3D11Texture2D), (void**)&realBB);
+    }
+
+    if (realBB && IsSameResource(pDstResource, (ID3D11Resource*)realBB)) {
+        ID3D11Texture2D* fakeBB = DXUpscalerManager::Get().GetFakeBackBuffer();
+        if (fakeBB) {
+            ID3D11Texture2D* srcTex = nullptr;
+            if (SUCCEEDED(pSrcResource->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&srcTex)) && srcTex) {
+                D3D11_TEXTURE2D_DESC dstDesc;
+                D3D11_TEXTURE2D_DESC srcDesc;
+                fakeBB->GetDesc(&dstDesc);
+                srcTex->GetDesc(&srcDesc);
+                srcTex->Release();
+
+                if (dstDesc.Width != srcDesc.Width || dstDesc.Height != srcDesc.Height) {
+                    PerformScalingCopy(pCtx, (ID3D11Resource*)fakeBB, pSrcResource);
+                } else {
+                    if (originalFn) {
+                        originalFn(pCtx, (ID3D11Resource*)fakeBB, pSrcResource);
+                    }
+                }
+                realBB->Release();
+                return;
+            }
+        }
+    }
+
+    if (realBB) {
+        realBB->Release();
+    }
+
+    if (originalFn) {
+        originalFn(pCtx, pDstResource, pSrcResource);
+    }
+}
+
+void STDMETHODCALLTYPE HookedResolveSubresource(ID3D11DeviceContext* pCtx, ID3D11Resource* pDstResource, UINT DstSubresource, ID3D11Resource* pSrcResource, UINT SrcSubresource, DXGI_FORMAT Format) {
+    PFN_ResolveSubresource originalFn = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_HookMtx);
+        if (pCtx) {
+            void** pVTable = *(void***)pCtx;
+            auto it = g_OriginalResolveSubresourceMap.find(pVTable);
+            if (it != g_OriginalResolveSubresourceMap.end()) {
+                originalFn = it->second;
+            }
+        }
+    }
+    if (!originalFn) {
+        originalFn = g_OriginalResolveSubresource;
+    }
+
+    if (g_InHook || !pDstResource || !pSrcResource) {
+        if (originalFn) {
+            originalFn(pCtx, pDstResource, DstSubresource, pSrcResource, SrcSubresource, Format);
+        }
+        return;
+    }
+    ScopedRecursionGuard guard;
+
+    IDXGISwapChain* swapChain = GetCurrentDXSwapChain();
+    ID3D11Texture2D* realBB = nullptr;
+    if (swapChain) {
+        g_OriginalGetBuffer(swapChain, 0, __uuidof(ID3D11Texture2D), (void**)&realBB);
+    }
+
+    if (realBB && IsSameResource(pDstResource, (ID3D11Resource*)realBB)) {
+        ID3D11Texture2D* fakeBB = DXUpscalerManager::Get().GetFakeBackBuffer();
+        if (fakeBB) {
+            ID3D11Texture2D* srcTex = nullptr;
+            if (SUCCEEDED(pSrcResource->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&srcTex)) && srcTex) {
+                D3D11_TEXTURE2D_DESC dstDesc;
+                D3D11_TEXTURE2D_DESC srcDesc;
+                fakeBB->GetDesc(&dstDesc);
+                srcTex->GetDesc(&srcDesc);
+                srcTex->Release();
+
+                if (dstDesc.Width != srcDesc.Width || dstDesc.Height != srcDesc.Height) {
+                    PerformScalingCopy(pCtx, (ID3D11Resource*)fakeBB, pSrcResource);
+                } else {
+                    if (originalFn) {
+                        originalFn(pCtx, (ID3D11Resource*)fakeBB, DstSubresource, pSrcResource, SrcSubresource, Format);
+                    }
+                }
+                realBB->Release();
+                return;
+            }
+        }
+    }
+
+    if (realBB) {
+        realBB->Release();
+    }
+
+    if (originalFn) {
+        originalFn(pCtx, pDstResource, DstSubresource, pSrcResource, SrcSubresource, Format);
+    }
+}
+
+void STDMETHODCALLTYPE HookedCopySubresourceRegion(ID3D11DeviceContext* pCtx, ID3D11Resource* pDstResource, UINT DstSubresource, UINT DstX, UINT DstY, UINT DstZ, ID3D11Resource* pSrcResource, UINT SrcSubresource, const D3D11_BOX* pSrcBox) {
+    PFN_CopySubresourceRegion originalFn = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_HookMtx);
+        if (pCtx) {
+            void** pVTable = *(void***)pCtx;
+            auto it = g_OriginalCopySubresourceRegionMap.find(pVTable);
+            if (it != g_OriginalCopySubresourceRegionMap.end()) {
+                originalFn = it->second;
+            }
+        }
+    }
+    if (!originalFn) {
+        originalFn = g_OriginalCopySubresourceRegion;
+    }
+
+    if (g_InHook || !pDstResource || !pSrcResource) {
+        if (originalFn) {
+            originalFn(pCtx, pDstResource, DstSubresource, DstX, DstY, DstZ, pSrcResource, SrcSubresource, pSrcBox);
+        }
+        return;
+    }
+    ScopedRecursionGuard guard;
+
+    IDXGISwapChain* swapChain = GetCurrentDXSwapChain();
+    ID3D11Texture2D* realBB = nullptr;
+    if (swapChain) {
+        g_OriginalGetBuffer(swapChain, 0, __uuidof(ID3D11Texture2D), (void**)&realBB);
+    }
+
+    if (realBB && IsSameResource(pDstResource, (ID3D11Resource*)realBB)) {
+        ID3D11Texture2D* fakeBB = DXUpscalerManager::Get().GetFakeBackBuffer();
+        if (fakeBB) {
+            ID3D11Texture2D* srcTex = nullptr;
+            if (SUCCEEDED(pSrcResource->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&srcTex)) && srcTex) {
+                D3D11_TEXTURE2D_DESC dstDesc;
+                D3D11_TEXTURE2D_DESC srcDesc;
+                fakeBB->GetDesc(&dstDesc);
+                srcTex->GetDesc(&srcDesc);
+                srcTex->Release();
+
+                if (dstDesc.Width != srcDesc.Width || dstDesc.Height != srcDesc.Height) {
+                    PerformScalingCopy(pCtx, (ID3D11Resource*)fakeBB, pSrcResource);
+                } else {
+                    if (originalFn) {
+                        originalFn(pCtx, (ID3D11Resource*)fakeBB, DstSubresource, DstX, DstY, DstZ, pSrcResource, SrcSubresource, pSrcBox);
+                    }
+                }
+                realBB->Release();
+                return;
+            }
+        }
+    }
+
+    if (realBB) {
+        realBB->Release();
+    }
+
+    if (originalFn) {
+        originalFn(pCtx, pDstResource, DstSubresource, DstX, DstY, DstZ, pSrcResource, SrcSubresource, pSrcBox);
+    }
+}
+
+
 void PatchDeviceContextVTable(ID3D11DeviceContext* context) {
     if (!context)
         return;
@@ -282,6 +596,15 @@ void PatchDeviceContextVTable(ID3D11DeviceContext* context) {
     if (g_OriginalContextQIMap.count(pVTable) == 0) {
         g_OriginalContextQIMap[pVTable] = (PFN_QueryInterface)pVTable[0];
     }
+    if (g_OriginalCopyResourceMap.count(pVTable) == 0) {
+        g_OriginalCopyResourceMap[pVTable] = (PFN_CopyResource)pVTable[47];
+    }
+    if (g_OriginalCopySubresourceRegionMap.count(pVTable) == 0) {
+        g_OriginalCopySubresourceRegionMap[pVTable] = (PFN_CopySubresourceRegion)pVTable[46];
+    }
+    if (g_OriginalResolveSubresourceMap.count(pVTable) == 0) {
+        g_OriginalResolveSubresourceMap[pVTable] = (PFN_ResolveSubresource)pVTable[57];
+    }
 
     // Also save to global fallbacks
     if (!g_OriginalRSSetViewports) {
@@ -296,6 +619,15 @@ void PatchDeviceContextVTable(ID3D11DeviceContext* context) {
     if (!g_OriginalClearDepthStencilView) {
         g_OriginalClearDepthStencilView = (PFN_ClearDepthStencilView)pVTable[53];
     }
+    if (!g_OriginalCopyResource) {
+        g_OriginalCopyResource = (PFN_CopyResource)pVTable[47];
+    }
+    if (!g_OriginalCopySubresourceRegion) {
+        g_OriginalCopySubresourceRegion = (PFN_CopySubresourceRegion)pVTable[46];
+    }
+    if (!g_OriginalResolveSubresource) {
+        g_OriginalResolveSubresource = (PFN_ResolveSubresource)pVTable[57];
+    }
 
     DWORD old;
     if (VirtualProtect(pVTable, 128 * sizeof(void*), PAGE_READWRITE, &old)) {
@@ -303,7 +635,10 @@ void PatchDeviceContextVTable(ID3D11DeviceContext* context) {
         pVTable[33] = (void*)HookedOMSetRenderTargets;
         pVTable[44] = (void*)HookedRSSetViewports;
         pVTable[45] = (void*)HookedRSSetScissorRects;
+        pVTable[46] = (void*)HookedCopySubresourceRegion;
+        pVTable[47] = (void*)HookedCopyResource;
         pVTable[53] = (void*)HookedClearDepthStencilView;
+        pVTable[57] = (void*)HookedResolveSubresource;
         VirtualProtect(pVTable, 128 * sizeof(void*), old, &old);
         Logger::info("DX Hooks D3D11: Patched DeviceContext VTable (" + std::to_string((uintptr_t)pVTable) + ")");
     } else {
@@ -686,7 +1021,7 @@ void STDMETHODCALLTYPE HookedOMSetRenderTargets(ID3D11DeviceContext* pCtx, UINT 
             ID3D11Resource* res = nullptr;
             ppRenderTargetViews[i]->GetResource(&res);
             if (res) {
-                if (res == (ID3D11Resource*)realBB) {
+                if (IsSameResource(res, (ID3D11Resource*)realBB)) {
                     ID3D11Texture2D* fakeBB = DXUpscalerManager::Get().GetFakeBackBuffer();
                     if (fakeBB) {
                         ID3D11Resource* cachedRes = nullptr;
@@ -694,7 +1029,7 @@ void STDMETHODCALLTYPE HookedOMSetRenderTargets(ID3D11DeviceContext* pCtx, UINT 
                             g_fakeBBRTV->GetResource(&cachedRes);
                             if (cachedRes) cachedRes->Release();
                         }
-                        if (!g_fakeBBRTV || cachedRes != (ID3D11Resource*)fakeBB) {
+                        if (!g_fakeBBRTV || !IsSameResource(cachedRes, (ID3D11Resource*)fakeBB)) {
                             if (g_fakeBBRTV) g_fakeBBRTV->Release();
                             g_fakeBBRTV = nullptr;
                             ID3D11Device* device = DXUpscalerManager::Get().GetDevice();

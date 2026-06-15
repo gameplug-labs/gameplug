@@ -368,6 +368,39 @@ void Config::RenderUI(bool showResolutionEnumeration) {
             ImGui::Unindent();
         }
     }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    if (ImGui::CollapsingHeader("Proxy DLL Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::Indent();
+        bool proxyEnabled = GetBool("ProxyDllEnabled", false);
+        if (ImGui::Checkbox("Enable Proxy DLL Chaining", &proxyEnabled)) {
+            SetBool("ProxyDllEnabled", proxyEnabled);
+            Save();
+            Load();
+        }
+
+        if (proxyEnabled) {
+            std::string currentProxy = GetString("ProxyDllPath", "other_d3d11.dll");
+            if (!m_proxyInit) {
+                strncpy_s(m_proxyPathBuffer, currentProxy.c_str(), sizeof(m_proxyPathBuffer) - 1);
+                m_proxyInit = true;
+            }
+
+            if (ImGui::InputTextWithHint("Proxy DLL Path", "other_d3d11.dll", m_proxyPathBuffer, sizeof(m_proxyPathBuffer))) {
+                SetString("ProxyDllPath", m_proxyPathBuffer);
+            }
+
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                Save();
+                Load();
+            }
+            ImGui::TextDisabled("(e.g. other_d3d11.dll for ENB/ReShade)");
+        }
+        ImGui::Unindent();
+    }
 }
 
 } // namespace GamePlug

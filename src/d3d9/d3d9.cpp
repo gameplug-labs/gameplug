@@ -42,12 +42,33 @@ static PFN_D3DPERF_SetMarker Real_D3DPERF_SetMarker = nullptr;
 static PFN_D3DPERF_SetOptions Real_D3DPERF_SetOptions = nullptr;
 static PFN_D3DPERF_SetRegion Real_D3DPERF_SetRegion = nullptr;
 
+static std::string g_lastProxyPath = "";
+
 static void EnsureRealDllLoaded() {
-    if (g_hRealDll)
+    bool proxyEnabled = Config::Get().GetBool("ProxyDllEnabled", false);
+    std::string proxyPath = proxyEnabled ? Config::Get().GetString("ProxyDllPath", "other_d3d9.dll") : "";
+
+    if (proxyEnabled && proxyPath.empty()) {
+        proxyPath = "real_d3d9.dll";
+    }
+
+    if (g_hRealDll && proxyPath == g_lastProxyPath)
         return;
-    g_hRealDll = LoadLibraryA("real_d3d9.dll");
-    if (g_hRealDll)
-        Logger::info("Loaded chained DLL: real_d3d9.dll");
+
+    if (g_hRealDll) {
+        FreeLibrary(g_hRealDll);
+        g_hRealDll = nullptr;
+        Logger::info("Unloaded previous chained DLL");
+    }
+
+    g_lastProxyPath = proxyPath;
+
+    if (!proxyPath.empty()) {
+        g_hRealDll = LoadLibraryA(proxyPath.c_str());
+        if (g_hRealDll)
+            Logger::info("Loaded chained DLL: {}", proxyPath);
+    }
+
     if (!g_hRealDll) {
         char sysPath[MAX_PATH];
         GetSystemDirectoryA(sysPath, MAX_PATH);
@@ -56,6 +77,7 @@ static void EnsureRealDllLoaded() {
         if (g_hRealDll)
             Logger::info("Loaded system DLL: {}", sysPath);
     }
+
     if (g_hRealDll) {
         Real_Direct3DCreate9 = (PFN_Direct3DCreate9)GetProcAddress(g_hRealDll, "Direct3DCreate9");
         Real_Direct3DCreate9Ex = (PFN_Direct3DCreate9Ex)GetProcAddress(g_hRealDll, "Direct3DCreate9Ex");

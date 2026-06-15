@@ -4,6 +4,9 @@
 
 namespace GamePlug {
 
+extern IDXGISwapChain* GetCurrentDXSwapChain();
+static ID3D11RenderTargetView* g_fakeBBRTV = nullptr;
+
 bool ShouldOverrideD3D11(const D3D11_TEXTURE2D_DESC& desc) {
     return false;
 }
@@ -659,7 +662,7 @@ void STDMETHODCALLTYPE HookedOMSetRenderTargets(ID3D11DeviceContext* pCtx, UINT 
         originalFn = g_OriginalOMSetRenderTargets;
     }
 
-    if (g_InHook || NumViews == 0 || !ppRenderTargetViews) {
+    if (g_InHook) {
         if (originalFn) {
             originalFn(pCtx, NumViews, ppRenderTargetViews, pDepthStencilView);
         }
@@ -667,17 +670,81 @@ void STDMETHODCALLTYPE HookedOMSetRenderTargets(ID3D11DeviceContext* pCtx, UINT 
     }
     ScopedRecursionGuard guard;
 
+    ID3D11RenderTargetView* localRTVs[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT];
+    UINT count = (NumViews < D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT) ? NumViews : D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT;
+    bool modified = false;
+
+    IDXGISwapChain* swapChain = GetCurrentDXSwapChain();
+    ID3D11Texture2D* realBB = nullptr;
+    if (swapChain) {
+        g_OriginalGetBuffer(swapChain, 0, __uuidof(ID3D11Texture2D), (void**)&realBB);
+    }
+
+    for (UINT i = 0; i < count; ++i) {
+        localRTVs[i] = ppRenderTargetViews[i];
+        if (ppRenderTargetViews[i] && realBB) {
+            ID3D11Resource* res = nullptr;
+            ppRenderTargetViews[i]->GetResource(&res);
+            if (res) {
+                if (res == (ID3D11Resource*)realBB) {
+                    ID3D11Texture2D* fakeBB = DXUpscalerManager::Get().GetFakeBackBuffer();
+                    if (fakeBB) {
+                        ID3D11Resource* cachedRes = nullptr;
+                        if (g_fakeBBRTV) {
+                            g_fakeBBRTV->GetResource(&cachedRes);
+                            if (cachedRes) cachedRes->Release();
+                        }
+                        if (!g_fakeBBRTV || cachedRes != (ID3D11Resource*)fakeBB) {
+                            if (g_fakeBBRTV) g_fakeBBRTV->Release();
+                            g_fakeBBRTV = nullptr;
+                            ID3D11Device* device = DXUpscalerManager::Get().GetDevice();
+                            if (device) {
+                                device->CreateRenderTargetView(fakeBB, NULL, &g_fakeBBRTV);
+                            }
+                        }
+                        if (g_fakeBBRTV) {
+                            localRTVs[i] = g_fakeBBRTV;
+                            modified = true;
+                        }
+                    }
+                }
+                res->Release();
+            }
+        }
+    }
+
+    if (realBB) {
+        realBB->Release();
+    }
+
+    if (pDepthStencilView) {
+        ID3D11Resource* res = nullptr;
+        pDepthStencilView->GetResource(&res);
+        if (res) {
+            ID3D11Texture2D* tex = nullptr;
+            if (SUCCEEDED(res->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&tex))) {
+                D3D11_TEXTURE2D_DESC desc;
+                tex->GetDesc(&desc);
+                DXUpscalerManager::Get().TrackTexture(tex, &desc);
+                tex->Release();
+            }
+            res->Release();
+        }
+    }
+
     static uint64_t s_omLogCount = 0;
     if (s_omLogCount++ % 1000 == 0) {
         Logger::info("OMSetRenderTargets Trace (Frame " + std::to_string(s_omLogCount / 60) + "):");
-        for (UINT i = 0; i < NumViews; ++i) {
-            LogRTVDesc(ppRenderTargetViews[i], i);
+        if (ppRenderTargetViews && NumViews > 0) {
+            for (UINT i = 0; i < NumViews; ++i) {
+                LogRTVDesc(ppRenderTargetViews[i], i);
+            }
         }
         LogDSVDesc(pDepthStencilView);
     }
 
     if (originalFn) {
-        originalFn(pCtx, NumViews, ppRenderTargetViews, pDepthStencilView);
+        originalFn(pCtx, NumViews, modified ? localRTVs : ppRenderTargetViews, pDepthStencilView);
     }
 }
 

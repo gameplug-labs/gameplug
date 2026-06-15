@@ -89,7 +89,14 @@ private:
         , m_cameraNear(0.1f)
         , m_cameraFar(1000.0f)
         , m_cameraFov(60.0f)
-        , m_viewSpaceToMetersFactor(1.0f) {}
+        , m_viewSpaceToMetersFactor(1.0f)
+        , m_downsampleCS(nullptr)
+        , m_downsampledDepthTex(nullptr)
+        , m_downsampledDepthSRV(nullptr)
+        , m_downsampledDepthUAV(nullptr)
+        , m_downsampledMVTex(nullptr)
+        , m_downsampledMVSRV(nullptr)
+        , m_downsampledMVUAV(nullptr) {}
 
     void LoadPlugin();
 
@@ -139,6 +146,15 @@ private:
     float m_cameraFar;
     float m_cameraFov;
     float m_viewSpaceToMetersFactor;
+
+    // Downsampling compute shader & textures
+    ID3D11ComputeShader* m_downsampleCS;
+    ID3D11Texture2D* m_downsampledDepthTex;
+    ID3D11ShaderResourceView* m_downsampledDepthSRV;
+    ID3D11UnorderedAccessView* m_downsampledDepthUAV;
+    ID3D11Texture2D* m_downsampledMVTex;
+    ID3D11ShaderResourceView* m_downsampledMVSRV;
+    ID3D11UnorderedAccessView* m_downsampledMVUAV;
 };
 
 } // namespace GamePlug

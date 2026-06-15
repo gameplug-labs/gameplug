@@ -10,6 +10,9 @@
 #include <unordered_map>
 #include <vector>
 
+#include <functional>
+#include <optional>
+
 namespace GamePlug {
 
 // Typedefs
@@ -31,6 +34,9 @@ typedef void(STDMETHODCALLTYPE* PFN_RSSetViewports)(ID3D11DeviceContext* pCtx, U
 typedef void(STDMETHODCALLTYPE* PFN_RSSetScissorRects)(ID3D11DeviceContext* pCtx, UINT NumRects, const D3D11_RECT* pRects);
 typedef void(STDMETHODCALLTYPE* PFN_OMSetRenderTargets)(ID3D11DeviceContext* pCtx, UINT NumViews,
     ID3D11RenderTargetView* const* ppRenderTargetViews, ID3D11DepthStencilView* pDepthStencilView);
+typedef void(STDMETHODCALLTYPE* PFN_OMSetRenderTargetsAndUnorderedAccessViews)(ID3D11DeviceContext* pCtx,
+    UINT NumRTVs, ID3D11RenderTargetView* const* ppRenderTargetViews, ID3D11DepthStencilView* pDepthStencilView,
+    UINT UAVStartSlot, UINT NumUAVs, ID3D11UnorderedAccessView* const* ppUnorderedAccessViews, const UINT* pUAVInitialCounts);
 typedef void(STDMETHODCALLTYPE* PFN_ClearDepthStencilView)(
     ID3D11DeviceContext* pCtx, ID3D11DepthStencilView* pDepthStencilView, UINT ClearFlags, FLOAT Depth, UINT8 Stencil);
 typedef HRESULT(STDMETHODCALLTYPE* PFN_CreateDeferredContext)(
@@ -60,6 +66,7 @@ extern PFN_CreateTexture2D g_OriginalCreateTexture2D;
 extern PFN_RSSetViewports g_OriginalRSSetViewports;
 extern PFN_RSSetScissorRects g_OriginalRSSetScissorRects;
 extern PFN_OMSetRenderTargets g_OriginalOMSetRenderTargets;
+extern PFN_OMSetRenderTargetsAndUnorderedAccessViews g_OriginalOMSetRenderTargetsAndUnorderedAccessViews;
 extern PFN_ClearDepthStencilView g_OriginalClearDepthStencilView;
 extern PFN_CreateDeferredContext g_OriginalCreateDeferredContext;
 extern PFN_GetImmediateContext g_OriginalGetImmediateContext;
@@ -97,6 +104,9 @@ void STDMETHODCALLTYPE HookedRSSetViewports(ID3D11DeviceContext* pCtx, UINT NumV
 void STDMETHODCALLTYPE HookedRSSetScissorRects(ID3D11DeviceContext* pCtx, UINT NumRects, const D3D11_RECT* pRects);
 void STDMETHODCALLTYPE HookedOMSetRenderTargets(ID3D11DeviceContext* pCtx, UINT NumViews,
     ID3D11RenderTargetView* const* ppRenderTargetViews, ID3D11DepthStencilView* pDepthStencilView);
+void STDMETHODCALLTYPE HookedOMSetRenderTargetsAndUnorderedAccessViews(ID3D11DeviceContext* pCtx,
+    UINT NumRTVs, ID3D11RenderTargetView* const* ppRenderTargetViews, ID3D11DepthStencilView* pDepthStencilView,
+    UINT UAVStartSlot, UINT NumUAVs, ID3D11UnorderedAccessView* const* ppUnorderedAccessViews, const UINT* pUAVInitialCounts);
 HRESULT STDMETHODCALLTYPE HookedQueryInterface(IUnknown* pUnk, REFIID riid, void** ppvObject);
 HRESULT STDMETHODCALLTYPE HookedPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT Flags);
 HRESULT STDMETHODCALLTYPE HookedPresent1(

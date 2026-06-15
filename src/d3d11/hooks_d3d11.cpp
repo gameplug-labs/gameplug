@@ -50,11 +50,6 @@ HRESULT STDMETHODCALLTYPE HookedCreateTexture2D(
 // -------------------------------------------------------------------------
 
 static bool IsFakeBackBufferBound(ID3D11DeviceContext* pCtx) {
-    DXUpscalerManager& mgr = DXUpscalerManager::Get();
-    ID3D11Texture2D* fakeBB = mgr.GetFakeBackBuffer();
-    if (!fakeBB)
-        return false;
-
     ID3D11RenderTargetView* pRTV = nullptr;
     pCtx->OMGetRenderTargets(1, &pRTV, nullptr);
     if (!pRTV)
@@ -65,15 +60,64 @@ static bool IsFakeBackBufferBound(ID3D11DeviceContext* pCtx) {
     pRTV->GetResource(&pRes);
     pRTV->Release();
 
-    bool isFake = (pRes == (ID3D11Resource*)fakeBB);
-    if (pRes)
-        pRes->Release();
+    if (!pRes)
+        return false;
+
+    // Custom GUID used to identify our fake back buffer
+    // {F192E666-C0DE-4D11-8765-FCEB5A4B2BA1}
+    static const GUID GUID_FakeBackBuffer = {0xf192e666, 0xc0de, 0x4d11, {0x87, 0x65, 0xfc, 0xeb, 0x5a, 0x4b, 0x2b, 0xa1}};
+
+    UINT tag = 0;
+    UINT size = sizeof(tag);
+    bool isFake = SUCCEEDED(pRes->GetPrivateData(GUID_FakeBackBuffer, &size, &tag)) && tag == 1;
+
+    // Direct pointer fallback
+    if (!isFake) {
+        ID3D11Texture2D* fakeBB = DXUpscalerManager::Get().GetFakeBackBuffer();
+        if (fakeBB) {
+            if (pRes == fakeBB) {
+                isFake = true;
+            } else {
+                IUnknown* pUnkRes = nullptr;
+                IUnknown* pUnkBB = nullptr;
+                if (SUCCEEDED(pRes->QueryInterface(IID_IUnknown, (void**)&pUnkRes)) &&
+                    SUCCEEDED(fakeBB->QueryInterface(IID_IUnknown, (void**)&pUnkBB))) {
+                    if (pUnkRes == pUnkBB) {
+                        isFake = true;
+                    }
+                }
+                if (pUnkRes)
+                    pUnkRes->Release();
+                if (pUnkBB)
+                    pUnkBB->Release();
+            }
+        }
+    }
+
+    // Texture dimension fallback (in case the texture is wrapped by Steam
+    // Overlay/Reshade)
+    if (!isFake) {
+        ID3D11Texture2D* pTex = nullptr;
+        if (SUCCEEDED(pRes->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&pTex))) {
+            D3D11_TEXTURE2D_DESC desc;
+            pTex->GetDesc(&desc);
+            pTex->Release();
+
+            DXUpscalerManager& mgr = DXUpscalerManager::Get();
+            if (desc.Width > 0 && desc.Width == mgr.GetRenderWidth() && desc.Height == mgr.GetRenderHeight()) {
+                isFake = true;
+            }
+        }
+    }
+
+    pRes->Release();
     return isFake;
 }
 
 static std::unordered_map<void**, PFN_RSSetViewports> g_OriginalRSSetViewportsMap;
 static std::unordered_map<void**, PFN_RSSetScissorRects> g_OriginalRSSetScissorRectsMap;
 static std::unordered_map<void**, PFN_OMSetRenderTargets> g_OriginalOMSetRenderTargetsMap;
+static std::unordered_map<void**, PFN_OMSetRenderTargetsAndUnorderedAccessViews> g_OriginalOMSetRenderTargetsAndUnorderedAccessViewsMap;
 static std::unordered_map<void**, PFN_ClearDepthStencilView> g_OriginalClearDepthStencilViewMap;
 static std::unordered_map<void**, PFN_QueryInterface> g_OriginalContextQIMap;
 
@@ -273,6 +317,9 @@ void PatchDeviceContextVTable(ID3D11DeviceContext* context) {
     if (g_OriginalOMSetRenderTargetsMap.count(pVTable) == 0) {
         g_OriginalOMSetRenderTargetsMap[pVTable] = (PFN_OMSetRenderTargets)pVTable[33];
     }
+    if (g_OriginalOMSetRenderTargetsAndUnorderedAccessViewsMap.count(pVTable) == 0) {
+        g_OriginalOMSetRenderTargetsAndUnorderedAccessViewsMap[pVTable] = (PFN_OMSetRenderTargetsAndUnorderedAccessViews)pVTable[34];
+    }
     if (g_OriginalClearDepthStencilViewMap.count(pVTable) == 0) {
         g_OriginalClearDepthStencilViewMap[pVTable] = (PFN_ClearDepthStencilView)pVTable[53];
     }
@@ -290,6 +337,9 @@ void PatchDeviceContextVTable(ID3D11DeviceContext* context) {
     if (!g_OriginalOMSetRenderTargets) {
         g_OriginalOMSetRenderTargets = (PFN_OMSetRenderTargets)pVTable[33];
     }
+    if (!g_OriginalOMSetRenderTargetsAndUnorderedAccessViews) {
+        g_OriginalOMSetRenderTargetsAndUnorderedAccessViews = (PFN_OMSetRenderTargetsAndUnorderedAccessViews)pVTable[34];
+    }
     if (!g_OriginalClearDepthStencilView) {
         g_OriginalClearDepthStencilView = (PFN_ClearDepthStencilView)pVTable[53];
     }
@@ -298,6 +348,7 @@ void PatchDeviceContextVTable(ID3D11DeviceContext* context) {
     if (VirtualProtect(pVTable, 128 * sizeof(void*), PAGE_READWRITE, &old)) {
         pVTable[0] = (void*)HookedContextQueryInterface;
         pVTable[33] = (void*)HookedOMSetRenderTargets;
+        pVTable[34] = (void*)HookedOMSetRenderTargetsAndUnorderedAccessViews;
         pVTable[44] = (void*)HookedRSSetViewports;
         pVTable[45] = (void*)HookedRSSetScissorRects;
         pVTable[53] = (void*)HookedClearDepthStencilView;
@@ -359,7 +410,9 @@ HRESULT STDMETHODCALLTYPE HookedContextQueryInterface(ID3D11DeviceContext* pCtx,
         if (riid == __uuidof(ID3D11DeviceContext) || riid == IID_ID3D11DeviceContext1 || riid == IID_ID3D11DeviceContext2 ||
             riid == IID_ID3D11DeviceContext3 || riid == IID_ID3D11DeviceContext4) {
 
-            Logger::info("DX Hooks D3D11: Context QueryInterface returned context interface at " + std::to_string((uintptr_t)*ppvObject));
+            Logger::info("DX Hooks D3D11: Context QueryInterface returned context "
+                         "interface at " +
+                         std::to_string((uintptr_t)*ppvObject));
             PatchDeviceContextVTable((ID3D11DeviceContext*)*ppvObject);
         }
     }
@@ -642,6 +695,131 @@ static void LogDSVDesc(ID3D11DepthStencilView* dsv) {
     }
 }
 
+static void ScaleViewportsAndScissorRectsIfFakeBound(ID3D11DeviceContext* pCtx, ID3D11RenderTargetView* pRTV) {
+    if (!pCtx || !pRTV)
+        return;
+
+    ID3D11Resource* pRes = nullptr;
+    pRTV->GetResource(&pRes);
+    if (!pRes)
+        return;
+
+    // {F192E666-C0DE-4D11-8765-FCEB5A4B2BA1}
+    static const GUID GUID_FakeBackBuffer = {0xf192e666, 0xc0de, 0x4d11, {0x87, 0x65, 0xfc, 0xeb, 0x5a, 0x4b, 0x2b, 0xa1}};
+
+    UINT tag = 0;
+    UINT size = sizeof(tag);
+    bool isFake = SUCCEEDED(pRes->GetPrivateData(GUID_FakeBackBuffer, &size, &tag)) && tag == 1;
+
+    // Direct pointer fallback
+    if (!isFake) {
+        ID3D11Texture2D* fakeBB = DXUpscalerManager::Get().GetFakeBackBuffer();
+        if (fakeBB) {
+            if (pRes == fakeBB) {
+                isFake = true;
+            } else {
+                IUnknown* pUnkRes = nullptr;
+                IUnknown* pUnkBB = nullptr;
+                if (SUCCEEDED(pRes->QueryInterface(IID_IUnknown, (void**)&pUnkRes)) &&
+                    SUCCEEDED(fakeBB->QueryInterface(IID_IUnknown, (void**)&pUnkBB))) {
+                    if (pUnkRes == pUnkBB) {
+                        isFake = true;
+                    }
+                }
+                if (pUnkRes)
+                    pUnkRes->Release();
+                if (pUnkBB)
+                    pUnkBB->Release();
+            }
+        }
+    }
+
+    // Dimension fallback
+    if (!isFake) {
+        ID3D11Texture2D* pTex = nullptr;
+        if (SUCCEEDED(pRes->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&pTex))) {
+            D3D11_TEXTURE2D_DESC desc;
+            pTex->GetDesc(&desc);
+            pTex->Release();
+
+            DXUpscalerManager& mgr = DXUpscalerManager::Get();
+            if (desc.Width > 0 && desc.Width == mgr.GetRenderWidth() && desc.Height == mgr.GetRenderHeight()) {
+                isFake = true;
+            }
+        }
+    }
+
+    pRes->Release();
+
+    if (!isFake)
+        return;
+
+    DXUpscalerManager& mgr = DXUpscalerManager::Get();
+    uint32_t dispW = mgr.GetDisplayWidth();
+    uint32_t dispH = mgr.GetDisplayHeight();
+    uint32_t rendW = mgr.GetRenderWidth();
+    uint32_t rendH = mgr.GetRenderHeight();
+
+    if (!mgr.IsUpscalingEnabled() || dispW == 0 || dispH == 0 || rendW == 0 || rendH == 0 || (rendW == dispW && rendH == dispH))
+        return;
+
+    // Scale Viewports
+    UINT numVPs = D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE;
+    D3D11_VIEWPORT vps[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE];
+    pCtx->RSGetViewports(&numVPs, vps);
+
+    if (numVPs > 0) {
+        bool needScale = false;
+        for (UINT i = 0; i < numVPs; ++i) {
+            if (vps[i].Width > (float)rendW || (vps[i].Width == (float)dispW && vps[i].Height == (float)dispH)) {
+                needScale = true;
+                break;
+            }
+        }
+
+        if (needScale) {
+            float scaleX = (float)rendW / (float)dispW;
+            float scaleY = (float)rendH / (float)dispH;
+            for (UINT i = 0; i < numVPs; ++i) {
+                vps[i].TopLeftX *= scaleX;
+                vps[i].TopLeftY *= scaleY;
+                vps[i].Width *= scaleX;
+                vps[i].Height *= scaleY;
+            }
+            pCtx->RSSetViewports(numVPs, vps);
+        }
+    }
+
+    // Scale Scissor Rects
+    UINT numRects = D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE;
+    D3D11_RECT rects[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE];
+    pCtx->RSGetScissorRects(&numRects, rects);
+
+    if (numRects > 0) {
+        bool needScale = false;
+        for (UINT i = 0; i < numRects; ++i) {
+            UINT scW = rects[i].right - rects[i].left;
+            UINT scH = rects[i].bottom - rects[i].top;
+            if (scW > rendW || (scW == dispW && scH == dispH)) {
+                needScale = true;
+                break;
+            }
+        }
+
+        if (needScale) {
+            float scaleX = (float)rendW / (float)dispW;
+            float scaleY = (float)rendH / (float)dispH;
+            for (UINT i = 0; i < numRects; ++i) {
+                rects[i].left = (LONG)(rects[i].left * scaleX);
+                rects[i].top = (LONG)(rects[i].top * scaleY);
+                rects[i].right = (LONG)(rects[i].right * scaleX);
+                rects[i].bottom = (LONG)(rects[i].bottom * scaleY);
+            }
+            pCtx->RSSetScissorRects(numRects, rects);
+        }
+    }
+}
+
 void STDMETHODCALLTYPE HookedOMSetRenderTargets(ID3D11DeviceContext* pCtx, UINT NumViews,
     ID3D11RenderTargetView* const* ppRenderTargetViews, ID3D11DepthStencilView* pDepthStencilView) {
     PFN_OMSetRenderTargets originalFn = nullptr;
@@ -679,6 +857,44 @@ void STDMETHODCALLTYPE HookedOMSetRenderTargets(ID3D11DeviceContext* pCtx, UINT 
     if (originalFn) {
         originalFn(pCtx, NumViews, ppRenderTargetViews, pDepthStencilView);
     }
+
+    ScaleViewportsAndScissorRectsIfFakeBound(pCtx, ppRenderTargetViews[0]);
+}
+
+void STDMETHODCALLTYPE HookedOMSetRenderTargetsAndUnorderedAccessViews(ID3D11DeviceContext* pCtx, UINT NumRTVs,
+    ID3D11RenderTargetView* const* ppRenderTargetViews, ID3D11DepthStencilView* pDepthStencilView, UINT UAVStartSlot, UINT NumUAVs,
+    ID3D11UnorderedAccessView* const* ppUnorderedAccessViews, const UINT* pUAVInitialCounts) {
+    PFN_OMSetRenderTargetsAndUnorderedAccessViews originalFn = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_HookMtx);
+        if (pCtx) {
+            void** pVTable = *(void***)pCtx;
+            auto it = g_OriginalOMSetRenderTargetsAndUnorderedAccessViewsMap.find(pVTable);
+            if (it != g_OriginalOMSetRenderTargetsAndUnorderedAccessViewsMap.end()) {
+                originalFn = it->second;
+            }
+        }
+    }
+    if (!originalFn) {
+        originalFn = g_OriginalOMSetRenderTargetsAndUnorderedAccessViews;
+    }
+
+    if (g_InHook) {
+        if (originalFn) {
+            originalFn(
+                pCtx, NumRTVs, ppRenderTargetViews, pDepthStencilView, UAVStartSlot, NumUAVs, ppUnorderedAccessViews, pUAVInitialCounts);
+        }
+        return;
+    }
+    ScopedRecursionGuard guard;
+
+    if (originalFn) {
+        originalFn(pCtx, NumRTVs, ppRenderTargetViews, pDepthStencilView, UAVStartSlot, NumUAVs, ppUnorderedAccessViews, pUAVInitialCounts);
+    }
+
+    if (NumRTVs > 0 && ppRenderTargetViews && ppRenderTargetViews[0]) {
+        ScaleViewportsAndScissorRectsIfFakeBound(pCtx, ppRenderTargetViews[0]);
+    }
 }
 
 void STDMETHODCALLTYPE HookedClearDepthStencilView(
@@ -707,7 +923,8 @@ void STDMETHODCALLTYPE HookedClearDepthStencilView(
     ScopedRecursionGuard guard;
 
     if (ClearFlags & D3D11_CLEAR_DEPTH) {
-        // Standard depth is usually cleared to 1.0, inverted depth is cleared to 0.0
+        // Standard depth is usually cleared to 1.0, inverted depth is cleared to
+        // 0.0
         bool isInverted = (Depth < 0.5f);
         Logger::info("DXUpscalerManager: Check depth detect " + std::string(isInverted ? "true" : "false") +
                      " Depth: " + std::to_string(Depth) + " Stencil: " + std::to_string(Stencil));

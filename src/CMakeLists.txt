@@ -28,9 +28,6 @@ target_compile_definitions(framework_vk PRIVATE
     FRAMEWORK_EXPORTS
     GAMEPLUG_VULKAN
 )
-if(WIN32)
-    target_compile_definitions(framework_vk PRIVATE GAMEPLUG_WIN32)
-endif()
 target_include_directories(framework_vk PUBLIC
     ${PROJECT_SOURCE_DIR}/include
     ${PROJECT_SOURCE_DIR}/src/vk

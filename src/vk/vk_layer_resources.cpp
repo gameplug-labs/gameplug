@@ -12,13 +12,16 @@ VK_LAYER_EXPORT void GamePlug_SetCreatingFakeBackBuffer(bool active) {
 }
 
 VK_LAYER_EXPORT bool GamePlug_IsCreatingFakeBackBuffer() {
-    /*
     static bool (*pfnIsCreatingFakeBackBuffer)() = nullptr;
     static bool resolved = false;
     if (!resolved) {
-        HMODULE hMod = GetModuleHandleA("dinput8.dll");
-        if (hMod) {
-            pfnIsCreatingFakeBackBuffer = (bool (*)())GetProcAddress(hMod, "GamePlug_IsCreatingFakeBackBuffer");
+        const char* dlls[] = { "dinput8.dll", "version.dll" };
+        for (const char* dll : dlls) {
+            HMODULE hMod = GetModuleHandleA(dll);
+            if (hMod) {
+                pfnIsCreatingFakeBackBuffer = (bool (*)())GetProcAddress(hMod, "GamePlug_IsCreatingFakeBackBuffer");
+                if (pfnIsCreatingFakeBackBuffer) break;
+            }
         }
         resolved = true;
     }
@@ -26,8 +29,6 @@ VK_LAYER_EXPORT bool GamePlug_IsCreatingFakeBackBuffer() {
         return pfnIsCreatingFakeBackBuffer();
     }
     return t_creatingFakeBackBuffer;
-    */
-    return false;
 }
 
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateImage(
@@ -42,8 +43,15 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateImage(
 
         uint32_t rw = GamePlug::UpscalerManager::Get().GetRenderWidth();
         uint32_t rh = GamePlug::UpscalerManager::Get().GetRenderHeight();
-        if (pCreateInfo->extent.width == rw && pCreateInfo->extent.height == rh &&
-            pCreateInfo->format == 44) { // 44 is VK_FORMAT_B8G8R8A8_UNORM
+        
+        bool isFakeBackBuffer = false;
+        if (pCreateInfo->extent.width == rw && pCreateInfo->extent.height == rh && pCreateInfo->format == 44) {
+            isFakeBackBuffer = true;
+        } else if (GamePlug_IsCreatingFakeBackBuffer()) {
+            isFakeBackBuffer = true;
+        }
+
+        if (isFakeBackBuffer) {
             GamePlug::Logger::info("GamePlug_CreateImage: Tracked fake backbuffer image {:p}, Size: {}x{}x{}, Format: {}", (void*)*pImage,
                 pCreateInfo->extent.width, pCreateInfo->extent.height, pCreateInfo->extent.depth, (int)pCreateInfo->format);
             GamePlug::ImageTracker::Get().SetFakeBackBufferImage(*pImage);

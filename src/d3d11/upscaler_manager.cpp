@@ -445,7 +445,7 @@ void DXUpscalerManager::RenderUI(float fps, uint32_t width, uint32_t height) {
                         GetModuleFileNameA(NULL, exePath, MAX_PATH);
                         std::string exeName = std::filesystem::path(exePath).filename().string();
                         std::transform(exeName.begin(), exeName.end(), exeName.begin(), ::tolower);
-                        isBatmanCached = (exeName.find("batman") != std::string::npos);
+                        isBatmanCached = (exeName.find("batman") != std::string::npos || exeName.find("fallout4") != std::string::npos);
                         checkedBatman = true;
                     }
                     isBatman = isBatmanCached;
@@ -677,7 +677,7 @@ void DXUpscalerManager::GetTargetResolution(uint32_t width, uint32_t height, uin
                         GetModuleFileNameA(NULL, exePath, MAX_PATH);
                         std::string exeName = std::filesystem::path(exePath).filename().string();
                         std::transform(exeName.begin(), exeName.end(), exeName.begin(), ::tolower);
-                        isBatmanCached = (exeName.find("batman") != std::string::npos);
+                        isBatmanCached = (exeName.find("batman") != std::string::npos || exeName.find("fallout4") != std::string::npos);
                         checkedBatman = true;
                     }
                     isBatman = isBatmanCached;

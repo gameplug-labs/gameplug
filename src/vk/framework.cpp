@@ -4,7 +4,7 @@
 
 namespace GamePlug {
 FRAMEWORK_API void Init() {
-    Logger::Get().Init("gameplug.log");
+    Logger::Get().Init("gameplug_vk.log");
     Logger::info("Framework Initialized");
 
     Config::Get().Load();

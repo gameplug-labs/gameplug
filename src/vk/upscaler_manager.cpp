@@ -1,19 +1,18 @@
 #include "upscaler_manager.h"
-#ifdef GamePlug_VULKAN
-    #include "overlay.h"
-    #include "image_tracker.h"
-    #include "dispatch.h"
+#ifdef GAMEPLUG_VULKAN
+#include "dispatch.h"
+#include "image_tracker.h"
+#include "overlay.h"
 #endif
+#include <algorithm>
 #include <filesystem>
 #include <map>
-#include <algorithm>
-#include <type_traits>
 #include <string>
+#include <type_traits>
 #include <vector>
 
-#include "logger.h"
 #include "jitter_helper.h"
-
+#include "logger.h"
 
 namespace GamePlug {
 
@@ -22,10 +21,18 @@ typedef GamePlugUpscalerInterface* (*GamePlug_GetUpscalerInterfaceFn)();
 void UpscalerLogBridge(GamePlugUpscalerInterface::LogLevel level, const char* message, void* context) {
     std::string formattedMsg = "[Upscaler] " + std::string(message);
     switch (level) {
-        case GamePlugUpscalerInterface::LOG_INFO:  Logger::info(formattedMsg); break;
-        case GamePlugUpscalerInterface::LOG_WARN:  Logger::warn(formattedMsg); break;
-        case GamePlugUpscalerInterface::LOG_ERROR: Logger::error(formattedMsg); break;
-        case GamePlugUpscalerInterface::LOG_DEBUG: Logger::debug(formattedMsg); break;
+    case GamePlugUpscalerInterface::LOG_INFO:
+        Logger::info(formattedMsg);
+        break;
+    case GamePlugUpscalerInterface::LOG_WARN:
+        Logger::warn(formattedMsg);
+        break;
+    case GamePlugUpscalerInterface::LOG_ERROR:
+        Logger::error(formattedMsg);
+        break;
+    case GamePlugUpscalerInterface::LOG_DEBUG:
+        Logger::debug(formattedMsg);
+        break;
     }
 }
 
@@ -34,7 +41,7 @@ UpscalerManager::~UpscalerManager() {
 }
 
 bool UpscalerManager::LoadUpscaler(uintptr_t instance, uintptr_t physDevice, uintptr_t device) {
-#ifdef GamePlug_VULKAN
+#ifdef GAMEPLUG_VULKAN
     auto vkInstance = reinterpret_cast<VkInstance>(instance);
     auto vkPhysDevice = reinterpret_cast<VkPhysicalDevice>(physDevice);
     auto vkDevice = reinterpret_cast<VkDevice>(device);
@@ -42,14 +49,14 @@ bool UpscalerManager::LoadUpscaler(uintptr_t instance, uintptr_t physDevice, uin
 
     // Phase 1: DLL and Interface Loading (needs only Instance/PhysDevice)
     if (!m_handle) {
-#ifdef GamePlug_VULKAN
+#ifdef GAMEPLUG_VULKAN
         m_instance = reinterpret_cast<VkInstance>(instance);
         m_physDevice = reinterpret_cast<VkPhysicalDevice>(physDevice);
 #else
         m_instance = instance;
         m_physDevice = physDevice;
 #endif
-       
+
         char buf[MAX_PATH];
         GetModuleFileNameA(NULL, buf, MAX_PATH);
         std::filesystem::path gamePath = std::filesystem::path(buf).parent_path();
@@ -80,22 +87,22 @@ bool UpscalerManager::LoadUpscaler(uintptr_t instance, uintptr_t physDevice, uin
         Logger::info("UpscalerManager: Phase 1 Complete (Interface found).");
     }
 
-#ifdef GamePlug_VULKAN
+#ifdef GAMEPLUG_VULKAN
     // Phase 2: Device Initialization (needs VkDevice and VkQueue)
     if (vkDevice != VK_NULL_HANDLE && m_device == VK_NULL_HANDLE) {
-#ifdef GamePlug_VULKAN
+#ifdef GAMEPLUG_VULKAN
         m_device = vkDevice;
 #else
         m_device = device;
 #endif
-        
+
         if (m_pInterface && m_pInterface->OnInit) {
             void* imguiCtx = ImGui::GetCurrentContext();
             Logger::info("UpscalerManager: Phase 2 OnInit calling with ImGuiCtx=" + std::to_string((uintptr_t)imguiCtx));
-            
+
             auto* memProps = new VkPhysicalDeviceMemoryProperties();
             memset(memProps, 0, sizeof(VkPhysicalDeviceMemoryProperties));
-            
+
             auto* inst_dispatch = DispatchManager::Get().GetInstance(vkInstance);
             if (inst_dispatch && inst_dispatch->table.vkGetPhysicalDeviceMemoryProperties) {
                 inst_dispatch->table.vkGetPhysicalDeviceMemoryProperties(vkPhysDevice, memProps);
@@ -110,17 +117,8 @@ bool UpscalerManager::LoadUpscaler(uintptr_t instance, uintptr_t physDevice, uin
                 dev_entry->table.vkGetDeviceQueue(vkDevice, queueFamilyIndex, 0, &queue);
             }
 
-            m_pInterface->OnInit(
-                ImGui::GetCurrentContext(),
-                UpscalerLogBridge,
-                nullptr,
-                (uintptr_t)vkInstance,
-                (uintptr_t)vkPhysDevice,
-                (uintptr_t)vkDevice,
-                (uintptr_t)queue,
-                queueFamilyIndex,
-                memProps
-            );
+            m_pInterface->OnInit(ImGui::GetCurrentContext(), UpscalerLogBridge, nullptr, (uintptr_t)vkInstance, (uintptr_t)vkPhysDevice,
+                (uintptr_t)vkDevice, (uintptr_t)queue, queueFamilyIndex, memProps);
             delete memProps;
             Logger::info("UpscalerManager: Phase 2 Complete (OnInit called).");
         }
@@ -135,16 +133,19 @@ bool UpscalerManager::LoadUpscaler(uintptr_t instance, uintptr_t physDevice, uin
 void UpscalerManager::UnloadUpscaler() {
     if (m_handle && !m_isShuttingDown) {
         m_isShuttingDown = true;
-#ifdef GamePlug_VULKAN
-        if (m_depthDebugSet) OverlayRenderer::Get().UnregisterDebugImage(m_depthDebugSet);
-        if (m_mvDebugSet) OverlayRenderer::Get().UnregisterDebugImage(m_mvDebugSet);
+#ifdef GAMEPLUG_VULKAN
+        if (m_depthDebugSet)
+            OverlayRenderer::Get().UnregisterDebugImage(m_depthDebugSet);
+        if (m_mvDebugSet)
+            OverlayRenderer::Get().UnregisterDebugImage(m_mvDebugSet);
         m_depthDebugSet = VK_NULL_HANDLE;
         m_mvDebugSet = VK_NULL_HANDLE;
         m_lastDepthView = VK_NULL_HANDLE;
         m_lastMVView = VK_NULL_HANDLE;
 #endif
 
-        if (m_pInterface && m_pInterface->OnShutdown) m_pInterface->OnShutdown();
+        if (m_pInterface && m_pInterface->OnShutdown)
+            m_pInterface->OnShutdown();
 
         FreeLibrary(m_handle);
         m_handle = nullptr;
@@ -153,7 +154,8 @@ void UpscalerManager::UnloadUpscaler() {
 }
 
 bool UpscalerManager::IsUpscalingEnabled() const {
-    if (!m_pInterface || !m_pInterface->GetFields) return false;
+    if (!m_pInterface || !m_pInterface->GetFields)
+        return false;
     GamePlugUpscalerInterface::FieldDescriptor* fields = nullptr;
     int count = m_pInterface->GetFields(&fields);
     for (int i = 0; i < count; i++) {
@@ -166,116 +168,119 @@ bool UpscalerManager::IsUpscalingEnabled() const {
 }
 
 void UpscalerManager::RenderUI(float fps, uint32_t width, uint32_t height) {
-    if (!m_pInterface) return;
- 
+    if (!m_pInterface)
+        return;
+
     if (ImGui::CollapsingHeader(m_pInterface->GetName() ? m_pInterface->GetName() : "Upscaler", ImGuiTreeNodeFlags_DefaultOpen)) {
         if (m_pInterface->GetFields) {
             GamePlugUpscalerInterface::FieldDescriptor* fields = nullptr;
             int count = m_pInterface->GetFields(&fields);
-            
+
             // Find Upscaler Type to handle conditional fields
             int upscalerType = 0; // None
-            for(int i=0; i<count; i++) {
+            for (int i = 0; i < count; i++) {
                 if (fields[i].Name && std::string(fields[i].Name) == "Upscaler Type") {
                     upscalerType = *(int*)fields[i].Data;
                     break;
                 }
             }
- 
+
             if (count > 0 && fields) {
                 ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.5f);
                 for (int i = 0; i < count; i++) {
                     GamePlugUpscalerInterface::FieldDescriptor& f = fields[i];
-                    
+
                     // Filter: HDR and Inverted Depth only for FSR2+
                     if (upscalerType == 1) { // FSR 1.0
                         if (f.Name && (std::string(f.Name) == "HDR" || std::string(f.Name) == "Inverted Depth")) {
                             continue;
                         }
                     }
- 
+
                     ImGui::PushID(f.Name);
                     bool changed = false;
-                    
+
                     switch (f.Type) {
-                        case 0: // BOOL
-                            changed = ImGui::Checkbox(f.Name, (bool*)f.Data);
-                            break;
-                        case 1: // INT
-                            changed = ImGui::DragInt(f.Name, (int*)f.Data);
-                            break;
-                        case 2: // FLOAT
-                            {
-                                float minVal = 0.0f;
-                                float maxVal = 1.0f;
-                                bool hasRange = false;
-                                if (f.Options) {
-                                    float optMin = 0.0f, optMax = 0.0f;
-                                    if (sscanf(f.Options, "%f,%f", &optMin, &optMax) == 2) {
-                                        minVal = optMin;
-                                        maxVal = optMax;
-                                        hasRange = true;
+                    case 0: // BOOL
+                        changed = ImGui::Checkbox(f.Name, (bool*)f.Data);
+                        break;
+                    case 1: // INT
+                        changed = ImGui::DragInt(f.Name, (int*)f.Data);
+                        break;
+                    case 2: // FLOAT
+                    {
+                        float minVal = 0.0f;
+                        float maxVal = 1.0f;
+                        bool hasRange = false;
+                        if (f.Options) {
+                            float optMin = 0.0f, optMax = 0.0f;
+                            if (sscanf(f.Options, "%f,%f", &optMin, &optMax) == 2) {
+                                minVal = optMin;
+                                maxVal = optMax;
+                                hasRange = true;
+                            }
+                        }
+                        if (hasRange) {
+                            changed = ImGui::SliderFloat(f.Name, (float*)f.Data, minVal, maxVal);
+                        } else {
+                            changed = ImGui::DragFloat(f.Name, (float*)f.Data);
+                        }
+                    } break;
+                    case 3: // STRING
+                        changed = ImGui::InputText(f.Name, (char*)f.Data, (size_t)f.DataSize);
+                        break;
+                    case 4: // ENUM
+                        if (f.Options) {
+                            std::string options(f.Options);
+                            std::vector<std::string> items;
+                            size_t start = 0, end = options.find(',');
+                            while (end != std::string::npos) {
+                                items.push_back(options.substr(start, end - start));
+                                start = end + 1;
+                                end = options.find(',', start);
+                            }
+                            items.push_back(options.substr(start));
+                            int* current = (int*)f.Data;
+                            const char* preview = (*current >= 0 && *current < (int)items.size()) ? items[*current].c_str() : "Unknown";
+                            if (ImGui::BeginCombo(f.Name, preview)) {
+                                for (int n = 0; n < (int)items.size(); n++) {
+                                    if (ImGui::Selectable(items[n].c_str(), *current == n)) {
+                                        *current = n;
+                                        changed = true;
                                     }
                                 }
-                                if (hasRange) {
-                                    changed = ImGui::SliderFloat(f.Name, (float*)f.Data, minVal, maxVal);
-                                } else {
-                                    changed = ImGui::DragFloat(f.Name, (float*)f.Data);
-                                }
+                                ImGui::EndCombo();
                             }
-                            break;
-                        case 3: // STRING
-                            changed = ImGui::InputText(f.Name, (char*)f.Data, (size_t)f.DataSize);
-                            break;
-                        case 4: // ENUM
-                            if (f.Options) {
-                                std::string options(f.Options);
-                                std::vector<std::string> items;
-                                size_t start = 0, end = options.find(',');
-                                while (end != std::string::npos) {
-                                    items.push_back(options.substr(start, end - start));
-                                    start = end + 1; end = options.find(',', start);
-                                }
-                                items.push_back(options.substr(start));
-                                int* current = (int*)f.Data;
-                                const char* preview = (*current >= 0 && *current < (int)items.size()) ? items[*current].c_str() : "Unknown";
-                                if (ImGui::BeginCombo(f.Name, preview)) {
-                                    for (int n = 0; n < (int)items.size(); n++) {
-                                        if (ImGui::Selectable(items[n].c_str(), *current == n)) {
-                                            *current = n; changed = true;
-                                        }
-                                    }
-                                    ImGui::EndCombo();
-                                }
-                            }
-                            break;
+                        }
+                        break;
                     }
- 
-                    if (changed && m_pInterface->OnFieldsChanged) m_pInterface->OnFieldsChanged();
+
+                    if (changed && m_pInterface->OnFieldsChanged)
+                        m_pInterface->OnFieldsChanged();
                     ImGui::PopID();
                 }
                 ImGui::PopItemWidth();
             }
         }
-        
+
         if (m_pInterface->OnImGuiRender) {
-             m_pInterface->OnImGuiRender();
+            m_pInterface->OnImGuiRender();
         }
- 
+
         // Resolution and Performance Info (Single separator)
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::Spacing();
-        
+
         ImGui::TextColored(ImVec4(0.0f, 0.9f, 1.0f, 1.0f), "[ SYSTEM ACTIVE ]");
         ImGui::SameLine();
         float availW = ImGui::GetContentRegionAvail().x;
-        float textW = ImGui::CalcTextSize("120 FPS").x; 
+        float textW = ImGui::CalcTextSize("120 FPS").x;
         if (availW > textW) {
             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + availW - textW);
         }
         ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.4f, 1.0f), "%.0f FPS", fps);
-        
+
         ImGui::TextDisabled("PIPELINE RESOLUTION:");
         ImGui::Text("  Target: %d x %d", width, height);
         ImGui::Text("  Render: %d x %d", m_renderWidth, m_renderHeight);
@@ -285,8 +290,6 @@ void UpscalerManager::RenderUI(float fps, uint32_t width, uint32_t height) {
         ImGui::Spacing();
     }
 }
-
-
 
 void UpscalerManager::UpdateDimensions(uint32_t width, uint32_t height) {
     GetTargetResolution(width, height, m_renderWidth, m_renderHeight);
@@ -319,13 +322,21 @@ void UpscalerManager::GetTargetResolution(uint32_t width, uint32_t height, uint3
         for (int i = 0; i < count; i++) {
             if (fields[i].Name && std::string(fields[i].Name) == "Upscale Quality") {
                 int quality = *(int*)fields[i].Data;
-                if (quality == 0) ratio = 1.2f; // Ultra Ultra Quality
-                else if (quality == 1) ratio = 1.3f; // Ultra Quality
-                else if (quality == 2) ratio = 1.5f; // Quality
-                else if (quality == 3) ratio = 1.7f; // Balanced
-                else if (quality == 4) ratio = 2.0f; // Performance
-                else if (quality == 5) ratio = 3.0f; // Ultra Performance
-                else ratio = 1.3f;
+                float ratio = 1.3f;
+                if (quality == 0)
+                    ratio = 1.2f; // Ultra Ultra Quality
+                else if (quality == 1)
+                    ratio = 1.3f; // Ultra Quality
+                else if (quality == 2)
+                    ratio = 1.5f; // Quality
+                else if (quality == 3)
+                    ratio = 1.7f; // Balanced
+                else if (quality == 4)
+                    ratio = 2.0f; // Performance
+                else if (quality == 5)
+                    ratio = 3.0f; // Ultra Performance
+                else
+                    ratio = 1.3f;
 
                 outW = (uint32_t)((float)width / ratio + 0.5f);
                 outH = (uint32_t)((float)height / ratio + 0.5f);
@@ -333,8 +344,11 @@ void UpscalerManager::GetTargetResolution(uint32_t width, uint32_t height, uint3
                 static uint32_t lastReportedW = 0, lastReportedH = 0;
                 static int lastReportedQ = -1;
                 if (outW != lastReportedW || outH != lastReportedH || quality != lastReportedQ) {
-                    Logger::info("GetTargetResolution Updated: Q=" + std::to_string(quality) + " " + std::to_string(width) + "x" + std::to_string(height) + " -> " + std::to_string(outW) + "x" + std::to_string(outH));
-                    lastReportedW = outW; lastReportedH = outH; lastReportedQ = quality;
+                    Logger::info("GetTargetResolution Updated: Q=" + std::to_string(quality) + " " + std::to_string(width) + "x" +
+                                 std::to_string(height) + " -> " + std::to_string(outW) + "x" + std::to_string(outH));
+                    lastReportedW = outW;
+                    lastReportedH = outH;
+                    lastReportedQ = quality;
                 }
                 return;
             }
@@ -343,19 +357,25 @@ void UpscalerManager::GetTargetResolution(uint32_t width, uint32_t height, uint3
 }
 
 void UpscalerManager::RenderFrame(uintptr_t cmd, uint64_t source, uint64_t target, uint32_t width, uint32_t height) {
-    if (m_isShuttingDown) return;
-    if (!m_pInterface || !m_pInterface->OnRenderFrame) return;
-    if (m_frameUpscaled) return; // Already upscaled this frame
-    if (source == 0 || target == 0) return;
+    if (m_isShuttingDown)
+        return;
+    if (!m_pInterface || !m_pInterface->OnRenderFrame)
+        return;
+    if (m_frameUpscaled)
+        return; // Already upscaled this frame
+    if (source == 0 || target == 0)
+        return;
 
     static uint32_t frameCount = 0;
     static uint32_t lastW = 0, lastH = 0;
     bool shouldLog = (frameCount % 300 == 0) || (width != lastW || height != lastH);
-    
+
     if (shouldLog) {
         uint32_t rw, rh;
         GetTargetResolution(width, height, rw, rh);
-        Logger::info("UpscalerManager::RenderFrame [Start] Frame=" + std::to_string(frameCount) + " cmd=" + std::to_string((uintptr_t)cmd) + " Native=" + std::to_string(width) + "x" + std::to_string(height) + " -> Render=" + std::to_string(rw) + "x" + std::to_string(rh));
+        Logger::info("UpscalerManager::RenderFrame [Start] Frame=" + std::to_string(frameCount) + " cmd=" + std::to_string((uintptr_t)cmd) +
+                     " Native=" + std::to_string(width) + "x" + std::to_string(height) + " -> Render=" + std::to_string(rw) + "x" +
+                     std::to_string(rh));
     }
 
     m_frameUpscaled = true; // Mark as done for this frame
@@ -365,14 +385,14 @@ void UpscalerManager::RenderFrame(uintptr_t cmd, uint64_t source, uint64_t targe
 
     // Update Jitter for this frame
     JitterHelper::Get().Update(width, height);
-    
-#ifdef GamePlug_VULKAN
+
+#ifdef GAMEPLUG_VULKAN
     ImageTracker::Get().SetScreenDimensions(width, height);
 #endif
 
     float jitterX = JitterHelper::Get().GetJitterX();
     float jitterY = JitterHelper::Get().GetJitterY();
-    
+
     // Calculate Render Resolution for Overlay
     GetTargetResolution(width, height, m_renderWidth, m_renderHeight);
 
@@ -386,7 +406,7 @@ void UpscalerManager::RenderFrame(uintptr_t cmd, uint64_t source, uint64_t targe
     uint32_t mvFormat = 0;
     uint32_t swapchainFormat = 0;
 
-#ifdef GamePlug_VULKAN
+#ifdef GAMEPLUG_VULKAN
     // Get suggested buffers from tracker
     auto depthInfo = ImageTracker::Get().GetCurrentDepthInfo(width, height);
     auto mvInfo = ImageTracker::Get().GetCurrentMVInfo(width, height);
@@ -401,7 +421,9 @@ void UpscalerManager::RenderFrame(uintptr_t cmd, uint64_t source, uint64_t targe
         static uint32_t last_mismatch_w = 0;
         if (width != last_mismatch_w) {
             char buf[256];
-            sprintf(buf, "UpscalerManager: WARNING! Depth buffer resolution mismatch: Buffer=%ux%u, Screen=%ux%u. Upscaler may produce incorrect output.", 
+            sprintf(buf,
+                "UpscalerManager: WARNING! Depth buffer resolution mismatch: Buffer=%ux%u, Screen=%ux%u. Upscaler may produce incorrect "
+                "output.",
                 depthInfo.extent.width, depthInfo.extent.height, width, height);
             Logger::warn(buf);
             last_mismatch_w = width;
@@ -409,31 +431,44 @@ void UpscalerManager::RenderFrame(uintptr_t cmd, uint64_t source, uint64_t targe
     }
 
     if (shouldLog) {
-        Logger::info("UpscalerManager::RenderFrame [Buffers] depth=" + std::to_string((uintptr_t)depthInfo.image) + " (" + std::to_string(depthInfo.extent.width) + "x" + std::to_string(depthInfo.extent.height) + ", fmt=" + std::to_string(depthInfo.format) + "), mv=" + std::to_string((uintptr_t)mvInfo.image) + " (fmt=" + std::to_string(mvInfo.format) + ")");
+        Logger::info("UpscalerManager::RenderFrame [Buffers] depth=" + std::to_string((uintptr_t)depthInfo.image) + " (" +
+                     std::to_string(depthInfo.extent.width) + "x" + std::to_string(depthInfo.extent.height) +
+                     ", fmt=" + std::to_string(depthInfo.format) + "), mv=" + std::to_string((uintptr_t)mvInfo.image) +
+                     " (fmt=" + std::to_string(mvInfo.format) + ")");
     }
 #endif
 
-    // Call actual upscaler plugin
-    if (shouldLog) Logger::info("UpscalerManager::RenderFrame [CallPlugin] Calling OnRenderFrame...");
-    
-    m_pInterface->OnRenderFrame(
-        cmd,
-        source,
-        target,
-        swapchainFormat,
-        (uint32_t)width,
-        (uint32_t)height,
-        m_renderWidth,
-        m_renderHeight,
-        depthImage,
-        depthFormat,
-        mvImage,
-        mvFormat,
-        (float)jitterX,
-        (float)jitterY
-    );
+    bool invertedDepth = false;
+    bool hdr = false;
+    if (m_pInterface && m_pInterface->GetFields) {
+        GamePlugUpscalerInterface::FieldDescriptor* fields = nullptr;
+        int count = m_pInterface->GetFields(&fields);
+        for (int i = 0; i < count; i++) {
+            if (fields[i].Name) {
+                std::string name(fields[i].Name);
+                if (name == "Inverted Depth") {
+                    invertedDepth = *(bool*)fields[i].Data;
+                } else if (name == "HDR") {
+                    hdr = *(bool*)fields[i].Data;
+                }
+            }
+        }
+    }
 
-    if (shouldLog) Logger::info("UpscalerManager::RenderFrame [End] OnRenderFrame returned.");
+    // Call actual upscaler plugin
+    if (shouldLog)
+        Logger::info("UpscalerManager::RenderFrame [CallPlugin] Calling OnRenderFrame...");
+
+    m_pInterface->OnRenderFrame(cmd, source, target, swapchainFormat, (uint32_t)width, (uint32_t)height, m_renderWidth, m_renderHeight,
+        depthImage, depthFormat, mvImage, mvFormat, (float)jitterX, (float)jitterY,
+        0.1f,    // cameraNear
+        1000.0f, // cameraFar
+        1.0f,    // cameraFov
+        1.0f,    // viewSpaceToMetersFactor
+        invertedDepth, hdr);
+
+    if (shouldLog)
+        Logger::info("UpscalerManager::RenderFrame [End] OnRenderFrame returned.");
 
     lastW = width;
     lastH = height;

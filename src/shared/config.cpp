@@ -401,6 +401,21 @@ void Config::RenderUI(bool showResolutionEnumeration) {
         }
         ImGui::Unindent();
     }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    if (ImGui::CollapsingHeader("Vulkan Upscaler Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::Indent();
+        bool vkUpscaler = GetBool("VKUpscaler", false);
+        if (ImGui::Checkbox("Enable Vulkan Upscaler (VKUpscaler)", &vkUpscaler)) {
+            SetBool("VKUpscaler", vkUpscaler);
+            Save();
+            Load();
+        }
+        ImGui::Unindent();
+    }
 }
 
 } // namespace GamePlug

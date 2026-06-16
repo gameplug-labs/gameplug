@@ -20,6 +20,7 @@ add_library(framework_vk STATIC
     vk/image_tracker.cpp
     vk/dispatch.cpp
     vk/jitter_helper.cpp
+    vk/upscaler_manager.cpp
     ${PROJECT_SOURCE_DIR}/external/imgui/backends/imgui_impl_vulkan.cpp
 )
 

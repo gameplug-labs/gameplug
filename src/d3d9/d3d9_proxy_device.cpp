@@ -1,9 +1,10 @@
 #include "d3d9_proxy_device.h"
+#include "config.h"
 #include "d3d9_proxy_surface.h"
 #include "d3d9_proxy_swapchain.h"
-#include "upscaler_manager.h"
 #include "d3d9_proxy_texture.h"
 #include "texture_replacer.h"
+#include "upscaler_manager.h"
 
 static IDirect3DBaseTexture9* GetRealTexture(IDirect3DBaseTexture9* pTex) {
     if (!pTex)
@@ -372,7 +373,7 @@ STDMETHODIMP ProxyDirect3DDevice9::Present(CONST RECT* pSR, CONST RECT* pDR, HWN
     if (SUCCEEDED(m_pReal->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &pRBB))) {
         if (m_isUpscaling && m_pFakeBackBuffer) {
             bool upscalerHandled = false;
-            if (UpscalerManager::Get().IsUpscalingEnabled()) {
+            if (UpscalerManager::Get().IsUpscalingEnabled() && !Config::Get().GetBool("VKUpscaler", false)) {
                 g_InUpscalerPass = true;
                 UpscalerManager::Get().RenderFrame((void*)m_pReal, (void*)m_pFakeBackBuffer->GetInternalSurface(), (void*)pRBB, m_displayW,
                     m_displayH, m_renderW, m_renderH);
@@ -1040,7 +1041,7 @@ STDMETHODIMP ProxyDirect3DDevice9::PresentEx(CONST RECT* pSR, CONST RECT* pDR, H
     if (SUCCEEDED(m_pReal->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &pRBB))) {
         if (m_isUpscaling && m_pFakeBackBuffer) {
             bool upscalerHandled = false;
-            if (UpscalerManager::Get().IsUpscalingEnabled()) {
+            if (UpscalerManager::Get().IsUpscalingEnabled() && !Config::Get().GetBool("VKUpscaler", false)) {
                 g_InUpscalerPass = true;
                 UpscalerManager::Get().RenderFrame((void*)m_pReal, (void*)m_pFakeBackBuffer->GetInternalSurface(), (void*)pRBB, m_displayW,
                     m_displayH, m_renderW, m_renderH);

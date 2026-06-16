@@ -5,6 +5,7 @@
 #include "imgui_overlay_shared.h"
 #include "logger.h"
 #include "plugin_manager.h"
+#include "upscaler_manager.h"
 #include <algorithm>
 #include <iostream>
 #define WIN32_LEAN_AND_MEAN
@@ -113,6 +114,10 @@ void OverlayRenderer::SetupDevice(
 
     // Load Plugins
     PluginManager::Get().LoadPlugins();
+
+    // Initialize Upscaler
+    Logger::info("OverlayRenderer: Triggering UpscalerManager::LoadUpscaler");
+    UpscalerManager::Get().LoadUpscaler((uintptr_t)instance, (uintptr_t)physicalDevice, (uintptr_t)device);
 }
 
 void OverlayRenderer::SetupSwapchain(
@@ -317,6 +322,8 @@ void OverlayRenderer::NewFrame() {
         Logger::info("OverlayRenderer: NewFrame started (Logged every 600 frames)");
     }
 
+    UpscalerManager::Get().NewFrame();
+
     // Toggle Visibility with Ctrl + HOME key
     bool ctrlPressed = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
     bool homePressed = (GetAsyncKeyState(VK_HOME) & 0x8000) != 0;
@@ -389,11 +396,25 @@ void OverlayRenderer::Render(VkCommandBuffer cmd, VkImage source, VkImage target
     if (!dev_entry)
         return;
 
+    // 1. Perform Upscaling (Source -> Target) if images are valid
+    if (source != VK_NULL_HANDLE && target != VK_NULL_HANDLE) {
+        UpscalerManager::Get().RenderFrame((uintptr_t)cmd, (uint64_t)source, (uint64_t)target, width, height);
+    }
+
     // 2. Draw GamePlug ImGui UI
     m_uiRendered = true;
     g_isRenderingOverlay = true;
+    // Use device viewport if width/height are zero
+    if (width == 0 || height == 0) {
+        width = m_swapchainRes.extent.width;
+        height = m_swapchainRes.extent.height;
+    }
 
-    ImGuiOverlayShared::DrawUI(m_swapchainRes.extent.width, m_swapchainRes.extent.height);
+    ImGuiOverlayShared::DrawUI(width, height, [width, height]() {
+        ImGuiIO& io = ImGui::GetIO();
+        UpscalerManager::Get().RenderUI(io.Framerate, width, height);
+    });
+
     ImGui::Render();
 
     // Start a temporary render pass for our UI

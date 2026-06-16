@@ -56,6 +56,10 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/sub_projects/dxupscaler/CMakeLists.txt")
     add_subdirectory(sub_projects/dxupscaler)
 endif()
 
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/sub_projects/vkupscaler/CMakeLists.txt")
+    add_subdirectory(sub_projects/vkupscaler)
+endif()
+
 
 # Copy the manifest to the build dir
 configure_file(

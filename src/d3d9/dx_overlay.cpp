@@ -6,8 +6,8 @@
 #include "imgui_overlay_shared.h"
 #include "logger.h"
 #include "plugin_manager.h"
-#include "upscaler_manager.h"
 #include "texture_replacer.h"
+#include "upscaler_manager.h"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -150,6 +150,8 @@ void OverlayRenderer::NewFrame() {
 
 void OverlayRenderer::Render(IDirect3DDevice9* device, uint32_t width, uint32_t height) {
     if (!m_initialized || m_uiRendered)
+        return;
+    if (Config::Get().GetBool("VKUpscaler", false))
         return;
 
     static uint32_t renderCount = 0;

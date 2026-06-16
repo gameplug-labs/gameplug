@@ -1,17 +1,17 @@
 #pragma once
-#ifdef GamePlug_VULKAN
-    #include <vulkan/vulkan.h>
+#ifdef GAMEPLUG_VULKAN
+#include <vulkan/vulkan.h>
 #else
-    #ifndef VK_NULL_HANDLE
-        #define VK_NULL_HANDLE 0
-    #endif
+#ifndef VK_NULL_HANDLE
+#define VK_NULL_HANDLE 0
 #endif
-#include <windows.h>
+#endif
+#include "framework_export.h"
+#include "upscaler_interface.h"
+#include <memory>
 #include <string>
 #include <vector>
-#include <memory>
-#include "upscaler_interface.h"
-#include "framework_export.h"
+#include <windows.h>
 
 namespace GamePlug {
 
@@ -41,12 +41,14 @@ public:
     void GetTargetResolution(uint32_t width, uint32_t height, uint32_t& outW, uint32_t& outH);
 
 private:
-    UpscalerManager() : m_handle(nullptr), m_pInterface(nullptr) {}
-    
+    UpscalerManager()
+        : m_handle(nullptr)
+        , m_pInterface(nullptr) {}
+
     HMODULE m_handle;
     GamePlugUpscalerInterface* m_pInterface;
 
-#ifdef GamePlug_VULKAN
+#ifdef GAMEPLUG_VULKAN
     VkInstance m_instance = VK_NULL_HANDLE;
     VkPhysicalDevice m_physDevice = VK_NULL_HANDLE;
     VkDevice m_device = VK_NULL_HANDLE;
@@ -71,6 +73,5 @@ private:
     bool m_frameUpscaled = false;
     bool m_isShuttingDown = false;
 };
-
 
 } // namespace GamePlug

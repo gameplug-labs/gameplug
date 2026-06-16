@@ -2,6 +2,7 @@
 #include "image_tracker.h"
 #include "logger.h"
 #include "overlay.h"
+#include "upscaler_manager.h"
 #include "vk_layer_exports.h"
 #include <map>
 
@@ -141,8 +142,8 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdEndRenderPass(VkCommandBuffer comman
     if (fb != VK_NULL_HANDLE) {
         uint32_t sw = GamePlug::ImageTracker::Get().GetScreenWidth();
         uint32_t sh = GamePlug::ImageTracker::Get().GetScreenHeight();
-        uint32_t rw = sw;
-        uint32_t rh = sh;
+        uint32_t rw = GamePlug::UpscalerManager::Get().GetRenderWidth();
+        uint32_t rh = GamePlug::UpscalerManager::Get().GetRenderHeight();
 
         if (GamePlug::ImageTracker::Get().IsSceneFramebuffer(fb, rw, rh)) {
             VkImage sceneImg = GamePlug::ImageTracker::Get().GetColorAttachment(fb, rw, rh);
@@ -151,7 +152,7 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdEndRenderPass(VkCommandBuffer comman
             }
         }
 
-        if (GamePlug::ImageTracker::Get().IsSwapchainFramebuffer(fb)) {
+        if (GamePlug::ImageTracker::Get().IsSwapchainFramebuffer(fb) && !GamePlug::UpscalerManager::Get().WasUpscaledThisFrame()) {
             VkImage source = GamePlug::ImageTracker::Get().GetLastSceneImage();
             VkImage target = GamePlug::ImageTracker::Get().GetSwapchainImageFromFramebuffer(fb);
 

@@ -9,7 +9,7 @@
 #include <imgui.h>
 #include <string>
 
-#ifdef GamePlug_VULKAN
+#ifdef GAMEPLUG_VULKAN
 #ifndef VK_NO_PROTOTYPES
 #define VK_NO_PROTOTYPES
 #endif

@@ -60,12 +60,12 @@ bool UpscalerManager::LoadUpscaler(uintptr_t instance, uintptr_t physDevice, uin
         char buf[MAX_PATH];
         GetModuleFileNameA(NULL, buf, MAX_PATH);
         std::filesystem::path gamePath = std::filesystem::path(buf).parent_path();
-        std::filesystem::path upscalerPath = gamePath / "vkupscaler.dll";
+        std::filesystem::path upscalerPath = gamePath / "upscaler_vk.dll";
 
         Logger::info("UpscalerManager: Phase 1 loading " + upscalerPath.string());
 
         if (!std::filesystem::exists(upscalerPath)) {
-            Logger::warn("UpscalerManager: vkupscaler.dll NOT found at " + upscalerPath.string());
+            Logger::warn("UpscalerManager: upscaler_vk.dll NOT found at " + upscalerPath.string());
             return false;
         }
 
@@ -268,26 +268,26 @@ void UpscalerManager::RenderUI(float fps, uint32_t width, uint32_t height) {
         }
 
         // Resolution and Performance Info (Single separator)
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
+        // ImGui::Spacing();
+        // ImGui::Separator();
+        // ImGui::Spacing();
 
-        ImGui::TextColored(ImVec4(0.0f, 0.9f, 1.0f, 1.0f), "[ SYSTEM ACTIVE ]");
-        ImGui::SameLine();
-        float availW = ImGui::GetContentRegionAvail().x;
-        float textW = ImGui::CalcTextSize("120 FPS").x;
-        if (availW > textW) {
-            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + availW - textW);
-        }
-        ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.4f, 1.0f), "%.0f FPS", fps);
+        // ImGui::TextColored(ImVec4(0.0f, 0.9f, 1.0f, 1.0f), "[ SYSTEM ACTIVE ]");
+        // ImGui::SameLine();
+        // float availW = ImGui::GetContentRegionAvail().x;
+        // float textW = ImGui::CalcTextSize("120 FPS").x;
+        // if (availW > textW) {
+        //     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + availW - textW);
+        // }
+        // ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.4f, 1.0f), "%.0f FPS", fps);
 
-        ImGui::TextDisabled("PIPELINE RESOLUTION:");
-        ImGui::Text("  Target: %d x %d", width, height);
-        ImGui::Text("  Render: %d x %d", m_renderWidth, m_renderHeight);
-        float scale = (float)width / (float)m_renderWidth;
-        ImGui::SameLine();
-        ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "(%.2fx)", scale);
-        ImGui::Spacing();
+        // ImGui::TextDisabled("PIPELINE RESOLUTION:");
+        // ImGui::Text("  Target: %d x %d", width, height);
+        // ImGui::Text("  Render: %d x %d", m_renderWidth, m_renderHeight);
+        // float scale = (float)width / (float)m_renderWidth;
+        // ImGui::SameLine();
+        // ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "(%.2fx)", scale);
+        // ImGui::Spacing();
     }
 }
 

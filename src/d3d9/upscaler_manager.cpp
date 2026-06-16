@@ -4,6 +4,7 @@
 #include "imgui.h"
 #include <filesystem>
 #include <vector>
+#include <fstream>
 
 namespace GamePlug {
 
@@ -108,8 +109,58 @@ void UpscalerManager::RenderFrame(void* device, void* source, void* target, uint
 
 }
 
+void UpscalerManager::UpdateFallbackConfig() const {
+    char buf[MAX_PATH];
+    GetModuleFileNameA(NULL, buf, MAX_PATH);
+    std::filesystem::path gamePath = std::filesystem::path(buf).parent_path();
+    std::filesystem::path confPath = gamePath / "upscaler.conf";
+
+    std::error_code ec;
+    if (!std::filesystem::exists(confPath, ec)) {
+        return;
+    }
+
+    auto lastWrite = std::filesystem::last_write_time(confPath, ec);
+    if (ec) return;
+
+    if (m_hasCheckedWriteTime && lastWrite == m_lastWriteTime) {
+        return;
+    }
+
+    std::ifstream f(confPath);
+    if (!f.is_open()) return;
+
+    std::string line;
+    FallbackConfig newCfg;
+    while (std::getline(f, line)) {
+        size_t eq = line.find('=');
+        if (eq == std::string::npos) continue;
+        std::string key = line.substr(0, eq);
+        std::string val = line.substr(eq + 1);
+        if (!val.empty() && val.back() == '\r') val.pop_back();
+
+        try {
+            if (key == "type") newCfg.type = std::stoi(val);
+            else if (key == "quality") newCfg.quality = std::stoi(val);
+            else if (key == "native") newCfg.native = (val == "true" || val == "1");
+        } catch (...) {}
+    }
+
+    m_fallbackCfg = newCfg;
+    m_lastWriteTime = lastWrite;
+    m_hasCheckedWriteTime = true;
+    Logger::info("UpscalerManager: Loaded fallback config from upscaler.conf: type={}, quality={}, native={}", 
+        m_fallbackCfg.type, m_fallbackCfg.quality, m_fallbackCfg.native);
+}
+
 bool UpscalerManager::IsUpscalingEnabled() const {
-    if (!m_pInterface || !m_pInterface->GetFields) return false;
+    if (!m_pInterface || !m_pInterface->GetFields) {
+        if (Config::Get().GetBool("VKUpscaler", true)) {
+            UpdateFallbackConfig();
+            return m_fallbackCfg.type > 0;
+        }
+        return false;
+    }
     GamePlugUpscalerInterface::FieldDescriptor* fields = nullptr;
     int count = m_pInterface->GetFields(&fields);
     for (int i = 0; i < count; i++) {
@@ -122,7 +173,13 @@ bool UpscalerManager::IsUpscalingEnabled() const {
 }
 
 bool UpscalerManager::IsNativeRenderingEnabled() const {
-    if (!m_pInterface || !m_pInterface->GetFields) return false;
+    if (!m_pInterface || !m_pInterface->GetFields) {
+        if (Config::Get().GetBool("VKUpscaler", true)) {
+            UpdateFallbackConfig();
+            return m_fallbackCfg.native;
+        }
+        return false;
+    }
     GamePlugUpscalerInterface::FieldDescriptor* fields = nullptr;
     int count = m_pInterface->GetFields(&fields);
     for (int i = 0; i < count; i++) {
@@ -138,7 +195,13 @@ bool UpscalerManager::IsNativeRenderingEnabled() const {
 }
 
 int UpscalerManager::GetUpscaleQuality() const {
-    if (!m_pInterface || !m_pInterface->GetFields) return 1; // Default to Quality
+    if (!m_pInterface || !m_pInterface->GetFields) {
+        if (Config::Get().GetBool("VKUpscaler", true)) {
+            UpdateFallbackConfig();
+            return m_fallbackCfg.quality;
+        }
+        return 1; // Default to Quality
+    }
     GamePlugUpscalerInterface::FieldDescriptor* fields = nullptr;
     int count = m_pInterface->GetFields(&fields);
     for (int i = 0; i < count; i++) {

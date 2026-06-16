@@ -2,6 +2,7 @@
 
 #include <windows.h>
 #include <string>
+#include <filesystem>
 #include "upscaler_interface.h"
 
 namespace GamePlug {
@@ -40,6 +41,17 @@ private:
     uint32_t m_height = 0;
     uint32_t m_renderWidth = 0;
     uint32_t m_renderHeight = 0;
+
+    struct FallbackConfig {
+        int type = 0;
+        int quality = 2; // Default to Quality
+        bool native = false;
+    };
+    mutable FallbackConfig m_fallbackCfg;
+    mutable std::filesystem::file_time_type m_lastWriteTime;
+    mutable bool m_hasCheckedWriteTime = false;
+    void UpdateFallbackConfig() const;
 };
 
 } // namespace GamePlug
+

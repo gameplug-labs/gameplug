@@ -90,6 +90,20 @@ void Config::Load(const std::string& filename) {
         m_extraResolutions.clear();
     }
 
+    // Automatically set VKUpscaler=true, when upscaler_vk.dll is present
+    std::string dllPath;
+    if (lastSlash != std::string::npos) {
+        dllPath = std::string(buf).substr(0, lastSlash + 1) + "upscaler_vk.dll";
+    } else {
+        dllPath = "upscaler_vk.dll";
+    }
+    if (GetFileAttributesA(dllPath.c_str()) != INVALID_FILE_ATTRIBUTES) {
+        if (m_settings.find("VKUpscaler") == m_settings.end()) {
+            m_settings["VKUpscaler"] = "true";
+            Logger::info("Config: upscaler_vk.dll detected, automatically set VKUpscaler=true");
+        }
+    }
+
     Logger::info("Config: Loaded " + std::to_string(m_settings.size()) + " settings from " + path);
 
 #ifdef GAMEPLUG_WIN32
@@ -366,55 +380,46 @@ void Config::RenderUI(bool showResolutionEnumeration) {
                 ImGui::TextDisabled("(Restart required).");
             }
             ImGui::Unindent();
+
+            // ImGui::Indent();
+            // bool vkUpscaler = GetBool("VKUpscaler", true);
+            // if (ImGui::Checkbox("Enable Vulkan Upscaler (VKUpscaler)", &vkUpscaler)) {
+            //     SetBool("VKUpscaler", vkUpscaler);
+            //     Save();
+            //     Load();
+            // }
+            // ImGui::Unindent();
         }
-    }
+    } else {
 
-    ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::Spacing();
-
-    if (ImGui::CollapsingHeader("Proxy DLL Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::Indent();
-        bool proxyEnabled = GetBool("ProxyDllEnabled", false);
-        if (ImGui::Checkbox("Enable Proxy DLL Chaining", &proxyEnabled)) {
-            SetBool("ProxyDllEnabled", proxyEnabled);
-            Save();
-            Load();
-        }
-
-        if (proxyEnabled) {
-            std::string currentProxy = GetString("ProxyDllPath", "other_d3d11.dll");
-            if (!m_proxyInit) {
-                strncpy_s(m_proxyPathBuffer, currentProxy.c_str(), sizeof(m_proxyPathBuffer) - 1);
-                m_proxyInit = true;
-            }
-
-            if (ImGui::InputTextWithHint("Proxy DLL Path", "other_d3d11.dll", m_proxyPathBuffer, sizeof(m_proxyPathBuffer))) {
-                SetString("ProxyDllPath", m_proxyPathBuffer);
-            }
-
-            if (ImGui::IsItemDeactivatedAfterEdit()) {
+        if (ImGui::CollapsingHeader("Proxy DLL Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Indent();
+            bool proxyEnabled = GetBool("ProxyDllEnabled", false);
+            if (ImGui::Checkbox("Enable Proxy DLL Chaining", &proxyEnabled)) {
+                SetBool("ProxyDllEnabled", proxyEnabled);
                 Save();
                 Load();
             }
-            ImGui::TextDisabled("(e.g. other_d3d11.dll for ENB/ReShade)");
-        }
-        ImGui::Unindent();
-    }
 
-    ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::Spacing();
+            if (proxyEnabled) {
+                std::string currentProxy = GetString("ProxyDllPath", "other_d3d11.dll");
+                if (!m_proxyInit) {
+                    strncpy_s(m_proxyPathBuffer, currentProxy.c_str(), sizeof(m_proxyPathBuffer) - 1);
+                    m_proxyInit = true;
+                }
 
-    if (ImGui::CollapsingHeader("Vulkan Upscaler Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::Indent();
-        bool vkUpscaler = GetBool("VKUpscaler", false);
-        if (ImGui::Checkbox("Enable Vulkan Upscaler (VKUpscaler)", &vkUpscaler)) {
-            SetBool("VKUpscaler", vkUpscaler);
-            Save();
-            Load();
+                if (ImGui::InputTextWithHint("Proxy DLL Path", "other_d3d11.dll", m_proxyPathBuffer, sizeof(m_proxyPathBuffer))) {
+                    SetString("ProxyDllPath", m_proxyPathBuffer);
+                }
+
+                if (ImGui::IsItemDeactivatedAfterEdit()) {
+                    Save();
+                    Load();
+                }
+                ImGui::TextDisabled("(e.g. other_d3d11.dll for ENB/ReShade)");
+            }
+            ImGui::Unindent();
         }
-        ImGui::Unindent();
     }
 }
 

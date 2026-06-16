@@ -151,7 +151,7 @@ void OverlayRenderer::NewFrame() {
 void OverlayRenderer::Render(IDirect3DDevice9* device, uint32_t width, uint32_t height) {
     if (!m_initialized || m_uiRendered)
         return;
-    if (Config::Get().GetBool("VKUpscaler", false))
+    if (Config::Get().GetBool("VKUpscaler", true))
         return;
 
     static uint32_t renderCount = 0;

@@ -4,6 +4,7 @@
 #include "overlay.h"
 #include "upscaler_manager.h"
 #include "vk_layer_exports.h"
+#include <chrono>
 #include <map>
 
 extern "C" {
@@ -153,7 +154,14 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdEndRenderPass(VkCommandBuffer comman
         }
 
         if (GamePlug::ImageTracker::Get().IsSwapchainFramebuffer(fb) && !GamePlug::UpscalerManager::Get().WasUpscaledThisFrame()) {
-            VkImage source = GamePlug::ImageTracker::Get().GetFakeBackBufferImage();
+            static auto g_startupTime = std::chrono::steady_clock::now();
+            auto now = std::chrono::steady_clock::now();
+            auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - g_startupTime).count();
+
+            VkImage source = VK_NULL_HANDLE;
+            if (elapsed >= 2) {
+                source = GamePlug::ImageTracker::Get().GetFakeBackBufferImage();
+            }
             if (source == VK_NULL_HANDLE) {
                 source = GamePlug::ImageTracker::Get().GetLastSceneImage();
             }

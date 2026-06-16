@@ -132,7 +132,9 @@ STDMETHODIMP ProxyDirect3D9::CreateDevice(UINT A, D3DDEVTYPE DT, HWND hFW, DWORD
     OverlayRenderer::Get().SetWindow(hFW);
 
     // Load the upscaler plugin early so GetScaledResolution can check its status correctly
-    UpscalerManager::Get().LoadUpscaler();
+    if (!Config::Get().GetBool("VKUpscaler", true)) {
+        UpscalerManager::Get().LoadUpscaler();
+    }
 
     int requestedW = pPP->BackBufferWidth;
     int requestedH = pPP->BackBufferHeight;
@@ -226,7 +228,9 @@ STDMETHODIMP ProxyDirect3D9::CreateDeviceEx(
     OverlayRenderer::Get().SetWindow(hFW);
 
     // Load the upscaler plugin early so GetScaledResolution can check its status correctly
-    UpscalerManager::Get().LoadUpscaler();
+    if (!Config::Get().GetBool("VKUpscaler", true)) {
+        UpscalerManager::Get().LoadUpscaler();
+    }
 
     int requestedW = pPP->BackBufferWidth;
     int requestedH = pPP->BackBufferHeight;

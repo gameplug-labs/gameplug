@@ -148,8 +148,17 @@ ProxyDirect3DDevice9::ProxyDirect3DDevice9(
     OverlayRenderer::Get().Init((IDirect3DDevice9*)this);
 
     if (m_isUpscaling) {
-        if (UpscalerManager::Get().LoadUpscaler()) {
-            UpscalerManager::Get().InitUpscaler((void*)m_pReal);
+        bool upscalerReady = false;
+        if (!Config::Get().GetBool("VKUpscaler", true)) {
+            if (UpscalerManager::Get().LoadUpscaler()) {
+                UpscalerManager::Get().InitUpscaler((void*)m_pReal);
+                upscalerReady = true;
+            }
+        } else {
+            upscalerReady = true;
+        }
+
+        if (upscalerReady) {
             SetCreatingFakeBackBuffer(true);
             HRESULT hrCreate = m_pReal->CreateTexture(
                 m_renderW, m_renderH, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &m_pFakeBackBufferTex, nullptr);
@@ -398,7 +407,7 @@ STDMETHODIMP ProxyDirect3DDevice9::Present(CONST RECT* pSR, CONST RECT* pDR, HWN
     if (SUCCEEDED(m_pReal->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &pRBB))) {
         if (m_isUpscaling && m_pFakeBackBuffer) {
             bool upscalerHandled = false;
-            if (UpscalerManager::Get().IsUpscalingEnabled() && !Config::Get().GetBool("VKUpscaler", false)) {
+            if (UpscalerManager::Get().IsUpscalingEnabled() && !Config::Get().GetBool("VKUpscaler", true)) {
                 g_InUpscalerPass = true;
                 UpscalerManager::Get().RenderFrame((void*)m_pReal, (void*)m_pFakeBackBuffer->GetInternalSurface(), (void*)pRBB, m_displayW,
                     m_displayH, m_renderW, m_renderH);
@@ -1066,7 +1075,7 @@ STDMETHODIMP ProxyDirect3DDevice9::PresentEx(CONST RECT* pSR, CONST RECT* pDR, H
     if (SUCCEEDED(m_pReal->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &pRBB))) {
         if (m_isUpscaling && m_pFakeBackBuffer) {
             bool upscalerHandled = false;
-            if (UpscalerManager::Get().IsUpscalingEnabled() && !Config::Get().GetBool("VKUpscaler", false)) {
+            if (UpscalerManager::Get().IsUpscalingEnabled() && !Config::Get().GetBool("VKUpscaler", true)) {
                 g_InUpscalerPass = true;
                 UpscalerManager::Get().RenderFrame((void*)m_pReal, (void*)m_pFakeBackBuffer->GetInternalSurface(), (void*)pRBB, m_displayW,
                     m_displayH, m_renderW, m_renderH);

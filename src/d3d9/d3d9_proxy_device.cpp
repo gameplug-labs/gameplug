@@ -6,6 +6,22 @@
 #include "texture_replacer.h"
 #include "upscaler_manager.h"
 
+static thread_local bool t_creatingFakeBackBuffer = false;
+
+extern "C" {
+__declspec(dllexport) void GamePlug_SetCreatingFakeBackBuffer(bool active) {
+    t_creatingFakeBackBuffer = active;
+}
+
+__declspec(dllexport) bool GamePlug_IsCreatingFakeBackBuffer() {
+    return t_creatingFakeBackBuffer;
+}
+}
+
+static void SetCreatingFakeBackBuffer(bool active) {
+    t_creatingFakeBackBuffer = active;
+}
+
 static IDirect3DBaseTexture9* GetRealTexture(IDirect3DBaseTexture9* pTex) {
     if (!pTex)
         return nullptr;
@@ -85,8 +101,11 @@ void ProxyDirect3DDevice9::UpdateScaledResolution() {
                 m_pFakeBackBufferTex = nullptr;
             }
 
-            if (SUCCEEDED(m_pReal->CreateTexture(
-                    m_renderW, m_renderH, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &m_pFakeBackBufferTex, nullptr))) {
+            SetCreatingFakeBackBuffer(true);
+            HRESULT hrCreate = m_pReal->CreateTexture(
+                m_renderW, m_renderH, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &m_pFakeBackBufferTex, nullptr);
+            SetCreatingFakeBackBuffer(false);
+            if (SUCCEEDED(hrCreate)) {
                 IDirect3DSurface9* pRealSurf = nullptr;
                 m_pFakeBackBufferTex->GetSurfaceLevel(0, &pRealSurf);
 
@@ -131,8 +150,11 @@ ProxyDirect3DDevice9::ProxyDirect3DDevice9(
     if (m_isUpscaling) {
         if (UpscalerManager::Get().LoadUpscaler()) {
             UpscalerManager::Get().InitUpscaler((void*)m_pReal);
-            if (SUCCEEDED(m_pReal->CreateTexture(
-                    m_renderW, m_renderH, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &m_pFakeBackBufferTex, nullptr))) {
+            SetCreatingFakeBackBuffer(true);
+            HRESULT hrCreate = m_pReal->CreateTexture(
+                m_renderW, m_renderH, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &m_pFakeBackBufferTex, nullptr);
+            SetCreatingFakeBackBuffer(false);
+            if (SUCCEEDED(hrCreate)) {
                 IDirect3DSurface9* pRealSurf = nullptr;
                 m_pFakeBackBufferTex->GetSurfaceLevel(0, &pRealSurf);
                 m_pFakeBackBuffer = new ProxySurface9(pRealSurf, this, m_displayW, m_displayH);
@@ -346,8 +368,11 @@ STDMETHODIMP ProxyDirect3DDevice9::Reset(D3DPRESENT_PARAMETERS* pPP) {
                 m_pFakeBackBufferTex->Release();
                 m_pFakeBackBufferTex = nullptr;
             }
-            if (SUCCEEDED(m_pReal->CreateTexture(
-                    m_renderW, m_renderH, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &m_pFakeBackBufferTex, nullptr))) {
+            SetCreatingFakeBackBuffer(true);
+            HRESULT hrCreate = m_pReal->CreateTexture(
+                m_renderW, m_renderH, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &m_pFakeBackBufferTex, nullptr);
+            SetCreatingFakeBackBuffer(false);
+            if (SUCCEEDED(hrCreate)) {
                 IDirect3DSurface9* pRealSurf = nullptr;
                 m_pFakeBackBufferTex->GetSurfaceLevel(0, &pRealSurf);
                 if (!m_pFakeBackBuffer) {
@@ -1233,8 +1258,11 @@ STDMETHODIMP ProxyDirect3DDevice9::ResetEx(D3DPRESENT_PARAMETERS* pPP, D3DDISPLA
                 m_pFakeBackBufferTex->Release();
                 m_pFakeBackBufferTex = nullptr;
             }
-            if (SUCCEEDED(m_pReal->CreateTexture(
-                    m_renderW, m_renderH, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &m_pFakeBackBufferTex, nullptr))) {
+            SetCreatingFakeBackBuffer(true);
+            HRESULT hrCreate = m_pReal->CreateTexture(
+                m_renderW, m_renderH, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &m_pFakeBackBufferTex, nullptr);
+            SetCreatingFakeBackBuffer(false);
+            if (SUCCEEDED(hrCreate)) {
                 IDirect3DSurface9* pRealSurf = nullptr;
                 m_pFakeBackBufferTex->GetSurfaceLevel(0, &pRealSurf);
                 if (!m_pFakeBackBuffer) {

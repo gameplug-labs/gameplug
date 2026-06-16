@@ -1,18 +1,52 @@
 #include "dispatch.h"
 #include "image_tracker.h"
 #include "logger.h"
+#include "upscaler_manager.h"
 #include "vk_layer_exports.h"
 
+static thread_local bool t_creatingFakeBackBuffer = false;
+
 extern "C" {
+
+VK_LAYER_EXPORT void GamePlug_SetCreatingFakeBackBuffer(bool active) {
+    t_creatingFakeBackBuffer = active;
+}
+
+VK_LAYER_EXPORT bool GamePlug_IsCreatingFakeBackBuffer() {
+    static bool (*pfnIsCreatingFakeBackBuffer)() = nullptr;
+    static bool resolved = false;
+    if (!resolved) {
+        HMODULE hMod = GetModuleHandleA("dinput8.dll");
+        if (hMod) {
+            pfnIsCreatingFakeBackBuffer = (bool (*)())GetProcAddress(hMod, "GamePlug_IsCreatingFakeBackBuffer");
+        }
+        resolved = true;
+    }
+    if (pfnIsCreatingFakeBackBuffer) {
+        return pfnIsCreatingFakeBackBuffer();
+    }
+    return t_creatingFakeBackBuffer;
+}
 
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateImage(
     VkDevice device, const VkImageCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkImage* pImage) {
     auto* dev_entry = GamePlug::DispatchManager::Get().GetDevice(device);
     if (!dev_entry)
         return VK_ERROR_INITIALIZATION_FAILED;
+
     VkResult result = dev_entry->table.vkCreateImage(device, pCreateInfo, pAllocator, pImage);
     if (result == VK_SUCCESS) {
         GamePlug::ImageTracker::Get().TrackImage(*pImage, pCreateInfo);
+        if (GamePlug_IsCreatingFakeBackBuffer()) {
+            uint32_t rw = GamePlug::UpscalerManager::Get().GetRenderWidth();
+            uint32_t rh = GamePlug::UpscalerManager::Get().GetRenderHeight();
+            if (pCreateInfo->extent.width == rw && pCreateInfo->extent.height == rh) {
+                GamePlug::Logger::info("GamePlug_CreateImage: Tracked fake backbuffer image {:p}, Size: {}x{}x{}, Format: {}",
+                    (void*)*pImage, pCreateInfo->extent.width, pCreateInfo->extent.height, pCreateInfo->extent.depth,
+                    (int)pCreateInfo->format);
+                GamePlug::ImageTracker::Get().SetFakeBackBufferImage(*pImage);
+            }
+        }
     }
     return result;
 }

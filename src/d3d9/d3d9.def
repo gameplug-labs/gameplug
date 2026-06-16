@@ -16,3 +16,5 @@ EXPORTS
     Direct3DShaderValidatorCreate9
     PSGPError
     PSGPSampleTexture
+    GamePlug_SetCreatingFakeBackBuffer
+    GamePlug_IsCreatingFakeBackBuffer

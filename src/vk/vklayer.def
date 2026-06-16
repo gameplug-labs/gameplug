@@ -4,3 +4,5 @@ EXPORTS
     vkGetDeviceProcAddr = GamePlug_GetDeviceProcAddr
     vk_layerGetPhysicalDeviceProcAddr = GamePlug_GetPhysicalDeviceProcAddr
     vkNegotiateLoaderLayerInterfaceVersion = GamePlug_NegotiateLoaderLayerInterfaceVersion
+    GamePlug_SetCreatingFakeBackBuffer
+    GamePlug_IsCreatingFakeBackBuffer

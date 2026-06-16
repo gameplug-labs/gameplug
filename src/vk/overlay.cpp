@@ -137,6 +137,7 @@ void OverlayRenderer::SetupSwapchain(
 
     // Update ImageTracker with screen dimensions for better heuristic
     ImageTracker::Get().SetScreenDimensions(extent.width, extent.height);
+    UpscalerManager::Get().UpdateDimensions(extent.width, extent.height);
 
     CreateRenderPass(format);
     CreateFramebuffers();

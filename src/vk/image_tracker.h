@@ -157,6 +157,13 @@ public:
         return m_lastSceneSource;
     }
 
+    void SetFakeBackBufferImage(VkImage image);
+
+    VkImage GetFakeBackBufferImage() const {
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
+        return m_fakeBackBufferImage;
+    }
+
 private:
     ImageTracker() = default;
     std::map<VkImage, ImageInfo> m_images;
@@ -175,6 +182,7 @@ private:
     VkImage m_currentDepthBuffer = VK_NULL_HANDLE;
     VkImage m_currentMVBuffer = VK_NULL_HANDLE;
     VkImage m_lastSceneSource = VK_NULL_HANDLE;
+    VkImage m_fakeBackBufferImage = VK_NULL_HANDLE;
     float m_bestDepthScore = -1.0f;
     float m_bestMVScore = -1.0f;
     uint32_t m_screenWidth = 0;

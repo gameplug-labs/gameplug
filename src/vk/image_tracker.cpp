@@ -75,6 +75,12 @@ void ImageTracker::UntrackImage(VkImage image) {
         m_currentMVBuffer = VK_NULL_HANDLE;
         m_bestMVScore = -1.0f;
     }
+    if (m_fakeBackBufferImage == image) {
+        m_fakeBackBufferImage = VK_NULL_HANDLE;
+    }
+    if (m_lastSceneSource == image) {
+        m_lastSceneSource = VK_NULL_HANDLE;
+    }
 
     // Clean up per-res maps
     for (auto it = m_bestDepthPerRes.begin(); it != m_bestDepthPerRes.end();) {
@@ -368,6 +374,12 @@ VkImage ImageTracker::GetColorAttachment(VkFramebuffer fb, uint32_t renderW, uin
         }
     }
     return VK_NULL_HANDLE;
+}
+
+void ImageTracker::SetFakeBackBufferImage(VkImage image) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    m_fakeBackBufferImage = image;
+    Logger::info("ImageTracker: Set Fake Backbuffer Image to " + std::to_string((uintptr_t)image));
 }
 
 } // namespace GamePlug

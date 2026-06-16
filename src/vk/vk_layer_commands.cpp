@@ -153,7 +153,10 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdEndRenderPass(VkCommandBuffer comman
         }
 
         if (GamePlug::ImageTracker::Get().IsSwapchainFramebuffer(fb) && !GamePlug::UpscalerManager::Get().WasUpscaledThisFrame()) {
-            VkImage source = GamePlug::ImageTracker::Get().GetLastSceneImage();
+            VkImage source = GamePlug::ImageTracker::Get().GetFakeBackBufferImage();
+            if (source == VK_NULL_HANDLE) {
+                source = GamePlug::ImageTracker::Get().GetLastSceneImage();
+            }
             VkImage target = GamePlug::ImageTracker::Get().GetSwapchainImageFromFramebuffer(fb);
 
             if (source != VK_NULL_HANDLE && target != VK_NULL_HANDLE) {

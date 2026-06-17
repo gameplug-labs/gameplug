@@ -71,7 +71,35 @@ public:
             if (m_bestDepthPerRes.find(key) != m_bestDepthPerRes.end())
                 return m_bestDepthPerRes.at(key);
         }
-        return m_currentDepthBuffer;
+        if (m_currentDepthBuffer != VK_NULL_HANDLE)
+            return m_currentDepthBuffer;
+
+        VkImage bestImg = VK_NULL_HANDLE;
+        float bestScore = -1.0f;
+        for (auto const& [img, info] : m_images) {
+            if (info.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) {
+                float score = 0.0f;
+                uint32_t targetW = (w > 0) ? w : m_screenWidth;
+                uint32_t targetH = (h > 0) ? h : m_screenHeight;
+
+                if (targetW > 0 && info.extent.width == targetW && info.extent.height == targetH)
+                    score += 1000000.0f;
+                if (info.extent.width != info.extent.height)
+                    score += 500000.0f;
+                if (info.extent.width >= 640 && info.extent.height >= 360)
+                    score += 100000.0f;
+                if (info.extent.width == info.extent.height && targetW != targetH)
+                    score -= 800000.0f;
+                if (info.extent.width < 320 || info.extent.height < 200)
+                    score = -100.0f;
+
+                if (score > bestScore && score > 0) {
+                    bestScore = score;
+                    bestImg = img;
+                }
+            }
+        }
+        return bestImg;
     }
 
     void SetCurrentMotionVectors(VkImage image) {
@@ -86,7 +114,29 @@ public:
             if (m_bestMVPerRes.find(key) != m_bestMVPerRes.end())
                 return m_bestMVPerRes.at(key);
         }
-        return m_currentMVBuffer;
+        if (m_currentMVBuffer != VK_NULL_HANDLE)
+            return m_currentMVBuffer;
+
+        VkImage bestImg = VK_NULL_HANDLE;
+        float bestScore = -1.0f;
+        for (auto const& [img, info] : m_images) {
+            if ((info.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) || (info.usage & VK_IMAGE_USAGE_SAMPLED_BIT)) {
+                float score = 0.0f;
+                uint32_t targetW = (w > 0) ? w : m_screenWidth;
+                uint32_t targetH = (h > 0) ? h : m_screenHeight;
+
+                if (targetW > 0 && info.extent.width == targetW && info.extent.height == targetH)
+                    score += 500000.0f;
+                if (info.format == VK_FORMAT_R16G16_SFLOAT || info.format == VK_FORMAT_R32G32_SFLOAT)
+                    score += 200000.0f;
+
+                if (score > bestScore && score > 0) {
+                    bestScore = score;
+                    bestImg = img;
+                }
+            }
+        }
+        return bestImg;
     }
 
     ImageInfo GetCurrentDepthInfo(uint32_t w = 0, uint32_t h = 0) {

@@ -98,14 +98,21 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_GetPhysicalDeviceSurfaceCapabilitie
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateSwapchainKHR(
     VkDevice device, const VkSwapchainCreateInfoKHR* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkSwapchainKHR* pSwapchain) {
 
-    GamePlug::Logger::info("vkCreateSwapchainKHR: Entry. Game Requested Extent=" + std::to_string(pCreateInfo->imageExtent.width) + "x" +
-                           std::to_string(pCreateInfo->imageExtent.height));
-    auto* dev_entry = GamePlug::DispatchManager::Get().GetDevice(device);
-
-    VkSwapchainCreateInfoKHR spoofInfo = *pCreateInfo;
     uint32_t sw = pCreateInfo->imageExtent.width;
     uint32_t sh = pCreateInfo->imageExtent.height;
 
+    GamePlug::Logger::info("vkCreateSwapchainKHR: Entry. Game Requested Extent=" + std::to_string(sw) + "x" + std::to_string(sh));
+    auto* dev_entry = GamePlug::DispatchManager::Get().GetDevice(device);
+    if (!dev_entry)
+        return VK_ERROR_INITIALIZATION_FAILED;
+
+    if (sw < 320 || sh < 240) {
+        GamePlug::Logger::info(
+            "vkCreateSwapchainKHR: Ignoring tiny/utility swapchain of size " + std::to_string(sw) + "x" + std::to_string(sh));
+        return dev_entry->table.vkCreateSwapchainKHR(device, pCreateInfo, pAllocator, pSwapchain);
+    }
+
+    VkSwapchainCreateInfoKHR spoofInfo = *pCreateInfo;
     uint32_t nativeW = GamePlug::ImageTracker::Get().GetScreenWidth();
     uint32_t nativeH = GamePlug::ImageTracker::Get().GetScreenHeight();
     if (nativeW > 0 && nativeH > 0 && sw < nativeW) {

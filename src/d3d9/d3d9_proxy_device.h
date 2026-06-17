@@ -19,6 +19,7 @@ class ProxyDirect3DDevice9 : public IDirect3DDevice9Ex {
     bool m_isUpscaling;
 
     void UpdateScaledResolution();
+    void UpdateJitterAndFrameIndex();
 
 public:
     IDirect3DDevice9* GetRealDevice() const { return m_pReal; }

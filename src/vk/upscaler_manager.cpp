@@ -1,4 +1,5 @@
 #include "upscaler_manager.h"
+#include "upscaler_interface.h"
 #ifdef GAMEPLUG_VULKAN
 #include "dispatch.h"
 #include "image_tracker.h"
@@ -459,13 +460,51 @@ void UpscalerManager::RenderFrame(uintptr_t cmd, uint64_t source, uint64_t targe
     if (shouldLog)
         Logger::info("UpscalerManager::RenderFrame [CallPlugin] Calling OnRenderFrame...");
 
+    float cameraNear = 0.1f;
+    float cameraFar = 1000.0f;
+    float cameraFov = 1.0f;
+    float viewSpaceToMetersFactor = 1.0f / 70.0f;
+
+    typedef GamePlugSharedFrameData* (*GetSharedFrameDataFn)();
+    static GetSharedFrameDataFn pfnGetSharedFrameData = nullptr;
+    static bool checkedD3D9 = false;
+    if (!checkedD3D9) {
+        HMODULE hMod = GetModuleHandleA("dinput8.dll");
+        if (!hMod)
+            hMod = GetModuleHandleA("version.dll");
+        if (hMod) {
+            pfnGetSharedFrameData = (GetSharedFrameDataFn)GetProcAddress(hMod, "GamePlug_GetSharedFrameData");
+            if (pfnGetSharedFrameData) {
+                Logger::info("UpscalerManager: Found GamePlug_GetSharedFrameData export in D3D9 layer.");
+            }
+        }
+        checkedD3D9 = true;
+    }
+
+    if (pfnGetSharedFrameData) {
+        GamePlugSharedFrameData* sharedData = pfnGetSharedFrameData();
+        if (sharedData && sharedData->magic == 0x47505344) {
+            jitterX = sharedData->jitterX;
+            jitterY = sharedData->jitterY;
+            cameraNear = sharedData->cameraNear;
+            cameraFar = sharedData->cameraFar;
+            cameraFov = sharedData->cameraFov;
+            viewSpaceToMetersFactor = sharedData->viewSpaceToMetersFactor;
+            invertedDepth = sharedData->invertedDepth;
+            hdr = sharedData->hdr;
+
+            if (shouldLog) {
+                Logger::info("UpscalerManager::RenderFrame [SharedData] frameIndex=" + std::to_string(sharedData->frameIndex) +
+                             ", jitter=(" + std::to_string(jitterX) + ", " + std::to_string(jitterY) + ")" +
+                             ", near=" + std::to_string(cameraNear) + ", far=" + std::to_string(cameraFar) +
+                             ", fov=" + std::to_string(cameraFov) + ", inverted=" + std::to_string(invertedDepth));
+            }
+        }
+    }
+
     m_pInterface->OnRenderFrame(cmd, source, target, swapchainFormat, (uint32_t)width, (uint32_t)height, m_renderWidth, m_renderHeight,
-        depthImage, depthFormat, mvImage, mvFormat, (float)jitterX, (float)jitterY,
-        0.1f,    // cameraNear
-        1000.0f, // cameraFar
-        1.0f,    // cameraFov
-        1.0f,    // viewSpaceToMetersFactor
-        invertedDepth, hdr);
+        depthImage, depthFormat, mvImage, mvFormat, (float)jitterX, (float)jitterY, cameraNear, cameraFar, cameraFov,
+        viewSpaceToMetersFactor, invertedDepth, hdr);
 
     if (shouldLog)
         Logger::info("UpscalerManager::RenderFrame [End] OnRenderFrame returned.");

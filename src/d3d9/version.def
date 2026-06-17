@@ -17,3 +17,7 @@ EXPORTS
     VerLanguageNameW
     VerQueryValueA
     VerQueryValueW
+    GamePlug_SetCreatingFakeBackBuffer
+    GamePlug_IsCreatingFakeBackBuffer
+    GamePlug_GetSharedFrameData
+

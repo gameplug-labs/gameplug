@@ -18,3 +18,4 @@ EXPORTS
     PSGPSampleTexture
     GamePlug_SetCreatingFakeBackBuffer
     GamePlug_IsCreatingFakeBackBuffer
+    GamePlug_GetSharedFrameData

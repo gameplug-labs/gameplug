@@ -4,9 +4,33 @@
 #include "d3d9_proxy_swapchain.h"
 #include "d3d9_proxy_texture.h"
 #include "texture_replacer.h"
+#include "upscaler_interface.h"
 #include "upscaler_manager.h"
+#include <cmath>
+#include <vector>
 
 static thread_local bool t_creatingFakeBackBuffer = false;
+
+static GamePlugSharedFrameData g_SharedFrameData = {
+    0x47505344,          // Magic
+    0,                   // frameIndex
+    0.0f, 0.0f,          // jitterX, jitterY
+    0.1f, 1000.0f, 1.0f, // cameraNear, cameraFar, cameraFov
+    1.0f / 70.0f,        // viewSpaceToMetersFactor
+    false,               // invertedDepth
+    false                // hdr
+};
+
+static float Halton(uint32_t index, uint32_t base) {
+    float f = 1.0f;
+    float r = 0.0f;
+    while (index > 0) {
+        f /= (float)base;
+        r += f * (float)(index % base);
+        index /= base;
+    }
+    return r;
+}
 
 extern "C" {
 __declspec(dllexport) void GamePlug_SetCreatingFakeBackBuffer(bool active) {
@@ -15,6 +39,10 @@ __declspec(dllexport) void GamePlug_SetCreatingFakeBackBuffer(bool active) {
 
 __declspec(dllexport) bool GamePlug_IsCreatingFakeBackBuffer() {
     return t_creatingFakeBackBuffer;
+}
+
+__declspec(dllexport) GamePlugSharedFrameData* GamePlug_GetSharedFrameData() {
+    return &g_SharedFrameData;
 }
 }
 
@@ -123,6 +151,15 @@ void ProxyDirect3DDevice9::UpdateScaledResolution() {
             }
         }
     }
+}
+
+void ProxyDirect3DDevice9::UpdateJitterAndFrameIndex() {
+    g_SharedFrameData.frameIndex++;
+    uint32_t idx = (g_SharedFrameData.frameIndex % 128) + 1;
+    g_SharedFrameData.jitterX = Halton(idx, 2) - 0.5f;
+    g_SharedFrameData.jitterY = Halton(idx, 3) - 0.5f;
+    g_SharedFrameData.invertedDepth = false;
+    g_SharedFrameData.hdr = false;
 }
 
 ProxyDirect3DDevice9::ProxyDirect3DDevice9(
@@ -402,6 +439,7 @@ STDMETHODIMP ProxyDirect3DDevice9::Reset(D3DPRESENT_PARAMETERS* pPP) {
 
 STDMETHODIMP ProxyDirect3DDevice9::Present(CONST RECT* pSR, CONST RECT* pDR, HWND hW, CONST RGNDATA* pR) {
     UpdateScaledResolution();
+    UpdateJitterAndFrameIndex();
     OverlayRenderer::Get().NewFrame();
     IDirect3DSurface9* pRBB = nullptr;
     if (SUCCEEDED(m_pReal->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &pRBB))) {
@@ -952,7 +990,123 @@ STDMETHODIMP ProxyDirect3DDevice9::GetVertexShader(IDirect3DVertexShader9** ppS)
     return m_pReal->GetVertexShader(ppS);
 }
 
+static bool IsValidProjectionMatrix(const float* m, float& outFovY, float& outNear, float& outFar, bool& outInverted) {
+    auto is_zero = [](float f) { return std::abs(f) < 1e-4f; };
+
+    bool rowMajor = false;
+    bool colMajor = false;
+
+    if (std::abs(m[11] - 1.0f) < 1e-3f || std::abs(m[11] + 1.0f) < 1e-3f) {
+        rowMajor = true;
+    } else if (std::abs(m[14] - 1.0f) < 1e-3f || std::abs(m[14] + 1.0f) < 1e-3f) {
+        colMajor = true;
+    }
+
+    if (!rowMajor && !colMajor)
+        return false;
+
+    float A, B, y, x;
+
+    if (rowMajor) {
+        if (!is_zero(m[1]) || !is_zero(m[3]) || !is_zero(m[4]) || !is_zero(m[7]) || !is_zero(m[8]) || !is_zero(m[9]) || !is_zero(m[12]) ||
+            !is_zero(m[13]) || !is_zero(m[15])) {
+            return false;
+        }
+        if (std::abs(m[2]) > 0.1f || std::abs(m[6]) > 0.1f)
+            return false;
+
+        x = m[0];
+        y = m[5];
+        A = m[10];
+        B = m[14];
+    } else {
+        if (!is_zero(m[1]) || !is_zero(m[4]) || !is_zero(m[3]) || !is_zero(m[7]) || !is_zero(m[8]) || !is_zero(m[9]) || !is_zero(m[12]) ||
+            !is_zero(m[13]) || !is_zero(m[15])) {
+            return false;
+        }
+        if (std::abs(m[2]) > 0.1f || std::abs(m[6]) > 0.1f)
+            return false;
+
+        x = m[0];
+        y = m[5];
+        A = m[10];
+        B = m[11];
+    }
+
+    if (x <= 0.05f || x > 20.0f || y <= 0.05f || y > 20.0f)
+        return false;
+
+    outFovY = 2.0f * std::atanf(1.0f / y);
+    if (outFovY < 0.08f || outFovY > 2.01f)
+        return false;
+
+    float aspect = y / x;
+    if (std::abs(aspect - 1.0f) < 0.01f)
+        return false;
+
+    float near_std = -B / A;
+    float far_std = A * near_std / (A - 1.0f);
+
+    float near_inv = B / (A - 1.0f);
+    float far_inv = B / A;
+
+    if (near_std > 0.0f && far_std > near_std && std::abs(A - 1.0f) > 1e-4f) {
+        outNear = near_std;
+        outFar = far_std;
+        outInverted = false;
+        return true;
+    }
+
+    if (near_inv > 0.0f && far_inv > near_inv && std::abs(A) > 1e-4f) {
+        outNear = near_inv;
+        outFar = far_inv;
+        outInverted = true;
+        return true;
+    }
+
+    if (std::abs(A) < 1e-4f && B > 0.0f) {
+        outNear = B;
+        outFar = 100000.0f;
+        outInverted = true;
+        return true;
+    }
+    if (std::abs(A - 1.0f) < 1e-4f && B < 0.0f) {
+        outNear = -B;
+        outFar = 100000.0f;
+        outInverted = false;
+        return true;
+    }
+
+    return false;
+}
+
 STDMETHODIMP ProxyDirect3DDevice9::SetVertexShaderConstantF(UINT SR, CONST float* pCD, UINT V4C) {
+    if (pCD && V4C >= 4) {
+        for (UINT i = 0; i <= V4C - 4; ++i) {
+            float fovY = 0.0f, nearP = 0.0f, farP = 0.0f;
+            bool inverted = false;
+            const float* matrix = &pCD[i * 4];
+            if (IsValidProjectionMatrix(matrix, fovY, nearP, farP, inverted)) {
+                float fovDegrees = fovY * (180.0f / 3.14159265f);
+                g_SharedFrameData.cameraNear = nearP;
+                g_SharedFrameData.cameraFar = farP;
+                g_SharedFrameData.cameraFov = fovDegrees;
+                g_SharedFrameData.invertedDepth = inverted;
+
+                if (m_isUpscaling) {
+                    float projJitterX = (g_SharedFrameData.jitterX * 2.0f) / m_renderW;
+                    float projJitterY = (g_SharedFrameData.jitterY * 2.0f) / m_renderH;
+
+                    std::vector<float> modifiedCD(pCD, pCD + V4C * 4);
+                    modifiedCD[i * 4 + 2] += projJitterX;
+                    modifiedCD[i * 4 + 6] += projJitterY;
+
+                    return m_pReal->SetVertexShaderConstantF(SR, modifiedCD.data(), V4C);
+                }
+                break;
+            }
+        }
+    }
     return m_pReal->SetVertexShaderConstantF(SR, pCD, V4C);
 }
 
@@ -1070,6 +1224,7 @@ STDMETHODIMP ProxyDirect3DDevice9::ComposeRects(IDirect3DSurface9* pS, IDirect3D
 
 STDMETHODIMP ProxyDirect3DDevice9::PresentEx(CONST RECT* pSR, CONST RECT* pDR, HWND hW, CONST RGNDATA* pR, DWORD F) {
     UpdateScaledResolution();
+    UpdateJitterAndFrameIndex();
     OverlayRenderer::Get().NewFrame();
     IDirect3DSurface9* pRBB = nullptr;
     if (SUCCEEDED(m_pReal->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &pRBB))) {

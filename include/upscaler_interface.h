@@ -18,6 +18,19 @@
 
 extern "C" {
 
+struct GamePlugSharedFrameData {
+    uint32_t magic;
+    uint32_t frameIndex;
+    float jitterX;
+    float jitterY;
+    float cameraNear;
+    float cameraFar;
+    float cameraFov;
+    float viewSpaceToMetersFactor;
+    bool invertedDepth;
+    bool hdr;
+};
+
 struct GamePlugUpscalerInterface {
     // Current interface version.
     int InterfaceVersion; // v1: Specialized Upscaler Interface

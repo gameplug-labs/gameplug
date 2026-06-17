@@ -120,6 +120,13 @@ public:
         VkImage bestImg = VK_NULL_HANDLE;
         float bestScore = -1.0f;
         for (auto const& [img, info] : m_images) {
+            bool isMVFormat = (info.format == VK_FORMAT_R16G16_SFLOAT || info.format == VK_FORMAT_R32G32_SFLOAT ||
+                               info.format == VK_FORMAT_R16G16B16A16_SFLOAT || info.format == VK_FORMAT_R16G16_SNORM ||
+                               info.format == VK_FORMAT_R16G16_UNORM || info.format == VK_FORMAT_R8G8_UNORM ||
+                               info.format == VK_FORMAT_R8G8_SNORM);
+            if (!isMVFormat)
+                continue;
+
             if ((info.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) || (info.usage & VK_IMAGE_USAGE_SAMPLED_BIT)) {
                 float score = 0.0f;
                 uint32_t targetW = (w > 0) ? w : m_screenWidth;

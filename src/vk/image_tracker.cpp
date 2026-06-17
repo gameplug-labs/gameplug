@@ -202,6 +202,13 @@ void ImageTracker::TrackFramebuffer(VkFramebuffer fb, uint32_t count, const VkIm
                 continue;
 
             auto& info = m_images[img];
+            bool isMVFormat = (info.format == VK_FORMAT_R16G16_SFLOAT || info.format == VK_FORMAT_R32G32_SFLOAT ||
+                               info.format == VK_FORMAT_R16G16B16A16_SFLOAT || info.format == VK_FORMAT_R16G16_SNORM ||
+                               info.format == VK_FORMAT_R16G16_UNORM || info.format == VK_FORMAT_R8G8_UNORM ||
+                               info.format == VK_FORMAT_R8G8_SNORM);
+            if (!isMVFormat)
+                continue;
+
             float score = 0.0f;
             bool sizeMatch = (info.extent.width == dInfo.extent.width && info.extent.height == dInfo.extent.height);
             if (sizeMatch)

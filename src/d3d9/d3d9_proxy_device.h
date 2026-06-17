@@ -1,6 +1,7 @@
 #pragma once
 
 #include "d3d9_proxy.h"
+#include <map>
 
 // Forward declarations
 class ProxySurface9;
@@ -17,9 +18,12 @@ class ProxyDirect3DDevice9 : public IDirect3DDevice9Ex {
     uint32_t m_renderW, m_renderH;
     uint32_t m_displayW, m_displayH;
     bool m_isUpscaling;
+    std::map<IDirect3DSurface9*, IDirect3DTexture9*> m_depthSurfaceToTextureMap;
+    IDirect3DTexture9* m_downsampledDepthTexINTZ = nullptr;
 
     void UpdateScaledResolution();
     void UpdateJitterAndFrameIndex();
+    void PerformDepthDownsampling();
 
 public:
     IDirect3DDevice9* GetRealDevice() const { return m_pReal; }

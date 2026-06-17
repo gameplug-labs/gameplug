@@ -408,26 +408,26 @@ void UpscalerManager::RenderFrame(uintptr_t cmd, uint64_t source, uint64_t targe
     uint32_t swapchainFormat = 0;
 
 #ifdef GAMEPLUG_VULKAN
-    // Get suggested buffers from tracker
-    auto depthInfo = ImageTracker::Get().GetCurrentDepthInfo(width, height);
-    auto mvInfo = ImageTracker::Get().GetCurrentMVInfo(width, height);
+    // Get suggested buffers from tracker using render resolution
+    auto depthInfo = ImageTracker::Get().GetCurrentDepthInfo(m_renderWidth, m_renderHeight);
+    auto mvInfo = ImageTracker::Get().GetCurrentMVInfo(m_renderWidth, m_renderHeight);
     depthImage = (uint64_t)depthInfo.image;
     depthFormat = (uint32_t)depthInfo.format;
     mvImage = (uint64_t)mvInfo.image;
     mvFormat = (uint32_t)mvInfo.format;
     swapchainFormat = (uint32_t)ImageTracker::Get().GetSwapchainFormat();
 
-    // Warning: mismatched resolution
-    if (depthInfo.image != VK_NULL_HANDLE && (depthInfo.extent.width != width || depthInfo.extent.height != height)) {
+    // Warning: mismatched resolution (should match render resolution)
+    if (depthInfo.image != VK_NULL_HANDLE && (depthInfo.extent.width != m_renderWidth || depthInfo.extent.height != m_renderHeight)) {
         static uint32_t last_mismatch_w = 0;
-        if (width != last_mismatch_w) {
+        if (m_renderWidth != last_mismatch_w) {
             char buf[256];
             sprintf(buf,
-                "UpscalerManager: WARNING! Depth buffer resolution mismatch: Buffer=%ux%u, Screen=%ux%u. Upscaler may produce incorrect "
+                "UpscalerManager: WARNING! Depth buffer resolution mismatch: Buffer=%ux%u, Render=%ux%u. Upscaler may produce incorrect "
                 "output.",
-                depthInfo.extent.width, depthInfo.extent.height, width, height);
+                depthInfo.extent.width, depthInfo.extent.height, m_renderWidth, m_renderHeight);
             Logger::warn(buf);
-            last_mismatch_w = width;
+            last_mismatch_w = m_renderWidth;
         }
     }
 

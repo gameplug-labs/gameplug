@@ -421,11 +421,33 @@ void UpscalerManager::RenderFrame(uintptr_t cmd, uint64_t source, uint64_t targe
         m_renderWidth > 0 && m_renderHeight > 0) {
         
         VkImageView srcView = ImageTracker::Get().GetMainView(depthInfo.image);
+        bool createdTempView = false;
+        if (srcView == VK_NULL_HANDLE) {
+            auto* dev = DispatchManager::Get().GetDevice(m_device);
+            if (dev) {
+                VkImageViewCreateInfo v = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+                v.image = depthInfo.image;
+                v.viewType = VK_IMAGE_VIEW_TYPE_2D;
+                v.format = depthInfo.format;
+                v.subresourceRange.aspectMask = (depthInfo.format == VK_FORMAT_R32_SFLOAT) ? VK_IMAGE_ASPECT_COLOR_BIT : VK_IMAGE_ASPECT_DEPTH_BIT;
+                v.subresourceRange.levelCount = 1;
+                v.subresourceRange.layerCount = 1;
+                if (dev->table.vkCreateImageView(m_device, &v, nullptr, &srcView) == VK_SUCCESS) {
+                    createdTempView = true;
+                }
+            }
+        }
         if (srcView != VK_NULL_HANDLE) {
             PerformDepthDownsamplingVK(reinterpret_cast<VkCommandBuffer>(cmd),
                                        depthInfo.image, srcView, depthInfo.format,
                                        depthInfo.extent.width, depthInfo.extent.height);
             didDownsampleDepth = true;
+            if (createdTempView) {
+                auto* dev = DispatchManager::Get().GetDevice(m_device);
+                if (dev) {
+                    dev->table.vkDestroyImageView(m_device, srcView, nullptr);
+                }
+            }
         }
     }
 

@@ -27,6 +27,7 @@ add_library(framework_vk STATIC
 target_compile_definitions(framework_vk PRIVATE 
     FRAMEWORK_EXPORTS
     GAMEPLUG_VULKAN
+    GAMEPLUG_SKYRIM
 )
 target_include_directories(framework_vk PUBLIC
     ${PROJECT_SOURCE_DIR}/include
@@ -256,6 +257,7 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 4)
     target_compile_definitions(framework_skyrim PRIVATE 
         FRAMEWORK_EXPORTS
         GamePlug_INTERNAL_LOGGER
+        GAMEPLUG_SKYRIM
     )
     target_include_directories(framework_skyrim PUBLIC
         ${PROJECT_SOURCE_DIR}/include

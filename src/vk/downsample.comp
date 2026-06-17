@@ -1,0 +1,15 @@
+#version 450
+layout (local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout (binding = 0) uniform sampler2D InputTex;
+layout (binding = 1, r32f) uniform writeonly image2D OutputTex;
+
+void main() {
+    ivec2 dstSize = imageSize(OutputTex);
+    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+    if (pos.x >= dstSize.x || pos.y >= dstSize.y) return;
+    
+    vec2 uv = (vec2(pos) + 0.5) / vec2(dstSize);
+    float depth = texture(InputTex, uv).r;
+    imageStore(OutputTex, pos, vec4(depth, 0.0, 0.0, 0.0));
+}

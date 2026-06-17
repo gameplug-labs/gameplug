@@ -4,6 +4,7 @@
 #include "dispatch.h"
 #include "image_tracker.h"
 #include "overlay.h"
+#include "downsample_comp.h"
 #endif
 #include <algorithm>
 #include <filesystem>
@@ -101,14 +102,11 @@ bool UpscalerManager::LoadUpscaler(uintptr_t instance, uintptr_t physDevice, uin
             void* imguiCtx = ImGui::GetCurrentContext();
             Logger::info("UpscalerManager: Phase 2 OnInit calling with ImGuiCtx=" + std::to_string((uintptr_t)imguiCtx));
 
-            auto* memProps = new VkPhysicalDeviceMemoryProperties();
-            memset(memProps, 0, sizeof(VkPhysicalDeviceMemoryProperties));
-
             auto* inst_dispatch = DispatchManager::Get().GetInstance(vkInstance);
             if (inst_dispatch && inst_dispatch->table.vkGetPhysicalDeviceMemoryProperties) {
-                inst_dispatch->table.vkGetPhysicalDeviceMemoryProperties(vkPhysDevice, memProps);
+                inst_dispatch->table.vkGetPhysicalDeviceMemoryProperties(vkPhysDevice, &m_memProps);
             } else {
-                vkGetPhysicalDeviceMemoryProperties(vkPhysDevice, memProps);
+                vkGetPhysicalDeviceMemoryProperties(vkPhysDevice, &m_memProps);
             }
 
             VkQueue queue = VK_NULL_HANDLE;
@@ -119,8 +117,9 @@ bool UpscalerManager::LoadUpscaler(uintptr_t instance, uintptr_t physDevice, uin
             }
 
             m_pInterface->OnInit(ImGui::GetCurrentContext(), UpscalerLogBridge, nullptr, (uintptr_t)vkInstance, (uintptr_t)vkPhysDevice,
-                (uintptr_t)vkDevice, (uintptr_t)queue, queueFamilyIndex, memProps);
-            delete memProps;
+                (uintptr_t)vkDevice, (uintptr_t)queue, queueFamilyIndex, &m_memProps);
+            
+            InitDownsampleResources();
             Logger::info("UpscalerManager: Phase 2 Complete (OnInit called).");
         }
     }
@@ -135,6 +134,7 @@ void UpscalerManager::UnloadUpscaler() {
     if (m_handle && !m_isShuttingDown) {
         m_isShuttingDown = true;
 #ifdef GAMEPLUG_VULKAN
+        CleanupDownsampleResources();
         if (m_depthDebugSet)
             OverlayRenderer::Get().UnregisterDebugImage(m_depthDebugSet);
         if (m_mvDebugSet)
@@ -408,33 +408,40 @@ void UpscalerManager::RenderFrame(uintptr_t cmd, uint64_t source, uint64_t targe
     uint32_t swapchainFormat = 0;
 
 #ifdef GAMEPLUG_VULKAN
-    // Get suggested buffers from tracker using render resolution
-    auto depthInfo = ImageTracker::Get().GetCurrentDepthInfo(m_renderWidth, m_renderHeight);
+    // Get suggested buffers from tracker using native resolution
+    auto depthInfo = ImageTracker::Get().GetCurrentDepthInfo(width, height);
     auto mvInfo = ImageTracker::Get().GetCurrentMVInfo(m_renderWidth, m_renderHeight);
-    depthImage = (uint64_t)depthInfo.image;
-    depthFormat = (uint32_t)depthInfo.format;
     mvImage = (uint64_t)mvInfo.image;
     mvFormat = (uint32_t)mvInfo.format;
     swapchainFormat = (uint32_t)ImageTracker::Get().GetSwapchainFormat();
 
-    // Warning: mismatched resolution (should match render resolution)
-    if (depthInfo.image != VK_NULL_HANDLE && (depthInfo.extent.width != m_renderWidth || depthInfo.extent.height != m_renderHeight)) {
-        static uint32_t last_mismatch_w = 0;
-        if (m_renderWidth != last_mismatch_w) {
-            char buf[256];
-            sprintf(buf,
-                "UpscalerManager: WARNING! Depth buffer resolution mismatch: Buffer=%ux%u, Render=%ux%u. Upscaler may produce incorrect "
-                "output.",
-                depthInfo.extent.width, depthInfo.extent.height, m_renderWidth, m_renderHeight);
-            Logger::warn(buf);
-            last_mismatch_w = m_renderWidth;
+    bool didDownsampleDepth = false;
+    if (depthInfo.image != VK_NULL_HANDLE &&
+        (depthInfo.extent.width != m_renderWidth || depthInfo.extent.height != m_renderHeight) &&
+        m_renderWidth > 0 && m_renderHeight > 0) {
+        
+        VkImageView srcView = ImageTracker::Get().GetMainView(depthInfo.image);
+        if (srcView != VK_NULL_HANDLE) {
+            PerformDepthDownsamplingVK(reinterpret_cast<VkCommandBuffer>(cmd),
+                                       depthInfo.image, srcView, depthInfo.format,
+                                       depthInfo.extent.width, depthInfo.extent.height);
+            didDownsampleDepth = true;
         }
     }
 
+    if (didDownsampleDepth) {
+        depthImage = (uint64_t)m_downsampledDepthImage;
+        depthFormat = (uint32_t)VK_FORMAT_R32_SFLOAT;
+    } else {
+        depthImage = (uint64_t)depthInfo.image;
+        depthFormat = (uint32_t)depthInfo.format;
+    }
+
     if (shouldLog) {
-        Logger::info("UpscalerManager::RenderFrame [Buffers] depth=" + std::to_string((uintptr_t)depthInfo.image) + " (" +
-                     std::to_string(depthInfo.extent.width) + "x" + std::to_string(depthInfo.extent.height) +
-                     ", fmt=" + std::to_string(depthInfo.format) + "), mv=" + std::to_string((uintptr_t)mvInfo.image) +
+        Logger::info("UpscalerManager::RenderFrame [Buffers] depth=" + std::to_string((uintptr_t)depthImage) + " (" +
+                     std::to_string(didDownsampleDepth ? m_renderWidth : depthInfo.extent.width) + "x" + 
+                     std::to_string(didDownsampleDepth ? m_renderHeight : depthInfo.extent.height) +
+                     ", fmt=" + std::to_string(depthFormat) + "), mv=" + std::to_string((uintptr_t)mvInfo.image) +
                      " (fmt=" + std::to_string(mvInfo.format) + ")");
     }
 #endif
@@ -513,5 +520,328 @@ void UpscalerManager::RenderFrame(uintptr_t cmd, uint64_t source, uint64_t targe
     lastH = height;
     m_frameUpscaled = true;
 }
+
+#ifdef GAMEPLUG_VULKAN
+static uint32_t FindMemoryType(VkPhysicalDeviceMemoryProperties* memProps, uint32_t typeFilter, VkMemoryPropertyFlags properties) {
+    for (uint32_t i = 0; i < memProps->memoryTypeCount; i++) {
+        if ((typeFilter & (1 << i)) && (memProps->memoryTypes[i].propertyFlags & properties) == properties) {
+            return i;
+        }
+    }
+    return 0;
+}
+
+void UpscalerManager::InitDownsampleResources() {
+    if (m_device == VK_NULL_HANDLE) return;
+    auto* dev = DispatchManager::Get().GetDevice(m_device);
+    if (!dev) return;
+
+    // 1. Create Shader Module
+    VkShaderModuleCreateInfo shaderCI = { VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO };
+    shaderCI.codeSize = sizeof(g_downsample_spirv);
+    shaderCI.pCode = g_downsample_spirv;
+
+    if (dev->table.vkCreateShaderModule(m_device, &shaderCI, nullptr, &m_downsampleShader) != VK_SUCCESS) {
+        Logger::error("UpscalerManager: Failed to create downsample shader module");
+        return;
+    }
+
+    // 2. Create Descriptor Set Layout
+    VkDescriptorSetLayoutBinding bindings[2] = {};
+    bindings[0].binding = 0;
+    bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    bindings[0].descriptorCount = 1;
+    bindings[0].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+    bindings[1].binding = 1;
+    bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    bindings[1].descriptorCount = 1;
+    bindings[1].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+    VkDescriptorSetLayoutCreateInfo layoutCI = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+    layoutCI.bindingCount = 2;
+    layoutCI.pBindings = bindings;
+
+    if (dev->table.vkCreateDescriptorSetLayout(m_device, &layoutCI, nullptr, &m_downsampleSetLayout) != VK_SUCCESS) {
+        Logger::error("UpscalerManager: Failed to create downsample descriptor set layout");
+        return;
+    }
+
+    // 3. Create Pipeline Layout
+    VkPipelineLayoutCreateInfo pipelineLayoutCI = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
+    pipelineLayoutCI.setLayoutCount = 1;
+    pipelineLayoutCI.pSetLayouts = &m_downsampleSetLayout;
+
+    if (dev->table.vkCreatePipelineLayout(m_device, &pipelineLayoutCI, nullptr, &m_downsamplePipelineLayout) != VK_SUCCESS) {
+        Logger::error("UpscalerManager: Failed to create downsample pipeline layout");
+        return;
+    }
+
+    // 4. Create Pipeline
+    VkComputePipelineCreateInfo pipelineCI = { VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO };
+    pipelineCI.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    pipelineCI.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    pipelineCI.stage.module = m_downsampleShader;
+    pipelineCI.stage.pName = "main";
+    pipelineCI.layout = m_downsamplePipelineLayout;
+
+    if (dev->table.vkCreateComputePipelines(m_device, VK_NULL_HANDLE, 1, &pipelineCI, nullptr, &m_downsamplePipeline) != VK_SUCCESS) {
+        Logger::error("UpscalerManager: Failed to create downsample compute pipeline");
+        return;
+    }
+
+    // 5. Create Descriptor Pool
+    VkDescriptorPoolSize poolSizes[2] = {};
+    poolSizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    poolSizes[0].descriptorCount = 16;
+    poolSizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    poolSizes[1].descriptorCount = 16;
+
+    VkDescriptorPoolCreateInfo poolCI = { VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
+    poolCI.maxSets = 16;
+    poolCI.poolSizeCount = 2;
+    poolCI.pPoolSizes = poolSizes;
+    poolCI.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+
+    if (dev->table.vkCreateDescriptorPool(m_device, &poolCI, nullptr, &m_downsampleDescriptorPool) != VK_SUCCESS) {
+        Logger::error("UpscalerManager: Failed to create downsample descriptor pool");
+        return;
+    }
+
+    // 6. Create Sampler
+    VkSamplerCreateInfo samplerCI = { VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
+    samplerCI.magFilter = VK_FILTER_NEAREST;
+    samplerCI.minFilter = VK_FILTER_NEAREST;
+    samplerCI.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+    samplerCI.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    samplerCI.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    samplerCI.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    samplerCI.minLod = 0.0f;
+    samplerCI.maxLod = 1.0f;
+
+    if (dev->table.vkCreateSampler(m_device, &samplerCI, nullptr, &m_downsampleSampler) != VK_SUCCESS) {
+        Logger::error("UpscalerManager: Failed to create downsample sampler");
+    }
+
+    Logger::info("UpscalerManager: Downsample compute resources initialized successfully.");
+}
+
+void UpscalerManager::CleanupDownsampleResources() {
+    if (m_device == VK_NULL_HANDLE) return;
+    auto* dev = DispatchManager::Get().GetDevice(m_device);
+    if (!dev) return;
+
+    if (m_downsampleShader != VK_NULL_HANDLE) {
+        dev->table.vkDestroyShaderModule(m_device, m_downsampleShader, nullptr);
+        m_downsampleShader = VK_NULL_HANDLE;
+    }
+    if (m_downsampleSetLayout != VK_NULL_HANDLE) {
+        dev->table.vkDestroyDescriptorSetLayout(m_device, m_downsampleSetLayout, nullptr);
+        m_downsampleSetLayout = VK_NULL_HANDLE;
+    }
+    if (m_downsamplePipelineLayout != VK_NULL_HANDLE) {
+        dev->table.vkDestroyPipelineLayout(m_device, m_downsamplePipelineLayout, nullptr);
+        m_downsamplePipelineLayout = VK_NULL_HANDLE;
+    }
+    if (m_downsamplePipeline != VK_NULL_HANDLE) {
+        dev->table.vkDestroyPipeline(m_device, m_downsamplePipeline, nullptr);
+        m_downsamplePipeline = VK_NULL_HANDLE;
+    }
+    if (m_downsampleDescriptorPool != VK_NULL_HANDLE) {
+        dev->table.vkDestroyDescriptorPool(m_device, m_downsampleDescriptorPool, nullptr);
+        m_downsampleDescriptorPool = VK_NULL_HANDLE;
+    }
+    if (m_downsampleSampler != VK_NULL_HANDLE) {
+        dev->table.vkDestroySampler(m_device, m_downsampleSampler, nullptr);
+        m_downsampleSampler = VK_NULL_HANDLE;
+    }
+    if (m_downsampledDepthView != VK_NULL_HANDLE) {
+        ImageTracker::Get().UntrackImageView(m_downsampledDepthView);
+        dev->table.vkDestroyImageView(m_device, m_downsampledDepthView, nullptr);
+        m_downsampledDepthView = VK_NULL_HANDLE;
+    }
+    if (m_downsampledDepthImage != VK_NULL_HANDLE) {
+        ImageTracker::Get().UntrackImage(m_downsampledDepthImage);
+        dev->table.vkDestroyImage(m_device, m_downsampledDepthImage, nullptr);
+        m_downsampledDepthImage = VK_NULL_HANDLE;
+    }
+    if (m_downsampledDepthMemory != VK_NULL_HANDLE) {
+        dev->table.vkFreeMemory(m_device, m_downsampledDepthMemory, nullptr);
+        m_downsampledDepthMemory = VK_NULL_HANDLE;
+    }
+    m_downsampleDescriptorSet = VK_NULL_HANDLE;
+    m_downsampleW = 0;
+    m_downsampleH = 0;
+}
+
+bool UpscalerManager::CreateDownsampleTarget(uint32_t w, uint32_t h) {
+    if (m_device == VK_NULL_HANDLE) return false;
+    auto* dev = DispatchManager::Get().GetDevice(m_device);
+    if (!dev) return false;
+
+    if (m_downsampledDepthImage != VK_NULL_HANDLE && m_downsampleW == w && m_downsampleH == h) {
+        return true;
+    }
+
+    if (m_downsampledDepthView != VK_NULL_HANDLE) {
+        ImageTracker::Get().UntrackImageView(m_downsampledDepthView);
+        dev->table.vkDestroyImageView(m_device, m_downsampledDepthView, nullptr);
+        m_downsampledDepthView = VK_NULL_HANDLE;
+    }
+    if (m_downsampledDepthImage != VK_NULL_HANDLE) {
+        ImageTracker::Get().UntrackImage(m_downsampledDepthImage);
+        dev->table.vkDestroyImage(m_device, m_downsampledDepthImage, nullptr);
+        m_downsampledDepthImage = VK_NULL_HANDLE;
+    }
+    if (m_downsampledDepthMemory != VK_NULL_HANDLE) {
+        dev->table.vkFreeMemory(m_device, m_downsampledDepthMemory, nullptr);
+        m_downsampledDepthMemory = VK_NULL_HANDLE;
+    }
+
+    m_downsampleW = w;
+    m_downsampleH = h;
+
+    VkImageCreateInfo imageCI = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+    imageCI.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    imageCI.imageType = VK_IMAGE_TYPE_2D;
+    imageCI.extent.width = w;
+    imageCI.extent.height = h;
+    imageCI.extent.depth = 1;
+    imageCI.mipLevels = 1;
+    imageCI.arrayLayers = 1;
+    imageCI.format = VK_FORMAT_R32_SFLOAT;
+    imageCI.tiling = VK_IMAGE_TILING_OPTIMAL;
+    imageCI.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    imageCI.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    imageCI.samples = VK_SAMPLE_COUNT_1_BIT;
+    imageCI.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    if (dev->table.vkCreateImage(m_device, &imageCI, nullptr, &m_downsampledDepthImage) != VK_SUCCESS) {
+        Logger::error("UpscalerManager: Failed to create downsampled depth image");
+        return false;
+    }
+    ImageTracker::Get().TrackImage(m_downsampledDepthImage, &imageCI);
+
+    VkMemoryRequirements memReqs;
+    dev->table.vkGetImageMemoryRequirements(m_device, m_downsampledDepthImage, &memReqs);
+
+    VkMemoryAllocateInfo allocInfo = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memReqs.size;
+    allocInfo.memoryTypeIndex = FindMemoryType(&m_memProps, memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    if (dev->table.vkAllocateMemory(m_device, &allocInfo, nullptr, &m_downsampledDepthMemory) != VK_SUCCESS) {
+        Logger::error("UpscalerManager: Failed to allocate memory for downsampled depth image");
+        return false;
+    }
+
+    dev->table.vkBindImageMemory(m_device, m_downsampledDepthImage, m_downsampledDepthMemory, 0);
+
+    VkImageViewCreateInfo viewCI = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+    viewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    viewCI.image = m_downsampledDepthImage;
+    viewCI.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    viewCI.format = VK_FORMAT_R32_SFLOAT;
+    viewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    viewCI.subresourceRange.baseMipLevel = 0;
+    viewCI.subresourceRange.levelCount = 1;
+    viewCI.subresourceRange.baseArrayLayer = 0;
+    viewCI.subresourceRange.layerCount = 1;
+
+    if (dev->table.vkCreateImageView(m_device, &viewCI, nullptr, &m_downsampledDepthView) != VK_SUCCESS) {
+        Logger::error("UpscalerManager: Failed to create view for downsampled depth image");
+        return false;
+    }
+    ImageTracker::Get().TrackImageView(m_downsampledDepthView, m_downsampledDepthImage);
+
+    if (m_downsampleDescriptorSet == VK_NULL_HANDLE) {
+        VkDescriptorSetAllocateInfo allocInfoDS = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+        allocInfoDS.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocInfoDS.descriptorPool = m_downsampleDescriptorPool;
+        allocInfoDS.descriptorSetCount = 1;
+        allocInfoDS.pSetLayouts = &m_downsampleSetLayout;
+
+        if (dev->table.vkAllocateDescriptorSets(m_device, &allocInfoDS, &m_downsampleDescriptorSet) != VK_SUCCESS) {
+            Logger::error("UpscalerManager: Failed to allocate downsample descriptor set");
+            return false;
+        }
+    }
+
+    Logger::info("UpscalerManager: Created downsampled depth target image at " + std::to_string(w) + "x" + std::to_string(h));
+    return true;
+}
+
+void UpscalerManager::PerformDepthDownsamplingVK(VkCommandBuffer cmd, VkImage srcDepth, VkImageView srcView, VkFormat srcFormat, uint32_t srcW, uint32_t srcH) {
+    if (m_device == VK_NULL_HANDLE) return;
+    auto* dev = DispatchManager::Get().GetDevice(m_device);
+    if (!dev) return;
+
+    if (!CreateDownsampleTarget(m_renderWidth, m_renderHeight)) {
+        return;
+    }
+
+    auto transitionLayout = [&](VkImage img, VkImageLayout oldLayout, VkImageLayout newLayout, VkImageAspectFlags aspect) {
+        VkImageMemoryBarrier barrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        barrier.oldLayout = oldLayout;
+        barrier.newLayout = newLayout;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.image = img;
+        barrier.subresourceRange.aspectMask = aspect;
+        barrier.subresourceRange.baseMipLevel = 0;
+        barrier.subresourceRange.levelCount = 1;
+        barrier.subresourceRange.baseArrayLayer = 0;
+        barrier.subresourceRange.layerCount = 1;
+
+        VkPipelineStageFlags srcStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+        VkPipelineStageFlags dstStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+        barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
+
+        dev->table.vkCmdPipelineBarrier(cmd, srcStage, dstStage, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+    };
+
+    transitionLayout(srcDepth, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT);
+    transitionLayout(m_downsampledDepthImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT);
+
+    VkDescriptorImageInfo inputInfo = {};
+    inputInfo.sampler = m_downsampleSampler;
+    inputInfo.imageView = srcView;
+    inputInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+    VkDescriptorImageInfo outputInfo = {};
+    outputInfo.sampler = VK_NULL_HANDLE;
+    outputInfo.imageView = m_downsampledDepthView;
+    outputInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+
+    VkWriteDescriptorSet writes[2] = {};
+    writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[0].dstSet = m_downsampleDescriptorSet;
+    writes[0].dstBinding = 0;
+    writes[0].descriptorCount = 1;
+    writes[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    writes[0].pImageInfo = &inputInfo;
+
+    writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[1].dstSet = m_downsampleDescriptorSet;
+    writes[1].dstBinding = 1;
+    writes[1].descriptorCount = 1;
+    writes[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    writes[1].pImageInfo = &outputInfo;
+
+    dev->table.vkUpdateDescriptorSets(m_device, 2, writes, 0, nullptr);
+
+    dev->table.vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, m_downsamplePipeline);
+    dev->table.vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, m_downsamplePipelineLayout, 0, 1, &m_downsampleDescriptorSet, 0, nullptr);
+
+    uint32_t groupX = (m_renderWidth + 7) / 8;
+    uint32_t groupY = (m_renderHeight + 7) / 8;
+    dev->table.vkCmdDispatch(cmd, groupX, groupY, 1);
+
+    transitionLayout(srcDepth, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT);
+    transitionLayout(m_downsampledDepthImage, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT);
+}
+#endif
 
 } // namespace GamePlug

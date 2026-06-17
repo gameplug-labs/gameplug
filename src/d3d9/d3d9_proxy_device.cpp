@@ -163,61 +163,7 @@ void ProxyDirect3DDevice9::UpdateJitterAndFrameIndex() {
 }
 
 void ProxyDirect3DDevice9::PerformDepthDownsampling() {
-    if (!m_isUpscaling) return;
-
-    IDirect3DSurface9* pCurrentDS = nullptr;
-    if (SUCCEEDED(m_pReal->GetDepthStencilSurface(&pCurrentDS))) {
-        if (pCurrentDS) {
-            auto it = m_depthSurfaceToTextureMap.find(pCurrentDS);
-            if (it != m_depthSurfaceToTextureMap.end()) {
-                IDirect3DTexture9* pSrcTex = it->second;
-                
-                D3DSURFACE_DESC srcDesc;
-                pCurrentDS->GetDesc(&srcDesc);
-
-                uint32_t targetW = m_renderW;
-                uint32_t targetH = m_renderH;
-
-                if (srcDesc.Width != targetW || srcDesc.Height != targetH) {
-                    D3DSURFACE_DESC dstDesc = {};
-                    if (m_downsampledDepthTexINTZ) {
-                        m_downsampledDepthTexINTZ->GetLevelDesc(0, &dstDesc);
-                    }
-
-                    if (!m_downsampledDepthTexINTZ || dstDesc.Width != targetW || dstDesc.Height != targetH) {
-                        if (m_downsampledDepthTexINTZ) {
-                            m_downsampledDepthTexINTZ->Release();
-                            m_downsampledDepthTexINTZ = nullptr;
-                        }
-                        D3DFORMAT intzFormat = (D3DFORMAT)MAKEFOURCC('I','N','T','Z');
-                        HRESULT hr = m_pReal->CreateTexture(targetW, targetH, 1, D3DUSAGE_DEPTHSTENCIL, intzFormat, D3DPOOL_DEFAULT, &m_downsampledDepthTexINTZ, nullptr);
-                        if (SUCCEEDED(hr)) {
-                            Logger::info("PerformDepthDownsampling: Recreated downsampled INTZ depth texture ({}x{})", targetW, targetH);
-                        } else {
-                            Logger::error("PerformDepthDownsampling: Failed to create downsampled INTZ depth texture");
-                        }
-                    }
-
-                    if (m_downsampledDepthTexINTZ) {
-                        IDirect3DSurface9* pSrcSurf = pCurrentDS;
-                        IDirect3DSurface9* pDstSurf = nullptr;
-                        m_downsampledDepthTexINTZ->GetSurfaceLevel(0, &pDstSurf);
-                        if (pDstSurf) {
-                            HRESULT hr = m_pReal->StretchRect(pSrcSurf, NULL, pDstSurf, NULL, D3DTEXF_POINT);
-                            if (FAILED(hr)) {
-                                static uint32_t errCount = 0;
-                                if (errCount++ % 100 == 0) {
-                                    Logger::warn("PerformDepthDownsampling: StretchRect failed with hr={:08X}", (uint32_t)hr);
-                                }
-                            }
-                            pDstSurf->Release();
-                        }
-                    }
-                }
-            }
-            pCurrentDS->Release();
-        }
-    }
+    // Removed to allow Vulkan-side downsampling
 }
 
 ProxyDirect3DDevice9::ProxyDirect3DDevice9(
@@ -515,7 +461,6 @@ STDMETHODIMP ProxyDirect3DDevice9::Reset(D3DPRESENT_PARAMETERS* pPP) {
 STDMETHODIMP ProxyDirect3DDevice9::Present(CONST RECT* pSR, CONST RECT* pDR, HWND hW, CONST RGNDATA* pR) {
     UpdateScaledResolution();
     UpdateJitterAndFrameIndex();
-    PerformDepthDownsampling();
     OverlayRenderer::Get().NewFrame();
     IDirect3DSurface9* pRBB = nullptr;
     if (SUCCEEDED(m_pReal->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &pRBB))) {
@@ -614,20 +559,6 @@ STDMETHODIMP ProxyDirect3DDevice9::CreateRenderTarget(
 
 STDMETHODIMP ProxyDirect3DDevice9::CreateDepthStencilSurface(
     UINT W, UINT H, D3DFORMAT F, D3DMULTISAMPLE_TYPE M, DWORD MQ, BOOL D, IDirect3DSurface9** ppS, HANDLE* pS2) {
-    IDirect3DTexture9* pTex = nullptr;
-    D3DFORMAT intzFormat = (D3DFORMAT)MAKEFOURCC('I','N','T','Z');
-    HRESULT hr = m_pReal->CreateTexture(W, H, 1, D3DUSAGE_DEPTHSTENCIL, intzFormat, D3DPOOL_DEFAULT, &pTex, pS2);
-    if (SUCCEEDED(hr)) {
-        hr = pTex->GetSurfaceLevel(0, ppS);
-        if (SUCCEEDED(hr)) {
-            m_depthSurfaceToTextureMap[*ppS] = pTex;
-            Logger::info("CreateDepthStencilSurface: Intercepted and created INTZ texture depth buffer ({}x{})", W, H);
-            return S_OK;
-        } else {
-            pTex->Release();
-        }
-    }
-    Logger::warn("CreateDepthStencilSurface: INTZ texture creation failed, falling back to original");
     return m_pReal->CreateDepthStencilSurface(W, H, F, M, MQ, D, ppS, pS2);
 }
 
@@ -1315,7 +1246,6 @@ STDMETHODIMP ProxyDirect3DDevice9::ComposeRects(IDirect3DSurface9* pS, IDirect3D
 STDMETHODIMP ProxyDirect3DDevice9::PresentEx(CONST RECT* pSR, CONST RECT* pDR, HWND hW, CONST RGNDATA* pR, DWORD F) {
     UpdateScaledResolution();
     UpdateJitterAndFrameIndex();
-    PerformDepthDownsampling();
     OverlayRenderer::Get().NewFrame();
     IDirect3DSurface9* pRBB = nullptr;
     if (SUCCEEDED(m_pReal->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &pRBB))) {
@@ -1409,21 +1339,6 @@ STDMETHODIMP ProxyDirect3DDevice9::CreateDepthStencilSurfaceEx(
     UINT W, UINT H, D3DFORMAT F, D3DMULTISAMPLE_TYPE M, DWORD MQ, BOOL D, IDirect3DSurface9** ppS, HANDLE* pS2, DWORD U) {
     if (!m_pRealEx)
         return E_NOTIMPL;
-
-    IDirect3DTexture9* pTex = nullptr;
-    D3DFORMAT intzFormat = (D3DFORMAT)MAKEFOURCC('I','N','T','Z');
-    HRESULT hr = m_pReal->CreateTexture(W, H, 1, D3DUSAGE_DEPTHSTENCIL, intzFormat, D3DPOOL_DEFAULT, &pTex, pS2);
-    if (SUCCEEDED(hr)) {
-        hr = pTex->GetSurfaceLevel(0, ppS);
-        if (SUCCEEDED(hr)) {
-            m_depthSurfaceToTextureMap[*ppS] = pTex;
-            Logger::info("CreateDepthStencilSurfaceEx: Intercepted and created INTZ texture depth bufferEx ({}x{})", W, H);
-            return S_OK;
-        } else {
-            pTex->Release();
-        }
-    }
-    Logger::warn("CreateDepthStencilSurfaceEx: INTZ texture creation failed, falling back to originalEx");
     return m_pRealEx->CreateDepthStencilSurfaceEx(W, H, F, M, MQ, D, ppS, pS2, U);
 }
 

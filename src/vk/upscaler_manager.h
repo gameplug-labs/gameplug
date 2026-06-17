@@ -52,6 +52,7 @@ private:
     VkInstance m_instance = VK_NULL_HANDLE;
     VkPhysicalDevice m_physDevice = VK_NULL_HANDLE;
     VkDevice m_device = VK_NULL_HANDLE;
+    VkPhysicalDeviceMemoryProperties m_memProps = {};
 
     // Phase 6 Visual Debugging
     bool m_showDepthDebug = false;
@@ -60,6 +61,27 @@ private:
     VkImageView m_lastMVView = VK_NULL_HANDLE;
     VkDescriptorSet m_depthDebugSet = VK_NULL_HANDLE;
     VkDescriptorSet m_mvDebugSet = VK_NULL_HANDLE;
+
+    // Downsample Compute Pipeline
+    VkShaderModule m_downsampleShader = VK_NULL_HANDLE;
+    VkDescriptorSetLayout m_downsampleSetLayout = VK_NULL_HANDLE;
+    VkPipelineLayout m_downsamplePipelineLayout = VK_NULL_HANDLE;
+    VkPipeline m_downsamplePipeline = VK_NULL_HANDLE;
+    VkDescriptorPool m_downsampleDescriptorPool = VK_NULL_HANDLE;
+    VkDescriptorSet m_downsampleDescriptorSet = VK_NULL_HANDLE;
+    VkSampler m_downsampleSampler = VK_NULL_HANDLE;
+
+    VkImage m_downsampledDepthImage = VK_NULL_HANDLE;
+    VkDeviceMemory m_downsampledDepthMemory = VK_NULL_HANDLE;
+    VkImageView m_downsampledDepthView = VK_NULL_HANDLE;
+
+    uint32_t m_downsampleW = 0;
+    uint32_t m_downsampleH = 0;
+
+    void InitDownsampleResources();
+    void CleanupDownsampleResources();
+    bool CreateDownsampleTarget(uint32_t w, uint32_t h);
+    void PerformDepthDownsamplingVK(VkCommandBuffer cmd, VkImage srcDepth, VkImageView srcView, VkFormat srcFormat, uint32_t srcW, uint32_t srcH);
 #else
     uintptr_t m_instance = 0;
     uintptr_t m_physDevice = 0;

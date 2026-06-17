@@ -840,7 +840,7 @@ void UpscalerManager::PerformDepthDownsamplingVK(VkCommandBuffer cmd, VkImage sr
     dev->table.vkCmdDispatch(cmd, groupX, groupY, 1);
 
     transitionLayout(srcDepth, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT);
-    transitionLayout(m_downsampledDepthImage, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT);
+    transitionLayout(m_downsampledDepthImage, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT);
 }
 #endif
 

@@ -41,15 +41,7 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateImage(
     if (result == VK_SUCCESS) {
         GamePlug::ImageTracker::Get().TrackImage(*pImage, pCreateInfo);
 
-        uint32_t rw = GamePlug::UpscalerManager::Get().GetRenderWidth();
-        uint32_t rh = GamePlug::UpscalerManager::Get().GetRenderHeight();
-        
-        bool isFakeBackBuffer = false;
-        if (pCreateInfo->extent.width == rw && pCreateInfo->extent.height == rh && pCreateInfo->format == 44) {
-            isFakeBackBuffer = true;
-        } else if (GamePlug_IsCreatingFakeBackBuffer()) {
-            isFakeBackBuffer = true;
-        }
+        bool isFakeBackBuffer = GamePlug_IsCreatingFakeBackBuffer();
 
         if (isFakeBackBuffer) {
             GamePlug::Logger::info("GamePlug_CreateImage: Tracked fake backbuffer image {:p}, Size: {}x{}x{}, Format: {}", (void*)*pImage,

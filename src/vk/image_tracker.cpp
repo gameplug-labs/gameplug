@@ -46,6 +46,11 @@ void ImageTracker::TrackImage(VkImage image, const VkImageCreateInfo* pCreateInf
         // Minimum size filter
         if (pCreateInfo->extent.width < 320 || pCreateInfo->extent.height < 200)
             score = -100.0f;
+        // Strongly prefer depth images that can be sampled in shaders.
+        // Use a large bonus so samplable images always beat non-samplable ones
+        // regardless of which was registered first.
+        if (pCreateInfo->usage & VK_IMAGE_USAGE_SAMPLED_BIT)
+            score += 1500000.0f;
 
         uint64_t resKey = GetResKey(pCreateInfo->extent.width, pCreateInfo->extent.height);
         if (score >= m_bestDepthScorePerRes[resKey] && score > 0) {
@@ -380,7 +385,61 @@ VkImage ImageTracker::GetColorAttachment(VkFramebuffer fb, uint32_t renderW, uin
             }
         }
     }
-    return VK_NULL_HANDLE;
+        return VK_NULL_HANDLE;
+}
+
+void ImageTracker::OnBindFramebuffer(VkFramebuffer fb) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    if (m_framebuffers.find(fb) == m_framebuffers.end()) {
+        static std::set<VkFramebuffer> unkFBs;
+        if (unkFBs.find(fb) == unkFBs.end()) {
+            Logger::warn("ImageTracker: OnBindFramebuffer - bound FB " + std::to_string((uintptr_t)fb) + " is not tracked!");
+            unkFBs.insert(fb);
+        }
+        return;
+    }
+
+    for (VkImage img : m_framebuffers[fb]) {
+        if (img == VK_NULL_HANDLE)
+            continue;
+        
+        auto it = m_images.find(img);
+        if (it == m_images.end())
+            continue;
+
+        auto const& info = it->second;
+        if (info.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) {
+            // Basic filtering like in scoring: ignore small buffers / shadow maps
+            if (info.extent.width >= 320 && info.extent.height >= 200 && info.extent.width != info.extent.height) {
+                uint64_t resKey = GetResKey(info.extent.width, info.extent.height);
+                m_bestDepthPerRes[resKey] = img;
+                
+                if (info.extent.width == m_screenWidth && info.extent.height == m_screenHeight) {
+                    if (m_currentDepthBuffer != img) {
+                        Logger::info("ImageTracker: OnBindFramebuffer - depth buffer changed from " +
+                                     std::to_string((uintptr_t)m_currentDepthBuffer) + " to " + std::to_string((uintptr_t)img));
+                        m_currentDepthBuffer = img;
+                    }
+                }
+            }
+        }
+
+        // Also track motion vectors dynamically if we find one
+        bool isMVFormat = (info.format == VK_FORMAT_R16G16_SFLOAT || info.format == VK_FORMAT_R32G32_SFLOAT ||
+                           info.format == VK_FORMAT_R16G16B16A16_SFLOAT || info.format == VK_FORMAT_R16G16_SNORM ||
+                           info.format == VK_FORMAT_R16G16_UNORM || info.format == VK_FORMAT_R8G8_UNORM ||
+                           info.format == VK_FORMAT_R8G8_SNORM);
+        if (isMVFormat && ((info.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) || (info.usage & VK_IMAGE_USAGE_SAMPLED_BIT))) {
+            if (info.extent.width >= 320 && info.extent.height >= 200) {
+                uint64_t resKey = GetResKey(info.extent.width, info.extent.height);
+                m_bestMVPerRes[resKey] = img;
+                
+                if (info.extent.width == m_screenWidth && info.extent.height == m_screenHeight) {
+                    m_currentMVBuffer = img;
+                }
+            }
+        }
+    }
 }
 
 void ImageTracker::SetFakeBackBufferImage(VkImage image) {

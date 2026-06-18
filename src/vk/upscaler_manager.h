@@ -57,10 +57,20 @@ private:
     // Phase 6 Visual Debugging
     bool m_showDepthDebug = false;
     bool m_showMVDebug = false;
+    bool m_depthPreviewGreyscale = false; // false = red, true = greyscale
+    bool m_depthSampledWarnShown = false; // one-time warning when depth lacks SAMPLED_BIT
     VkImageView m_lastDepthView = VK_NULL_HANDLE;
     VkImageView m_lastMVView = VK_NULL_HANDLE;
     VkDescriptorSet m_depthDebugSet = VK_NULL_HANDLE;
     VkDescriptorSet m_mvDebugSet = VK_NULL_HANDLE;
+
+    VkImage m_dbgRawDepthCopyImg = VK_NULL_HANDLE;
+    VkDeviceMemory m_dbgRawDepthCopyMem = VK_NULL_HANDLE;
+    VkImageView m_dbgRawDepthView = VK_NULL_HANDLE;
+    VkDescriptorSet m_dbgRawDepthDS = VK_NULL_HANDLE;
+    uint32_t m_dbgRawDepthW = 0;
+    uint32_t m_dbgRawDepthH = 0;
+    VkFormat m_dbgRawDepthFormat = VK_FORMAT_UNDEFINED;
 
     // Downsample Compute Pipeline
     VkShaderModule m_downsampleShader = VK_NULL_HANDLE;
@@ -74,6 +84,11 @@ private:
     VkImage m_downsampledDepthImage = VK_NULL_HANDLE;
     VkDeviceMemory m_downsampledDepthMemory = VK_NULL_HANDLE;
     VkImageView m_downsampledDepthView = VK_NULL_HANDLE;
+
+    // RGBA8 preview image for ImGui depth visualization (red channel = depth)
+    VkImage m_dbgDepthPreviewImage = VK_NULL_HANDLE;
+    VkDeviceMemory m_dbgDepthPreviewMemory = VK_NULL_HANDLE;
+    VkImageView m_dbgDepthPreviewView = VK_NULL_HANDLE;
 
     uint32_t m_downsampleW = 0;
     uint32_t m_downsampleH = 0;

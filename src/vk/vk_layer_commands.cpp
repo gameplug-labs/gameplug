@@ -111,6 +111,7 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdBeginRenderPass(
 
     if (pRenderPassBegin) {
         g_ActiveFBs[commandBuffer] = pRenderPassBegin->framebuffer;
+        GamePlug::ImageTracker::Get().OnBindFramebuffer(pRenderPassBegin->framebuffer);
 
         static uint32_t logCount = 0;
         if (logCount++ % 500 == 0) {

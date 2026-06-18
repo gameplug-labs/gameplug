@@ -200,6 +200,8 @@ public:
     VkImage GetBestSceneSourceFromFramebuffer(VkFramebuffer fb, uint32_t renderW, uint32_t renderH);
     VkImage GetColorAttachment(VkFramebuffer fb, uint32_t renderW, uint32_t renderH);
 
+    void OnBindFramebuffer(VkFramebuffer fb);
+
     void RegisterSwapchainImage(VkImage image);
     void SetSwapchainFormat(VkFormat format);
     VkFormat GetSwapchainFormat() const;

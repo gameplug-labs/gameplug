@@ -5,10 +5,13 @@
 #include "image_tracker.h"
 #include "overlay.h"
 #include "downsample_comp.h"
+#include <imgui.h>
+#include "backends/imgui_impl_vulkan.h"
 #endif
 #include <algorithm>
 #include <filesystem>
 #include <map>
+#include <sstream>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -37,6 +40,16 @@ void UpscalerLogBridge(GamePlugUpscalerInterface::LogLevel level, const char* me
         break;
     }
 }
+
+#ifdef GAMEPLUG_VULKAN
+static bool FormatHasStencil(VkFormat format) {
+    return format == VK_FORMAT_D16_UNORM_S8_UINT ||
+           format == VK_FORMAT_D24_UNORM_S8_UINT ||
+           format == VK_FORMAT_D32_SFLOAT_S8_UINT ||
+           format == VK_FORMAT_S8_UINT;
+}
+static uint32_t FindMemoryType(VkPhysicalDeviceMemoryProperties* memProps, uint32_t typeFilter, VkMemoryPropertyFlags properties);
+#endif
 
 UpscalerManager::~UpscalerManager() {
     UnloadUpscaler();
@@ -268,6 +281,47 @@ void UpscalerManager::RenderUI(float fps, uint32_t width, uint32_t height) {
             m_pInterface->OnImGuiRender();
         }
 
+#ifdef GAMEPLUG_VULKAN
+        ImGui::Separator();
+        ImGui::Checkbox("Show Full Screen Depth Preview", &m_showDepthDebug);
+        if (m_showDepthDebug) {
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(120.0f);
+            const char* modeLabel = m_depthPreviewGreyscale ? "Greyscale" : "Red";
+            if (ImGui::Button(modeLabel)) {
+                m_depthPreviewGreyscale = !m_depthPreviewGreyscale;
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Toggle depth preview color mode");
+        }
+
+        if (m_showDepthDebug && m_dbgRawDepthDS != VK_NULL_HANDLE) {
+            ImGui::SetNextWindowSize(ImVec2(550, 420), ImGuiCond_FirstUseEver);
+            ImGui::Begin("VK Depth Preview (Real-time)", &m_showDepthDebug, ImGuiWindowFlags_NoScrollbar);
+            
+            ImGui::Text("Resource: %u x %u  [Fmt: %d]  [VkImage 0x%p]", 
+                        m_downsampleW, m_downsampleH, (int)VK_FORMAT_R32_SFLOAT, (void*)m_downsampledDepthImage);
+            
+            float availW = ImGui::GetContentRegionAvail().x;
+            float availH = ImGui::GetContentRegionAvail().y - 30.0f; // leave room for close button
+            if (availW > 0 && availH > 0) {
+                float aspect = (float)m_downsampleH / (float)m_downsampleW;
+                float imgW = availW;
+                float imgH = availW * aspect;
+                if (imgH > availH) {
+                    imgH = availH;
+                    imgW = availH / aspect;
+                }
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (availW - imgW) * 0.5f);
+                ImGui::Image((ImTextureID)(uint64_t)m_dbgRawDepthDS, ImVec2(imgW, imgH));
+            }
+            
+            ImGui::SetCursorPosY(ImGui::GetWindowHeight() - 26.0f);
+            if (ImGui::Button("Close Preview")) m_showDepthDebug = false;
+            ImGui::End();
+        }
+#endif
+
         // Resolution and Performance Info (Single separator)
         // ImGui::Spacing();
         // ImGui::Separator();
@@ -416,40 +470,51 @@ void UpscalerManager::RenderFrame(uintptr_t cmd, uint64_t source, uint64_t targe
     swapchainFormat = (uint32_t)ImageTracker::Get().GetSwapchainFormat();
 
     bool didDownsampleDepth = false;
-    if (depthInfo.image != VK_NULL_HANDLE &&
-        (depthInfo.extent.width != m_renderWidth || depthInfo.extent.height != m_renderHeight) &&
-        m_renderWidth > 0 && m_renderHeight > 0) {
-        
-        VkImageView srcView = VK_NULL_HANDLE;
-        bool createdTempView = false;
-        auto* dev = DispatchManager::Get().GetDevice(m_device);
-        if (dev) {
-            VkImageViewCreateInfo v = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
-            v.image = depthInfo.image;
-            v.viewType = VK_IMAGE_VIEW_TYPE_2D;
-            v.format = depthInfo.format;
-            v.subresourceRange.aspectMask = (depthInfo.format == VK_FORMAT_R32_SFLOAT) ? VK_IMAGE_ASPECT_COLOR_BIT : VK_IMAGE_ASPECT_DEPTH_BIT;
-            v.subresourceRange.levelCount = 1;
-            v.subresourceRange.layerCount = 1;
-            if (dev->table.vkCreateImageView(m_device, &v, nullptr, &srcView) == VK_SUCCESS) {
-                createdTempView = true;
-            }
-        }
-        if (srcView != VK_NULL_HANDLE) {
-            PerformDepthDownsamplingVK(reinterpret_cast<VkCommandBuffer>(cmd),
-                                       depthInfo.image, srcView, depthInfo.format,
-                                       depthInfo.extent.width, depthInfo.extent.height);
-            didDownsampleDepth = true;
-            if (createdTempView) {
-                auto* dev = DispatchManager::Get().GetDevice(m_device);
-                if (dev) {
-                    dev->table.vkDestroyImageView(m_device, srcView, nullptr);
+    if (depthInfo.image != VK_NULL_HANDLE && m_renderWidth > 0 && m_renderHeight > 0) {
+        bool needDownsample = (depthInfo.extent.width != m_renderWidth || depthInfo.extent.height != m_renderHeight);
+        if (needDownsample || m_showDepthDebug) {
+            // Guard: skip compute downsample if the source image is not shader-samplable.
+            // Sampling a non-SAMPLED image in a compute shader returns 0 (black).
+            if (!(depthInfo.usage & VK_IMAGE_USAGE_SAMPLED_BIT)) {
+                if (!m_depthSampledWarnShown) {
+                    m_depthSampledWarnShown = true;
+                    Logger::warn("UpscalerManager: Depth image lacks SAMPLED_BIT (usage=0x" +
+                                 std::to_string(depthInfo.usage) +
+                                 "). Compute downsample skipped.");
+                }
+            } else {
+            VkImageView srcView = VK_NULL_HANDLE;
+            bool createdTempView = false;
+            auto* dev = DispatchManager::Get().GetDevice(m_device);
+            if (dev) {
+                VkImageViewCreateInfo v = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+                v.image = depthInfo.image;
+                v.viewType = VK_IMAGE_VIEW_TYPE_2D;
+                v.format = depthInfo.format;
+                v.subresourceRange.aspectMask = (depthInfo.format == VK_FORMAT_R32_SFLOAT) ? VK_IMAGE_ASPECT_COLOR_BIT : VK_IMAGE_ASPECT_DEPTH_BIT;
+                v.subresourceRange.levelCount = 1;
+                v.subresourceRange.layerCount = 1;
+                if (dev->table.vkCreateImageView(m_device, &v, nullptr, &srcView) == VK_SUCCESS) {
+                    createdTempView = true;
                 }
             }
+            if (srcView != VK_NULL_HANDLE) {
+                PerformDepthDownsamplingVK(reinterpret_cast<VkCommandBuffer>(cmd),
+                                           depthInfo.image, srcView, depthInfo.format,
+                                           depthInfo.extent.width, depthInfo.extent.height);
+                didDownsampleDepth = true;
+                if (createdTempView) {
+                    auto* dev = DispatchManager::Get().GetDevice(m_device);
+                    if (dev) {
+                        dev->table.vkDestroyImageView(m_device, srcView, nullptr);
+                    }
+                }
+            }
+            } // end SAMPLED_BIT guard
         }
     }
 
-    if (didDownsampleDepth) {
+    if (didDownsampleDepth && (depthInfo.extent.width != m_renderWidth || depthInfo.extent.height != m_renderHeight)) {
         depthImage = (uint64_t)m_downsampledDepthImage;
         depthFormat = (uint32_t)VK_FORMAT_R32_SFLOAT;
     } else {
@@ -464,6 +529,8 @@ void UpscalerManager::RenderFrame(uintptr_t cmd, uint64_t source, uint64_t targe
                      ", fmt=" + std::to_string(depthFormat) + "), mv=" + std::to_string((uintptr_t)mvInfo.image) +
                      " (fmt=" + std::to_string(mvInfo.format) + ")");
     }
+
+
 #endif
 
     bool invertedDepth = false;
@@ -567,7 +634,7 @@ void UpscalerManager::InitDownsampleResources() {
     }
 
     // 2. Create Descriptor Set Layout
-    VkDescriptorSetLayoutBinding bindings[2] = {};
+    VkDescriptorSetLayoutBinding bindings[3] = {};
     bindings[0].binding = 0;
     bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     bindings[0].descriptorCount = 1;
@@ -578,8 +645,14 @@ void UpscalerManager::InitDownsampleResources() {
     bindings[1].descriptorCount = 1;
     bindings[1].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
+    // Binding 2: RGBA8 debug preview image (red = depth, for ImGui display)
+    bindings[2].binding = 2;
+    bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    bindings[2].descriptorCount = 1;
+    bindings[2].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
     VkDescriptorSetLayoutCreateInfo layoutCI = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
-    layoutCI.bindingCount = 2;
+    layoutCI.bindingCount = 3;
     layoutCI.pBindings = bindings;
 
     if (dev->table.vkCreateDescriptorSetLayout(m_device, &layoutCI, nullptr, &m_downsampleSetLayout) != VK_SUCCESS) {
@@ -587,10 +660,17 @@ void UpscalerManager::InitDownsampleResources() {
         return;
     }
 
-    // 3. Create Pipeline Layout
+    // 3. Create Pipeline Layout (with push constant for mode: 0=red, 1=greyscale)
+    VkPushConstantRange pcRange = {};
+    pcRange.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    pcRange.offset = 0;
+    pcRange.size = sizeof(uint32_t);
+
     VkPipelineLayoutCreateInfo pipelineLayoutCI = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
     pipelineLayoutCI.setLayoutCount = 1;
     pipelineLayoutCI.pSetLayouts = &m_downsampleSetLayout;
+    pipelineLayoutCI.pushConstantRangeCount = 1;
+    pipelineLayoutCI.pPushConstantRanges = &pcRange;
 
     if (dev->table.vkCreatePipelineLayout(m_device, &pipelineLayoutCI, nullptr, &m_downsamplePipelineLayout) != VK_SUCCESS) {
         Logger::error("UpscalerManager: Failed to create downsample pipeline layout");
@@ -615,7 +695,7 @@ void UpscalerManager::InitDownsampleResources() {
     poolSizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     poolSizes[0].descriptorCount = 16;
     poolSizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    poolSizes[1].descriptorCount = 16;
+    poolSizes[1].descriptorCount = 32; // 2 storage slots per set
 
     VkDescriptorPoolCreateInfo poolCI = { VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
     poolCI.maxSets = 16;
@@ -689,6 +769,38 @@ void UpscalerManager::CleanupDownsampleResources() {
         dev->table.vkFreeMemory(m_device, m_downsampledDepthMemory, nullptr);
         m_downsampledDepthMemory = VK_NULL_HANDLE;
     }
+    // Destroy RGBA8 debug preview image
+    if (m_dbgDepthPreviewView != VK_NULL_HANDLE) {
+        dev->table.vkDestroyImageView(m_device, m_dbgDepthPreviewView, nullptr);
+        m_dbgDepthPreviewView = VK_NULL_HANDLE;
+    }
+    if (m_dbgDepthPreviewImage != VK_NULL_HANDLE) {
+        dev->table.vkDestroyImage(m_device, m_dbgDepthPreviewImage, nullptr);
+        m_dbgDepthPreviewImage = VK_NULL_HANDLE;
+    }
+    if (m_dbgDepthPreviewMemory != VK_NULL_HANDLE) {
+        dev->table.vkFreeMemory(m_device, m_dbgDepthPreviewMemory, nullptr);
+        m_dbgDepthPreviewMemory = VK_NULL_HANDLE;
+    }
+    if (m_dbgRawDepthDS != VK_NULL_HANDLE) {
+        ImGui_ImplVulkan_RemoveTexture(m_dbgRawDepthDS);
+        m_dbgRawDepthDS = VK_NULL_HANDLE;
+    }
+    if (m_dbgRawDepthView != VK_NULL_HANDLE) {
+        ImageTracker::Get().UntrackImageView(m_dbgRawDepthView);
+        dev->table.vkDestroyImageView(m_device, m_dbgRawDepthView, nullptr);
+        m_dbgRawDepthView = VK_NULL_HANDLE;
+    }
+    if (m_dbgRawDepthCopyImg != VK_NULL_HANDLE) {
+        ImageTracker::Get().UntrackImage(m_dbgRawDepthCopyImg);
+        dev->table.vkDestroyImage(m_device, m_dbgRawDepthCopyImg, nullptr);
+        m_dbgRawDepthCopyImg = VK_NULL_HANDLE;
+    }
+    if (m_dbgRawDepthCopyMem != VK_NULL_HANDLE) {
+        dev->table.vkFreeMemory(m_device, m_dbgRawDepthCopyMem, nullptr);
+        m_dbgRawDepthCopyMem = VK_NULL_HANDLE;
+    }
+    m_dbgRawDepthDS = VK_NULL_HANDLE;
     m_downsampleDescriptorSet = VK_NULL_HANDLE;
     m_downsampleW = 0;
     m_downsampleH = 0;
@@ -774,6 +886,70 @@ bool UpscalerManager::CreateDownsampleTarget(uint32_t w, uint32_t h) {
     }
     ImageTracker::Get().TrackImageView(m_downsampledDepthView, m_downsampledDepthImage);
 
+    // Create / recreate RGBA8 debug preview image (written by compute shader, displayed by ImGui)
+    if (m_dbgDepthPreviewView != VK_NULL_HANDLE) {
+        dev->table.vkDestroyImageView(m_device, m_dbgDepthPreviewView, nullptr);
+        m_dbgDepthPreviewView = VK_NULL_HANDLE;
+    }
+    if (m_dbgDepthPreviewImage != VK_NULL_HANDLE) {
+        dev->table.vkDestroyImage(m_device, m_dbgDepthPreviewImage, nullptr);
+        m_dbgDepthPreviewImage = VK_NULL_HANDLE;
+    }
+    if (m_dbgDepthPreviewMemory != VK_NULL_HANDLE) {
+        dev->table.vkFreeMemory(m_device, m_dbgDepthPreviewMemory, nullptr);
+        m_dbgDepthPreviewMemory = VK_NULL_HANDLE;
+    }
+
+    {
+        VkImageCreateInfo previewCI = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+        previewCI.imageType = VK_IMAGE_TYPE_2D;
+        previewCI.extent.width = w;
+        previewCI.extent.height = h;
+        previewCI.extent.depth = 1;
+        previewCI.mipLevels = 1;
+        previewCI.arrayLayers = 1;
+        previewCI.format = VK_FORMAT_R8G8B8A8_UNORM;
+        previewCI.tiling = VK_IMAGE_TILING_OPTIMAL;
+        previewCI.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        previewCI.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        previewCI.samples = VK_SAMPLE_COUNT_1_BIT;
+        previewCI.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        if (dev->table.vkCreateImage(m_device, &previewCI, nullptr, &m_dbgDepthPreviewImage) == VK_SUCCESS) {
+            VkMemoryRequirements previewMemReqs;
+            dev->table.vkGetImageMemoryRequirements(m_device, m_dbgDepthPreviewImage, &previewMemReqs);
+            VkMemoryAllocateInfo previewAlloc = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+            previewAlloc.allocationSize = previewMemReqs.size;
+            previewAlloc.memoryTypeIndex = FindMemoryType(&m_memProps, previewMemReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+            if (dev->table.vkAllocateMemory(m_device, &previewAlloc, nullptr, &m_dbgDepthPreviewMemory) == VK_SUCCESS) {
+                dev->table.vkBindImageMemory(m_device, m_dbgDepthPreviewImage, m_dbgDepthPreviewMemory, 0);
+
+                VkImageViewCreateInfo previewViewCI = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+                previewViewCI.image = m_dbgDepthPreviewImage;
+                previewViewCI.viewType = VK_IMAGE_VIEW_TYPE_2D;
+                previewViewCI.format = VK_FORMAT_R8G8B8A8_UNORM;
+                previewViewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                previewViewCI.subresourceRange.baseMipLevel = 0;
+                previewViewCI.subresourceRange.levelCount = 1;
+                previewViewCI.subresourceRange.baseArrayLayer = 0;
+                previewViewCI.subresourceRange.layerCount = 1;
+                dev->table.vkCreateImageView(m_device, &previewViewCI, nullptr, &m_dbgDepthPreviewView);
+            }
+        }
+        if (!m_dbgDepthPreviewView) {
+            Logger::error("UpscalerManager: Failed to create RGBA8 debug preview image");
+        }
+    }
+
+    // Register RGBA8 preview image with ImGui for display (not the raw R32_SFLOAT image)
+    if (m_dbgRawDepthDS != VK_NULL_HANDLE) {
+        ImGui_ImplVulkan_RemoveTexture(m_dbgRawDepthDS);
+        m_dbgRawDepthDS = VK_NULL_HANDLE;
+    }
+    if (m_dbgDepthPreviewView != VK_NULL_HANDLE) {
+        m_dbgRawDepthDS = ImGui_ImplVulkan_AddTexture(m_downsampleSampler, m_dbgDepthPreviewView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    }
+
     if (m_downsampleDescriptorSet == VK_NULL_HANDLE) {
         VkDescriptorSetAllocateInfo allocInfoDS = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
         allocInfoDS.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -822,7 +998,9 @@ void UpscalerManager::PerformDepthDownsamplingVK(VkCommandBuffer cmd, VkImage sr
         dev->table.vkCmdPipelineBarrier(cmd, srcStage, dstStage, 0, 0, nullptr, 0, nullptr, 1, &barrier);
     };
 
-    transitionLayout(srcDepth, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT);
+    VkImageAspectFlags srcAspect = (srcFormat == VK_FORMAT_R32_SFLOAT) ? VK_IMAGE_ASPECT_COLOR_BIT : (VK_IMAGE_ASPECT_DEPTH_BIT | (FormatHasStencil(srcFormat) ? VK_IMAGE_ASPECT_STENCIL_BIT : 0));
+    VkImageLayout srcLayout = (srcFormat == VK_FORMAT_R32_SFLOAT) ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    transitionLayout(srcDepth, srcLayout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, srcAspect);
     transitionLayout(m_downsampledDepthImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT);
 
     VkDescriptorImageInfo inputInfo = {};
@@ -835,7 +1013,13 @@ void UpscalerManager::PerformDepthDownsamplingVK(VkCommandBuffer cmd, VkImage sr
     outputInfo.imageView = m_downsampledDepthView;
     outputInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
 
-    VkWriteDescriptorSet writes[2] = {};
+    VkDescriptorImageInfo debugInfo = {};
+    debugInfo.sampler = VK_NULL_HANDLE;
+    debugInfo.imageView = m_dbgDepthPreviewView;
+    debugInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+
+    uint32_t writeCount = (m_dbgDepthPreviewView != VK_NULL_HANDLE) ? 3 : 2;
+    VkWriteDescriptorSet writes[3] = {};
     writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     writes[0].dstSet = m_downsampleDescriptorSet;
     writes[0].dstBinding = 0;
@@ -850,17 +1034,37 @@ void UpscalerManager::PerformDepthDownsamplingVK(VkCommandBuffer cmd, VkImage sr
     writes[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
     writes[1].pImageInfo = &outputInfo;
 
-    dev->table.vkUpdateDescriptorSets(m_device, 2, writes, 0, nullptr);
+    writes[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[2].dstSet = m_downsampleDescriptorSet;
+    writes[2].dstBinding = 2;
+    writes[2].descriptorCount = 1;
+    writes[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    writes[2].pImageInfo = &debugInfo;
+
+    dev->table.vkUpdateDescriptorSets(m_device, writeCount, writes, 0, nullptr);
+
+    // Transition the debug preview image to GENERAL for compute write
+    if (m_dbgDepthPreviewImage != VK_NULL_HANDLE) {
+        transitionLayout(m_dbgDepthPreviewImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT);
+    }
 
     dev->table.vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, m_downsamplePipeline);
     dev->table.vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, m_downsamplePipelineLayout, 0, 1, &m_downsampleDescriptorSet, 0, nullptr);
+
+    // Push mode constant: 0 = red, 1 = greyscale
+    uint32_t depthMode = m_depthPreviewGreyscale ? 1u : 0u;
+    dev->table.vkCmdPushConstants(cmd, m_downsamplePipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(uint32_t), &depthMode);
 
     uint32_t groupX = (m_renderWidth + 7) / 8;
     uint32_t groupY = (m_renderHeight + 7) / 8;
     dev->table.vkCmdDispatch(cmd, groupX, groupY, 1);
 
-    transitionLayout(srcDepth, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT);
+    transitionLayout(srcDepth, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, srcLayout, srcAspect);
     transitionLayout(m_downsampledDepthImage, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT);
+    // Transition debug preview to SHADER_READ_ONLY so ImGui can sample it
+    if (m_dbgDepthPreviewImage != VK_NULL_HANDLE) {
+        transitionLayout(m_dbgDepthPreviewImage, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT);
+    }
 }
 #endif
 

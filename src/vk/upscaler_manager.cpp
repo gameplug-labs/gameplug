@@ -282,44 +282,44 @@ void UpscalerManager::RenderUI(float fps, uint32_t width, uint32_t height) {
         }
 
 #ifdef GAMEPLUG_VULKAN
-        ImGui::Separator();
-        ImGui::Checkbox("Show Full Screen Depth Preview", &m_showDepthDebug);
-        if (m_showDepthDebug) {
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(120.0f);
-            const char* modeLabel = m_depthPreviewGreyscale ? "Greyscale" : "Red";
-            if (ImGui::Button(modeLabel)) {
-                m_depthPreviewGreyscale = !m_depthPreviewGreyscale;
-            }
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("Toggle depth preview color mode");
-        }
+        // ImGui::Separator();
+        // ImGui::Checkbox("Show Full Screen Depth Preview", &m_showDepthDebug);
+        // if (m_showDepthDebug) {
+        //     ImGui::SameLine();
+        //     ImGui::SetNextItemWidth(120.0f);
+        //     const char* modeLabel = m_depthPreviewGreyscale ? "Greyscale" : "Red";
+        //     if (ImGui::Button(modeLabel)) {
+        //         m_depthPreviewGreyscale = !m_depthPreviewGreyscale;
+        //     }
+        //     if (ImGui::IsItemHovered())
+        //         ImGui::SetTooltip("Toggle depth preview color mode");
+        // }
 
-        if (m_showDepthDebug && m_dbgRawDepthDS != VK_NULL_HANDLE) {
-            ImGui::SetNextWindowSize(ImVec2(550, 420), ImGuiCond_FirstUseEver);
-            ImGui::Begin("VK Depth Preview (Real-time)", &m_showDepthDebug, ImGuiWindowFlags_NoScrollbar);
+        // if (m_showDepthDebug && m_dbgRawDepthDS != VK_NULL_HANDLE) {
+        //     ImGui::SetNextWindowSize(ImVec2(550, 420), ImGuiCond_FirstUseEver);
+        //     ImGui::Begin("VK Depth Preview (Real-time)", &m_showDepthDebug, ImGuiWindowFlags_NoScrollbar);
             
-            ImGui::Text("Resource: %u x %u  [Fmt: %d]  [VkImage 0x%p]", 
-                        m_downsampleW, m_downsampleH, (int)VK_FORMAT_R32_SFLOAT, (void*)m_downsampledDepthImage);
+        //     ImGui::Text("Resource: %u x %u  [Fmt: %d]  [VkImage 0x%p]", 
+        //                 m_downsampleW, m_downsampleH, (int)VK_FORMAT_R32_SFLOAT, (void*)m_downsampledDepthImage);
             
-            float availW = ImGui::GetContentRegionAvail().x;
-            float availH = ImGui::GetContentRegionAvail().y - 30.0f; // leave room for close button
-            if (availW > 0 && availH > 0) {
-                float aspect = (float)m_downsampleH / (float)m_downsampleW;
-                float imgW = availW;
-                float imgH = availW * aspect;
-                if (imgH > availH) {
-                    imgH = availH;
-                    imgW = availH / aspect;
-                }
-                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (availW - imgW) * 0.5f);
-                ImGui::Image((ImTextureID)(uint64_t)m_dbgRawDepthDS, ImVec2(imgW, imgH));
-            }
+        //     float availW = ImGui::GetContentRegionAvail().x;
+        //     float availH = ImGui::GetContentRegionAvail().y - 30.0f; // leave room for close button
+        //     if (availW > 0 && availH > 0) {
+        //         float aspect = (float)m_downsampleH / (float)m_downsampleW;
+        //         float imgW = availW;
+        //         float imgH = availW * aspect;
+        //         if (imgH > availH) {
+        //             imgH = availH;
+        //             imgW = availH / aspect;
+        //         }
+        //         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (availW - imgW) * 0.5f);
+        //         ImGui::Image((ImTextureID)(uint64_t)m_dbgRawDepthDS, ImVec2(imgW, imgH));
+        //     }
             
-            ImGui::SetCursorPosY(ImGui::GetWindowHeight() - 26.0f);
-            if (ImGui::Button("Close Preview")) m_showDepthDebug = false;
-            ImGui::End();
-        }
+        //     ImGui::SetCursorPosY(ImGui::GetWindowHeight() - 26.0f);
+        //     if (ImGui::Button("Close Preview")) m_showDepthDebug = false;
+        //     ImGui::End();
+        // }
 #endif
 
         // Resolution and Performance Info (Single separator)

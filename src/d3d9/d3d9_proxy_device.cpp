@@ -6,7 +6,10 @@
 #include "texture_replacer.h"
 #include "upscaler_interface.h"
 #include "upscaler_manager.h"
+#include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <string>
 #include <vector>
 
 static bool IsValidProjectionMatrix(const float* m, float& outFovY, float& outNear, float& outFar, bool& outInverted);
@@ -23,6 +26,10 @@ static GamePlugSharedFrameData g_SharedFrameData = {
     false                // hdr
 };
 
+static bool g_MetersFactorSet = false;
+static bool g_DetectedHDR = false;
+static int g_HDRConfidence = 0;
+
 static float Halton(uint32_t index, uint32_t base) {
     float f = 1.0f;
     float r = 0.0f;
@@ -32,6 +39,59 @@ static float Halton(uint32_t index, uint32_t base) {
         index /= base;
     }
     return r;
+}
+
+static bool IsHDRFormat(D3DFORMAT format) {
+    switch (format) {
+    case D3DFMT_A16B16G16R16F:
+    case D3DFMT_A32B32G32R32F:
+    case D3DFMT_A2R10G10B10:
+    case D3DFMT_A2B10G10R10:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static void UpdateSharedMetersFactor() {
+    if (g_MetersFactorSet)
+        return;
+
+    float factor = 1.0f;
+    char exePath[MAX_PATH] = {};
+    GetModuleFileNameA(NULL, exePath, MAX_PATH);
+    std::string exeName = exePath;
+    size_t slash = exeName.find_last_of("\\/");
+    if (slash != std::string::npos)
+        exeName = exeName.substr(slash + 1);
+    std::transform(exeName.begin(), exeName.end(), exeName.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+
+    if (exeName.find("skyrim") != std::string::npos || exeName.find("tesv") != std::string::npos ||
+        exeName.find("fallout4") != std::string::npos) {
+        factor = 1.0f / 70.0f;
+        Logger::info("D3D9 SharedData: Detected Skyrim/Fallout engine. Setting Meters Factor to {}", factor);
+    } else {
+        Logger::info("D3D9 SharedData: Defaulting Meters Factor to {}", factor);
+    }
+
+    g_SharedFrameData.viewSpaceToMetersFactor = factor;
+    g_MetersFactorSet = true;
+}
+
+static void UpdateSharedHDR(bool isHDR) {
+    if (isHDR == g_DetectedHDR) {
+        if (g_HDRConfidence < 10) {
+            g_HDRConfidence++;
+            if (g_HDRConfidence == 10) {
+                Logger::info("D3D9 SharedData: HDR state stabilized to {}", isHDR ? "true" : "false");
+            }
+        }
+    } else {
+        g_DetectedHDR = isHDR;
+        g_HDRConfidence = 1;
+    }
+
+    g_SharedFrameData.hdr = g_DetectedHDR;
 }
 
 extern "C" {
@@ -156,12 +216,12 @@ void ProxyDirect3DDevice9::UpdateScaledResolution() {
 }
 
 void ProxyDirect3DDevice9::UpdateJitterAndFrameIndex() {
+    UpdateSharedMetersFactor();
     g_SharedFrameData.frameIndex++;
     uint32_t idx = (g_SharedFrameData.frameIndex % 128) + 1;
     g_SharedFrameData.jitterX = Halton(idx, 2) - 0.5f;
     g_SharedFrameData.jitterY = Halton(idx, 3) - 0.5f;
     g_SharedFrameData.invertedDepth = false;
-    g_SharedFrameData.hdr = false;
 }
 
 void ProxyDirect3DDevice9::PerformDepthDownsampling() {
@@ -225,7 +285,8 @@ ProxyDirect3DDevice9::~ProxyDirect3DDevice9() {
     if (m_pFakeBackBufferTex)
         m_pFakeBackBufferTex->Release();
     for (auto const& [surf, tex] : m_depthSurfaceToTextureMap) {
-        if (tex) tex->Release();
+        if (tex)
+            tex->Release();
     }
     m_depthSurfaceToTextureMap.clear();
     if (m_downsampledDepthTexINTZ) {
@@ -362,7 +423,8 @@ STDMETHODIMP ProxyDirect3DDevice9::Reset(D3DPRESENT_PARAMETERS* pPP) {
     m_pReal->SetIndices(nullptr);
 
     for (auto const& [surf, tex] : m_depthSurfaceToTextureMap) {
-        if (tex) tex->Release();
+        if (tex)
+            tex->Release();
     }
     m_depthSurfaceToTextureMap.clear();
     if (m_downsampledDepthTexINTZ) {
@@ -422,6 +484,8 @@ STDMETHODIMP ProxyDirect3DDevice9::Reset(D3DPRESENT_PARAMETERS* pPP) {
     Logger::info("Reset: Game requested {}x{}, Proxy created device at {}x{}, Game sees {}x{}", requestedW, requestedH, nativeW, nativeH,
         scaledW, scaledH);
 
+    UpdateSharedHDR(IsHDRFormat(pPP->BackBufferFormat) || IsHDRFormat(realPP.BackBufferFormat));
+
     LogPresentParameters("Reset (Game input)", pPP);
     LogPresentParameters("Reset (Real output)", &realPP);
 
@@ -462,10 +526,17 @@ STDMETHODIMP ProxyDirect3DDevice9::Reset(D3DPRESENT_PARAMETERS* pPP) {
 
 STDMETHODIMP ProxyDirect3DDevice9::Present(CONST RECT* pSR, CONST RECT* pDR, HWND hW, CONST RGNDATA* pR) {
     UpdateScaledResolution();
-    UpdateJitterAndFrameIndex();
+    if (!m_jitterReadyForFrame) {
+        UpdateJitterAndFrameIndex();
+        m_jitterReadyForFrame = true;
+    }
     OverlayRenderer::Get().NewFrame();
     IDirect3DSurface9* pRBB = nullptr;
     if (SUCCEEDED(m_pReal->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &pRBB))) {
+        D3DSURFACE_DESC bbDesc = {};
+        if (SUCCEEDED(pRBB->GetDesc(&bbDesc))) {
+            UpdateSharedHDR(IsHDRFormat(bbDesc.Format));
+        }
         if (m_isUpscaling && m_pFakeBackBuffer) {
             bool upscalerHandled = false;
             if (UpscalerManager::Get().IsUpscalingEnabled() && !Config::Get().GetBool("VKUpscaler", true)) {
@@ -491,6 +562,7 @@ STDMETHODIMP ProxyDirect3DDevice9::Present(CONST RECT* pSR, CONST RECT* pDR, HWN
     } else {
         OverlayRenderer::Get().Render(m_pReal, m_displayW, m_displayH);
     }
+    m_jitterReadyForFrame = false;
     return m_pReal->Present(NULL, NULL, hW, pR);
 }
 
@@ -526,6 +598,9 @@ STDMETHODIMP ProxyDirect3DDevice9::CreateTexture(
 
     IDirect3DTexture9* pRealTex = nullptr;
     HRESULT hr = m_pReal->CreateTexture(W, H, L, U, F, P, &pRealTex, pS);
+    if (SUCCEEDED(hr) && (U & D3DUSAGE_RENDERTARGET)) {
+        UpdateSharedHDR(IsHDRFormat(F));
+    }
     if (SUCCEEDED(hr) && pRealTex) {
         UINT actualLevels = pRealTex->GetLevelCount();
         *ppT = new ProxyTexture9(pRealTex, this, W, H, actualLevels, U, F, P);
@@ -556,7 +631,11 @@ STDMETHODIMP ProxyDirect3DDevice9::CreateIndexBuffer(UINT L, DWORD U, D3DFORMAT 
 
 STDMETHODIMP ProxyDirect3DDevice9::CreateRenderTarget(
     UINT W, UINT H, D3DFORMAT F, D3DMULTISAMPLE_TYPE M, DWORD MQ, BOOL L, IDirect3DSurface9** ppS, HANDLE* pS2) {
-    return m_pReal->CreateRenderTarget(W, H, F, M, MQ, L, ppS, pS2);
+    HRESULT hr = m_pReal->CreateRenderTarget(W, H, F, M, MQ, L, ppS, pS2);
+    if (SUCCEEDED(hr)) {
+        UpdateSharedHDR(IsHDRFormat(F));
+    }
+    return hr;
 }
 
 STDMETHODIMP ProxyDirect3DDevice9::CreateDepthStencilSurface(
@@ -657,6 +736,10 @@ STDMETHODIMP ProxyDirect3DDevice9::GetDepthStencilSurface(IDirect3DSurface9** pp
 }
 
 STDMETHODIMP ProxyDirect3DDevice9::BeginScene() {
+    if (!m_jitterReadyForFrame) {
+        UpdateJitterAndFrameIndex();
+        m_jitterReadyForFrame = true;
+    }
     return m_pReal->BeginScene();
 }
 
@@ -1120,9 +1203,9 @@ fail_log:
     static int failCount = 0;
     failCount++;
     if (failCount % 300 == 0) {
-        Logger::info("IsValidProj candidate failed: row={}, col={}, m0-m15=[{}, {}, {}, {}] [{}, {}, {}, {}] [{}, {}, {}, {}] [{}, {}, {}, {}]",
-            rowMajor, colMajor,
-            m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8], m[9], m[10], m[11], m[12], m[13], m[14], m[15]);
+        Logger::info(
+            "IsValidProj candidate failed: row={}, col={}, m0-m15=[{}, {}, {}, {}] [{}, {}, {}, {}] [{}, {}, {}, {}] [{}, {}, {}, {}]",
+            rowMajor, colMajor, m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8], m[9], m[10], m[11], m[12], m[13], m[14], m[15]);
     }
     return false;
 }
@@ -1271,10 +1354,17 @@ STDMETHODIMP ProxyDirect3DDevice9::ComposeRects(IDirect3DSurface9* pS, IDirect3D
 
 STDMETHODIMP ProxyDirect3DDevice9::PresentEx(CONST RECT* pSR, CONST RECT* pDR, HWND hW, CONST RGNDATA* pR, DWORD F) {
     UpdateScaledResolution();
-    UpdateJitterAndFrameIndex();
+    if (!m_jitterReadyForFrame) {
+        UpdateJitterAndFrameIndex();
+        m_jitterReadyForFrame = true;
+    }
     OverlayRenderer::Get().NewFrame();
     IDirect3DSurface9* pRBB = nullptr;
     if (SUCCEEDED(m_pReal->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &pRBB))) {
+        D3DSURFACE_DESC bbDesc = {};
+        if (SUCCEEDED(pRBB->GetDesc(&bbDesc))) {
+            UpdateSharedHDR(IsHDRFormat(bbDesc.Format));
+        }
         if (m_isUpscaling && m_pFakeBackBuffer) {
             bool upscalerHandled = false;
             if (UpscalerManager::Get().IsUpscalingEnabled() && !Config::Get().GetBool("VKUpscaler", true)) {
@@ -1300,8 +1390,11 @@ STDMETHODIMP ProxyDirect3DDevice9::PresentEx(CONST RECT* pSR, CONST RECT* pDR, H
     } else {
         OverlayRenderer::Get().Render(m_pReal, m_displayW, m_displayH);
     }
-    if (!m_pRealEx)
+    if (!m_pRealEx) {
+        m_jitterReadyForFrame = false;
         return E_NOTIMPL;
+    }
+    m_jitterReadyForFrame = false;
     return m_pRealEx->PresentEx(NULL, NULL, hW, pR, F);
 }
 
@@ -1396,7 +1489,8 @@ STDMETHODIMP ProxyDirect3DDevice9::ResetEx(D3DPRESENT_PARAMETERS* pPP, D3DDISPLA
     m_pRealEx->SetIndices(nullptr);
 
     for (auto const& [surf, tex] : m_depthSurfaceToTextureMap) {
-        if (tex) tex->Release();
+        if (tex)
+            tex->Release();
     }
     m_depthSurfaceToTextureMap.clear();
     if (m_downsampledDepthTexINTZ) {
@@ -1451,6 +1545,8 @@ STDMETHODIMP ProxyDirect3DDevice9::ResetEx(D3DPRESENT_PARAMETERS* pPP, D3DDISPLA
 
     Logger::info("ResetEx: Game requested {}x{}, Proxy created device at {}x{}, Game sees {}x{}", pPP->BackBufferWidth,
         pPP->BackBufferHeight, nativeW, nativeH, scaledW, scaledH);
+
+    UpdateSharedHDR(IsHDRFormat(pPP->BackBufferFormat) || IsHDRFormat(realPP.BackBufferFormat));
 
     LogPresentParameters("ResetEx (Game input)", pPP);
     LogPresentParameters("ResetEx (Real output)", &realPP);

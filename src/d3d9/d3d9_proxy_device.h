@@ -18,6 +18,7 @@ class ProxyDirect3DDevice9 : public IDirect3DDevice9Ex {
     uint32_t m_renderW, m_renderH;
     uint32_t m_displayW, m_displayH;
     bool m_isUpscaling;
+    bool m_jitterReadyForFrame = false;
     std::map<IDirect3DSurface9*, IDirect3DTexture9*> m_depthSurfaceToTextureMap;
     IDirect3DTexture9* m_downsampledDepthTexINTZ = nullptr;
 

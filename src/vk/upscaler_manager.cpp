@@ -470,6 +470,7 @@ void UpscalerManager::RenderFrame(uintptr_t cmd, uint64_t source, uint64_t targe
     swapchainFormat = (uint32_t)ImageTracker::Get().GetSwapchainFormat();
 
     bool didDownsampleDepth = false;
+    bool useDownsampledDepthForPlugin = false;
     if (depthInfo.image != VK_NULL_HANDLE && m_renderWidth > 0 && m_renderHeight > 0) {
         bool needDownsample = (depthInfo.extent.width != m_renderWidth || depthInfo.extent.height != m_renderHeight);
         if (needDownsample || m_showDepthDebug) {
@@ -514,7 +515,10 @@ void UpscalerManager::RenderFrame(uintptr_t cmd, uint64_t source, uint64_t targe
         }
     }
 
-    if (didDownsampleDepth && (depthInfo.extent.width != m_renderWidth || depthInfo.extent.height != m_renderHeight)) {
+    useDownsampledDepthForPlugin = didDownsampleDepth &&
+        (depthInfo.extent.width != m_renderWidth || depthInfo.extent.height != m_renderHeight);
+
+    if (useDownsampledDepthForPlugin) {
         depthImage = (uint64_t)m_downsampledDepthImage;
         depthFormat = (uint32_t)VK_FORMAT_R32_SFLOAT;
     } else {
@@ -523,9 +527,11 @@ void UpscalerManager::RenderFrame(uintptr_t cmd, uint64_t source, uint64_t targe
     }
 
     if (shouldLog) {
+        const uint32_t loggedDepthW = useDownsampledDepthForPlugin ? m_renderWidth : depthInfo.extent.width;
+        const uint32_t loggedDepthH = useDownsampledDepthForPlugin ? m_renderHeight : depthInfo.extent.height;
         Logger::info("UpscalerManager::RenderFrame [Buffers] depth=" + std::to_string((uintptr_t)depthImage) + " (" +
-                     std::to_string(didDownsampleDepth ? m_renderWidth : depthInfo.extent.width) + "x" + 
-                     std::to_string(didDownsampleDepth ? m_renderHeight : depthInfo.extent.height) +
+                     std::to_string(loggedDepthW) + "x" +
+                     std::to_string(loggedDepthH) +
                      ", fmt=" + std::to_string(depthFormat) + "), mv=" + std::to_string((uintptr_t)mvInfo.image) +
                      " (fmt=" + std::to_string(mvInfo.format) + ")");
     }

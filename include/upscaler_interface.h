@@ -29,6 +29,10 @@ struct GamePlugSharedFrameData {
     float viewSpaceToMetersFactor;
     bool invertedDepth;
     bool hdr;
+    uint32_t matrixFlags;
+    float currViewProj[16];
+    float prevViewProj[16];
+    float invCurrViewProj[16];
 };
 
 struct GamePlugUpscalerInterface {

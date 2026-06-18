@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -23,12 +24,119 @@ static GamePlugSharedFrameData g_SharedFrameData = {
     0.1f, 1000.0f, 1.0f, // cameraNear, cameraFar, cameraFov
     1.0f / 70.0f,        // viewSpaceToMetersFactor
     false,               // invertedDepth
-    false                // hdr
+    false,               // hdr
+    0,                   // matrixFlags
+    {},                  // currViewProj
+    {},                  // prevViewProj
+    {}                   // invCurrViewProj
 };
 
 static bool g_MetersFactorSet = false;
 static bool g_DetectedHDR = false;
 static int g_HDRConfidence = 0;
+static uint32_t g_MatrixFrameIndex = 0;
+// For scene-change detection (menu blur fix)
+static float g_PrevNear = 0.0f, g_PrevFar = 0.0f, g_PrevFov = 0.0f;
+
+static void SetIdentityMatrix(float* m) {
+    for (int i = 0; i < 16; ++i)
+        m[i] = 0.0f;
+    m[0] = 1.0f;
+    m[5] = 1.0f;
+    m[10] = 1.0f;
+    m[15] = 1.0f;
+}
+
+static bool InvertMatrix4x4(const float* m, float* invOut) {
+    float inv[16];
+
+    inv[0] = m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15] +
+        m[9] * m[7] * m[14] + m[13] * m[6] * m[11] - m[13] * m[7] * m[10];
+    inv[4] = -m[4] * m[10] * m[15] + m[4] * m[11] * m[14] + m[8] * m[6] * m[15] -
+        m[8] * m[7] * m[14] - m[12] * m[6] * m[11] + m[12] * m[7] * m[10];
+    inv[8] = m[4] * m[9] * m[15] - m[4] * m[11] * m[13] - m[8] * m[5] * m[15] +
+        m[8] * m[7] * m[13] + m[12] * m[5] * m[11] - m[12] * m[7] * m[9];
+    inv[12] = -m[4] * m[9] * m[14] + m[4] * m[10] * m[13] + m[8] * m[5] * m[14] -
+        m[8] * m[6] * m[13] - m[12] * m[5] * m[10] + m[12] * m[6] * m[9];
+    inv[1] = -m[1] * m[10] * m[15] + m[1] * m[11] * m[14] + m[9] * m[2] * m[15] -
+        m[9] * m[3] * m[14] - m[13] * m[2] * m[11] + m[13] * m[3] * m[10];
+    inv[5] = m[0] * m[10] * m[15] - m[0] * m[11] * m[14] - m[8] * m[2] * m[15] +
+        m[8] * m[3] * m[14] + m[12] * m[2] * m[11] - m[12] * m[3] * m[10];
+    inv[9] = -m[0] * m[9] * m[15] + m[0] * m[11] * m[13] + m[8] * m[1] * m[15] -
+        m[8] * m[3] * m[13] - m[12] * m[1] * m[11] + m[12] * m[3] * m[9];
+    inv[13] = m[0] * m[9] * m[14] - m[0] * m[10] * m[13] - m[8] * m[1] * m[14] +
+        m[8] * m[2] * m[13] + m[12] * m[1] * m[10] - m[12] * m[2] * m[9];
+    inv[2] = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] - m[5] * m[2] * m[15] +
+        m[5] * m[3] * m[14] + m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
+    inv[6] = -m[0] * m[6] * m[15] + m[0] * m[7] * m[14] + m[4] * m[2] * m[15] -
+        m[4] * m[3] * m[14] - m[12] * m[2] * m[7] + m[12] * m[3] * m[6];
+    inv[10] = m[0] * m[5] * m[15] - m[0] * m[7] * m[13] - m[4] * m[1] * m[15] +
+        m[4] * m[3] * m[13] + m[12] * m[1] * m[7] - m[12] * m[3] * m[5];
+    inv[14] = -m[0] * m[5] * m[14] + m[0] * m[6] * m[13] + m[4] * m[1] * m[14] -
+        m[4] * m[2] * m[13] - m[12] * m[1] * m[6] + m[12] * m[2] * m[5];
+    inv[3] = -m[1] * m[6] * m[11] + m[1] * m[7] * m[10] + m[5] * m[2] * m[11] -
+        m[5] * m[3] * m[10] - m[9] * m[2] * m[7] + m[9] * m[3] * m[6];
+    inv[7] = m[0] * m[6] * m[11] - m[0] * m[7] * m[10] - m[4] * m[2] * m[11] +
+        m[4] * m[3] * m[10] + m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
+    inv[11] = -m[0] * m[5] * m[11] + m[0] * m[7] * m[9] + m[4] * m[1] * m[11] -
+        m[4] * m[3] * m[9] - m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
+    inv[15] = m[0] * m[5] * m[10] - m[0] * m[6] * m[9] - m[4] * m[1] * m[10] +
+        m[4] * m[2] * m[9] + m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
+
+    float det = m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
+    if (std::abs(det) < 1e-6f)
+        return false;
+
+    det = 1.0f / det;
+    for (int i = 0; i < 16; i++)
+        invOut[i] = inv[i] * det;
+    return true;
+}
+
+static void UpdateSharedViewProjMatrix(const float* viewProjMatrix) {
+    if (!viewProjMatrix)
+        return;
+
+    // On new frame: save current as previous BEFORE overwriting current
+    if (g_MatrixFrameIndex != g_SharedFrameData.frameIndex) {
+        g_MatrixFrameIndex = g_SharedFrameData.frameIndex;
+        if (g_SharedFrameData.matrixFlags & 1u) {
+            // Previous frame had a valid matrix — save it as prev
+            memcpy(g_SharedFrameData.prevViewProj, g_SharedFrameData.currViewProj, sizeof(g_SharedFrameData.prevViewProj));
+        } else {
+            // No valid matrix yet — initialise prev to current so delta = 0
+            memcpy(g_SharedFrameData.prevViewProj, viewProjMatrix, sizeof(g_SharedFrameData.prevViewProj));
+        }
+    }
+    // (within the same frame we simply keep the most-recently-set matrix as curr)
+
+    memcpy(g_SharedFrameData.currViewProj, viewProjMatrix, sizeof(g_SharedFrameData.currViewProj));
+    if (InvertMatrix4x4(g_SharedFrameData.currViewProj, g_SharedFrameData.invCurrViewProj)) {
+        g_SharedFrameData.matrixFlags |= 1u;
+    } else {
+        g_SharedFrameData.matrixFlags &= ~1u;
+    }
+}
+
+// Detect whether a float[16] row-major matrix looks like a perspective (ViewProj or Proj).
+// For D3D9 LH perspective, column 3 (indices [3],[7],[11],[15]) has its first 3 elements
+// forming an approximately unit-length vector (they are the camera forward direction).
+// Pure projection: col3 = (0, 0, 1, 0)  → length = 1.
+// ViewProj = View*Proj: col3 = View's forward col → length ≈ 1.
+// Orthographic or random: col3 length ≠ 1 → rejected.
+static bool LooksPerspectiveMatrix(const float* m) {
+    float cx = m[3], cy = m[7], cz = m[11];
+    float len2 = cx * cx + cy * cy + cz * cz;
+    if (std::abs(len2 - 1.0f) > 0.15f)   // column-3 xyz must be unit-length
+        return false;
+    // Diagonal scale elements must be non-trivial (not zero / near-zero).
+    if (m[0] * m[0] + m[5] * m[5] + m[10] * m[10] < 0.1f)
+        return false;
+    // Last element must be < 0.1 (perspective: m[15]=0, ortho: m[15]=1).
+    if (std::abs(m[15]) > 0.1f)
+        return false;
+    return true;
+}
 
 static float Halton(uint32_t index, uint32_t base) {
     float f = 1.0f;
@@ -218,9 +326,14 @@ void ProxyDirect3DDevice9::UpdateScaledResolution() {
 void ProxyDirect3DDevice9::UpdateJitterAndFrameIndex() {
     UpdateSharedMetersFactor();
     g_SharedFrameData.frameIndex++;
-    uint32_t idx = (g_SharedFrameData.frameIndex % 128) + 1;
-    g_SharedFrameData.jitterX = Halton(idx, 2) - 0.5f;
-    g_SharedFrameData.jitterY = Halton(idx, 3) - 0.5f;
+    if (Config::Get().GetBool("VKUpscaler", true)) {
+        g_SharedFrameData.jitterX = 0.0f;
+        g_SharedFrameData.jitterY = 0.0f;
+    } else {
+        uint32_t idx = (g_SharedFrameData.frameIndex % 128) + 1;
+        g_SharedFrameData.jitterX = Halton(idx, 2) - 0.5f;
+        g_SharedFrameData.jitterY = Halton(idx, 3) - 0.5f;
+    }
     g_SharedFrameData.invertedDepth = false;
 }
 
@@ -752,15 +865,39 @@ STDMETHODIMP ProxyDirect3DDevice9::Clear(DWORD C, CONST D3DRECT* pR, DWORD F, D3
 }
 
 STDMETHODIMP ProxyDirect3DDevice9::SetTransform(D3DTRANSFORMSTATETYPE S, CONST D3DMATRIX* pM) {
+    // Only capture the Projection matrix from the fixed-function pipeline.
+    // The View matrix from SetTransform is unreliable for shader-based games
+    // (Skyrim sets D3DTS_VIEW for fixed-function passes like water/reflections,
+    //  not for the main game camera).  The real ViewProj is captured from
+    //  vertex shader constants in SetVertexShaderConstantF below.
     if (S == D3DTS_PROJECTION && pM) {
         float fovY = 0.0f, nearP = 0.0f, farP = 0.0f;
         bool inverted = false;
         if (IsValidProjectionMatrix((const float*)pM, fovY, nearP, farP, inverted)) {
             float fovDegrees = fovY * (180.0f / 3.14159265f);
-            g_SharedFrameData.cameraNear = nearP;
-            g_SharedFrameData.cameraFar = farP;
-            g_SharedFrameData.cameraFov = fovDegrees;
+
+            // Scene-change detection: if near/far/fov changed significantly,
+            // signal that FSR2 history should be reset (fixes menu-to-game transitions).
+            float dNear = std::abs(nearP - g_PrevNear);
+            float dFar  = std::abs(farP  - g_PrevFar);
+            float dFov  = std::abs(fovDegrees - g_PrevFov);
+            if ((dNear > 1.0f || dFar > 100.0f || dFov > 5.0f) &&
+                (g_PrevNear > 0.0f || g_PrevFar > 0.0f)) {
+                // Mark for history reset; the upscaler checks this flag each frame.
+                g_SharedFrameData.matrixFlags |= 2u;  // bit 1 = scene changed
+                // Also invalidate prev so next frame starts fresh.
+                g_SharedFrameData.matrixFlags &= ~1u;
+                g_MatrixFrameIndex = 0;
+            }
+            g_PrevNear = nearP;
+            g_PrevFar  = farP;
+            g_PrevFov  = fovDegrees;
+
+            g_SharedFrameData.cameraNear    = nearP;
+            g_SharedFrameData.cameraFar     = farP;
+            g_SharedFrameData.cameraFov     = fovDegrees;
             g_SharedFrameData.invertedDepth = inverted;
+            UpdateSharedViewProjMatrix((const float*)pM);
             Logger::info("SetTransform (D3DTS_PROJECTION): Near={}, Far={}, FOV={}", nearP, farP, fovDegrees);
         }
     }
@@ -1210,8 +1347,60 @@ fail_log:
     return false;
 }
 
+static bool IsAffineMatrix(const float* m) {
+    auto near_zero = [](float f) { return std::abs(f) < 0.001f; };
+    auto near_one = [](float f) { return std::abs(f - 1.0f) < 0.001f; };
+
+    bool rowVectorAffine = near_zero(m[3]) && near_zero(m[7]) && near_zero(m[11]) && near_one(m[15]);
+    bool columnVectorAffine = near_zero(m[12]) && near_zero(m[13]) && near_zero(m[14]) && near_one(m[15]);
+    return rowVectorAffine || columnVectorAffine;
+}
+
+static bool IsFiniteMatrix(const float* m) {
+    for (int i = 0; i < 16; ++i) {
+        if (!std::isfinite(m[i]) || std::abs(m[i]) > 100000000.0f)
+            return false;
+    }
+    return true;
+}
+
+static bool IsLikelyClipSpaceMatrix(const float* m) {
+    if (!IsFiniteMatrix(m) || IsAffineMatrix(m))
+        return false;
+
+    float inv[16];
+    if (!InvertMatrix4x4(m, inv))
+        return false;
+
+    float fovY = 0.0f, nearP = 0.0f, farP = 0.0f;
+    bool inverted = false;
+    if (IsValidProjectionMatrix(m, fovY, nearP, farP, inverted))
+        return false;
+
+    float maxAbs = 0.0f;
+    for (int i = 0; i < 16; ++i)
+        maxAbs = (std::max)(maxAbs, std::abs(m[i]));
+
+    return maxAbs > 0.01f && maxAbs < 100000.0f;
+}
+
 STDMETHODIMP ProxyDirect3DDevice9::SetVertexShaderConstantF(UINT SR, CONST float* pCD, UINT V4C) {
     if (pCD && V4C >= 4) {
+        bool capturedClipMatrix = false;
+        for (UINT i = 0; i <= V4C - 4; ++i) {
+            const float* matrix = &pCD[i * 4];
+            if (IsLikelyClipSpaceMatrix(matrix)) {
+                UpdateSharedViewProjMatrix(matrix);
+                capturedClipMatrix = true;
+                static int clipLogCount = 0;
+                if (clipLogCount++ % 300 == 0) {
+                    Logger::info("SetVertexShaderConstantF: Captured clip-space matrix at SR={}, offset={}, frame={}",
+                        SR, i, g_SharedFrameData.frameIndex);
+                }
+                break;
+            }
+        }
+
         for (UINT i = 0; i <= V4C - 4; ++i) {
             float fovY = 0.0f, nearP = 0.0f, farP = 0.0f;
             bool inverted = false;
@@ -1223,16 +1412,20 @@ STDMETHODIMP ProxyDirect3DDevice9::SetVertexShaderConstantF(UINT SR, CONST float
                 g_SharedFrameData.cameraFov = fovDegrees;
                 g_SharedFrameData.invertedDepth = inverted;
 
-                if (m_isUpscaling) {
+                if (m_isUpscaling && !Config::Get().GetBool("VKUpscaler", true)) {
                     float projJitterX = (g_SharedFrameData.jitterX * 2.0f) / m_renderW;
                     float projJitterY = (g_SharedFrameData.jitterY * 2.0f) / m_renderH;
 
                     std::vector<float> modifiedCD(pCD, pCD + V4C * 4);
                     modifiedCD[i * 4 + 2] += projJitterX;
                     modifiedCD[i * 4 + 6] += projJitterY;
+                    if (!capturedClipMatrix)
+                        UpdateSharedViewProjMatrix(&modifiedCD[i * 4]);
 
                     return m_pReal->SetVertexShaderConstantF(SR, modifiedCD.data(), V4C);
                 }
+                if (!capturedClipMatrix)
+                    UpdateSharedViewProjMatrix(matrix);
                 break;
             }
         }

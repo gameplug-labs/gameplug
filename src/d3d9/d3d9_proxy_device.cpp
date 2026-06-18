@@ -97,20 +97,22 @@ static void UpdateSharedViewProjMatrix(const float* viewProjMatrix) {
     if (!viewProjMatrix)
         return;
 
-    // On new frame: save current as previous BEFORE overwriting current
-    if (g_MatrixFrameIndex != g_SharedFrameData.frameIndex) {
-        g_MatrixFrameIndex = g_SharedFrameData.frameIndex;
-        if (g_SharedFrameData.matrixFlags & 1u) {
-            // Previous frame had a valid matrix — save it as prev
-            memcpy(g_SharedFrameData.prevViewProj, g_SharedFrameData.currViewProj, sizeof(g_SharedFrameData.prevViewProj));
-        } else {
-            // No valid matrix yet — initialise prev to current so delta = 0
-            memcpy(g_SharedFrameData.prevViewProj, viewProjMatrix, sizeof(g_SharedFrameData.prevViewProj));
-        }
+    // FIX: Lock to the FIRST valid matrix of the frame. 
+    // Ignore subsequent matrices (like first-person hands or particles) to prevent overwrites.
+    if (g_MatrixFrameIndex == g_SharedFrameData.frameIndex) {
+        return; 
     }
-    // (within the same frame we simply keep the most-recently-set matrix as curr)
+    
+    g_MatrixFrameIndex = g_SharedFrameData.frameIndex;
+
+    if (g_SharedFrameData.matrixFlags & 1u) {
+        memcpy(g_SharedFrameData.prevViewProj, g_SharedFrameData.currViewProj, sizeof(g_SharedFrameData.prevViewProj));
+    } else {
+        memcpy(g_SharedFrameData.prevViewProj, viewProjMatrix, sizeof(g_SharedFrameData.prevViewProj));
+    }
 
     memcpy(g_SharedFrameData.currViewProj, viewProjMatrix, sizeof(g_SharedFrameData.currViewProj));
+    
     if (InvertMatrix4x4(g_SharedFrameData.currViewProj, g_SharedFrameData.invCurrViewProj)) {
         g_SharedFrameData.matrixFlags |= 1u;
     } else {
@@ -1406,11 +1408,37 @@ STDMETHODIMP ProxyDirect3DDevice9::SetVertexShaderConstantF(UINT SR, CONST float
             bool inverted = false;
             const float* matrix = &pCD[i * 4];
             if (IsValidProjectionMatrix(matrix, fovY, nearP, farP, inverted)) {
-                float fovDegrees = fovY * (180.0f / 3.14159265f);
-                g_SharedFrameData.cameraNear = nearP;
-                g_SharedFrameData.cameraFar = farP;
-                g_SharedFrameData.cameraFov = fovDegrees;
-                g_SharedFrameData.invertedDepth = inverted;
+                // FIX: Only check for scene changes ONCE per frame!
+                static uint32_t s_lastExtractedFrame = 0xFFFFFFFF;
+                if (s_lastExtractedFrame != g_SharedFrameData.frameIndex) {
+                    s_lastExtractedFrame = g_SharedFrameData.frameIndex;
+                    
+                    float fovDegrees = fovY * (180.0f / 3.14159265f);
+                    float dNear = std::abs(nearP - g_PrevNear);
+                    float dFar  = std::abs(farP  - g_PrevFar);
+                    float dFov  = std::abs(fovDegrees - g_PrevFov);
+                    
+                    // FIX: Massively increase the tolerance for dynamic camera adjustments.
+                    // Far plane must change by at least 4000 units, Near by 5, FOV by 10 degrees.
+                    if ((dNear > 5.0f || dFar > 4000.0f || dFov > 10.0f) &&
+                        (g_PrevNear > 0.0f || g_PrevFar > 0.0f)) {
+                        g_SharedFrameData.matrixFlags |= 2u;  // Trigger history reset
+                        g_SharedFrameData.matrixFlags &= ~1u; // Invalidate previous matrix
+                    }
+                    
+                    g_PrevNear = nearP;
+                    g_PrevFar  = farP;
+                    g_PrevFov  = fovDegrees;
+
+                    g_SharedFrameData.cameraNear = nearP;
+                    g_SharedFrameData.cameraFar = farP;
+                    g_SharedFrameData.cameraFov = fovDegrees;
+                    g_SharedFrameData.invertedDepth = inverted;
+                    
+                    if (!capturedClipMatrix) {
+                        UpdateSharedViewProjMatrix(matrix);
+                    }
+                }
 
                 if (m_isUpscaling && !Config::Get().GetBool("VKUpscaler", true)) {
                     float projJitterX = (g_SharedFrameData.jitterX * 2.0f) / m_renderW;

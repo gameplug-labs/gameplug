@@ -9,6 +9,8 @@
 #include <cmath>
 #include <vector>
 
+static bool IsValidProjectionMatrix(const float* m, float& outFovY, float& outNear, float& outFar, bool& outInverted);
+
 static thread_local bool t_creatingFakeBackBuffer = false;
 
 static GamePlugSharedFrameData g_SharedFrameData = {
@@ -667,6 +669,18 @@ STDMETHODIMP ProxyDirect3DDevice9::Clear(DWORD C, CONST D3DRECT* pR, DWORD F, D3
 }
 
 STDMETHODIMP ProxyDirect3DDevice9::SetTransform(D3DTRANSFORMSTATETYPE S, CONST D3DMATRIX* pM) {
+    if (S == D3DTS_PROJECTION && pM) {
+        float fovY = 0.0f, nearP = 0.0f, farP = 0.0f;
+        bool inverted = false;
+        if (IsValidProjectionMatrix((const float*)pM, fovY, nearP, farP, inverted)) {
+            float fovDegrees = fovY * (180.0f / 3.14159265f);
+            g_SharedFrameData.cameraNear = nearP;
+            g_SharedFrameData.cameraFar = farP;
+            g_SharedFrameData.cameraFov = fovDegrees;
+            g_SharedFrameData.invertedDepth = inverted;
+            Logger::info("SetTransform (D3DTS_PROJECTION): Near={}, Far={}, FOV={}", nearP, farP, fovDegrees);
+        }
+    }
     return m_pReal->SetTransform(S, pM);
 }
 
@@ -1012,14 +1026,14 @@ STDMETHODIMP ProxyDirect3DDevice9::GetVertexShader(IDirect3DVertexShader9** ppS)
 }
 
 static bool IsValidProjectionMatrix(const float* m, float& outFovY, float& outNear, float& outFar, bool& outInverted) {
-    auto is_zero = [](float f) { return std::abs(f) < 1e-4f; };
+    auto is_zero = [](float f) { return std::abs(f) < 0.02f; };
 
     bool rowMajor = false;
     bool colMajor = false;
 
-    if (std::abs(m[11] - 1.0f) < 1e-3f || std::abs(m[11] + 1.0f) < 1e-3f) {
+    if (std::abs(std::abs(m[11]) - 1.0f) < 0.05f) {
         rowMajor = true;
-    } else if (std::abs(m[14] - 1.0f) < 1e-3f || std::abs(m[14] + 1.0f) < 1e-3f) {
+    } else if (std::abs(std::abs(m[14]) - 1.0f) < 0.05f) {
         colMajor = true;
     }
 
@@ -1031,10 +1045,10 @@ static bool IsValidProjectionMatrix(const float* m, float& outFovY, float& outNe
     if (rowMajor) {
         if (!is_zero(m[1]) || !is_zero(m[3]) || !is_zero(m[4]) || !is_zero(m[7]) || !is_zero(m[8]) || !is_zero(m[9]) || !is_zero(m[12]) ||
             !is_zero(m[13]) || !is_zero(m[15])) {
-            return false;
+            goto fail_log;
         }
         if (std::abs(m[2]) > 0.1f || std::abs(m[6]) > 0.1f)
-            return false;
+            goto fail_log;
 
         x = m[0];
         y = m[5];
@@ -1043,10 +1057,10 @@ static bool IsValidProjectionMatrix(const float* m, float& outFovY, float& outNe
     } else {
         if (!is_zero(m[1]) || !is_zero(m[4]) || !is_zero(m[3]) || !is_zero(m[7]) || !is_zero(m[8]) || !is_zero(m[9]) || !is_zero(m[12]) ||
             !is_zero(m[13]) || !is_zero(m[15])) {
-            return false;
+            goto fail_log;
         }
         if (std::abs(m[2]) > 0.1f || std::abs(m[6]) > 0.1f)
-            return false;
+            goto fail_log;
 
         x = m[0];
         y = m[5];
@@ -1055,49 +1069,61 @@ static bool IsValidProjectionMatrix(const float* m, float& outFovY, float& outNe
     }
 
     if (x <= 0.05f || x > 20.0f || y <= 0.05f || y > 20.0f)
-        return false;
+        goto fail_log;
 
     outFovY = 2.0f * std::atanf(1.0f / y);
     if (outFovY < 0.08f || outFovY > 2.01f)
-        return false;
+        goto fail_log;
 
-    float aspect = y / x;
-    if (std::abs(aspect - 1.0f) < 0.01f)
-        return false;
-
-    float near_std = -B / A;
-    float far_std = A * near_std / (A - 1.0f);
-
-    float near_inv = B / (A - 1.0f);
-    float far_inv = B / A;
-
-    if (near_std > 0.0f && far_std > near_std && std::abs(A - 1.0f) > 1e-4f) {
-        outNear = near_std;
-        outFar = far_std;
-        outInverted = false;
-        return true;
+    {
+        float aspect = y / x;
+        if (std::abs(aspect - 1.0f) < 0.01f)
+            goto fail_log;
     }
 
-    if (near_inv > 0.0f && far_inv > near_inv && std::abs(A) > 1e-4f) {
-        outNear = near_inv;
-        outFar = far_inv;
-        outInverted = true;
-        return true;
+    {
+        float near_std = -B / A;
+        float far_std = A * near_std / (A - 1.0f);
+
+        float near_inv = B / (A - 1.0f);
+        float far_inv = B / A;
+
+        if (near_std > 0.0f && far_std > near_std && std::abs(A - 1.0f) > 1e-4f) {
+            outNear = near_std;
+            outFar = far_std;
+            outInverted = false;
+            return true;
+        }
+
+        if (near_inv > 0.0f && far_inv > near_inv && std::abs(A) > 1e-4f) {
+            outNear = near_inv;
+            outFar = far_inv;
+            outInverted = true;
+            return true;
+        }
+
+        if (std::abs(A) < 1e-4f && B > 0.0f) {
+            outNear = B;
+            outFar = 100000.0f;
+            outInverted = true;
+            return true;
+        }
+        if (std::abs(A - 1.0f) < 1e-4f && B < 0.0f) {
+            outNear = -B;
+            outFar = 100000.0f;
+            outInverted = false;
+            return true;
+        }
     }
 
-    if (std::abs(A) < 1e-4f && B > 0.0f) {
-        outNear = B;
-        outFar = 100000.0f;
-        outInverted = true;
-        return true;
+fail_log:
+    static int failCount = 0;
+    failCount++;
+    if (failCount % 300 == 0) {
+        Logger::info("IsValidProj candidate failed: row={}, col={}, m0-m15=[{}, {}, {}, {}] [{}, {}, {}, {}] [{}, {}, {}, {}] [{}, {}, {}, {}]",
+            rowMajor, colMajor,
+            m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8], m[9], m[10], m[11], m[12], m[13], m[14], m[15]);
     }
-    if (std::abs(A - 1.0f) < 1e-4f && B < 0.0f) {
-        outNear = -B;
-        outFar = 100000.0f;
-        outInverted = false;
-        return true;
-    }
-
     return false;
 }
 

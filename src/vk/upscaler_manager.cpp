@@ -420,21 +420,19 @@ void UpscalerManager::RenderFrame(uintptr_t cmd, uint64_t source, uint64_t targe
         (depthInfo.extent.width != m_renderWidth || depthInfo.extent.height != m_renderHeight) &&
         m_renderWidth > 0 && m_renderHeight > 0) {
         
-        VkImageView srcView = ImageTracker::Get().GetMainView(depthInfo.image);
+        VkImageView srcView = VK_NULL_HANDLE;
         bool createdTempView = false;
-        if (srcView == VK_NULL_HANDLE) {
-            auto* dev = DispatchManager::Get().GetDevice(m_device);
-            if (dev) {
-                VkImageViewCreateInfo v = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
-                v.image = depthInfo.image;
-                v.viewType = VK_IMAGE_VIEW_TYPE_2D;
-                v.format = depthInfo.format;
-                v.subresourceRange.aspectMask = (depthInfo.format == VK_FORMAT_R32_SFLOAT) ? VK_IMAGE_ASPECT_COLOR_BIT : VK_IMAGE_ASPECT_DEPTH_BIT;
-                v.subresourceRange.levelCount = 1;
-                v.subresourceRange.layerCount = 1;
-                if (dev->table.vkCreateImageView(m_device, &v, nullptr, &srcView) == VK_SUCCESS) {
-                    createdTempView = true;
-                }
+        auto* dev = DispatchManager::Get().GetDevice(m_device);
+        if (dev) {
+            VkImageViewCreateInfo v = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+            v.image = depthInfo.image;
+            v.viewType = VK_IMAGE_VIEW_TYPE_2D;
+            v.format = depthInfo.format;
+            v.subresourceRange.aspectMask = (depthInfo.format == VK_FORMAT_R32_SFLOAT) ? VK_IMAGE_ASPECT_COLOR_BIT : VK_IMAGE_ASPECT_DEPTH_BIT;
+            v.subresourceRange.levelCount = 1;
+            v.subresourceRange.layerCount = 1;
+            if (dev->table.vkCreateImageView(m_device, &v, nullptr, &srcView) == VK_SUCCESS) {
+                createdTempView = true;
             }
         }
         if (srcView != VK_NULL_HANDLE) {

@@ -119,7 +119,12 @@ static std::unordered_map<void**, PFN_RSSetScissorRects> g_OriginalRSSetScissorR
 static std::unordered_map<void**, PFN_OMSetRenderTargets> g_OriginalOMSetRenderTargetsMap;
 static std::unordered_map<void**, PFN_OMSetRenderTargetsAndUnorderedAccessViews> g_OriginalOMSetRenderTargetsAndUnorderedAccessViewsMap;
 static std::unordered_map<void**, PFN_ClearDepthStencilView> g_OriginalClearDepthStencilViewMap;
+static std::unordered_map<void**, PFN_UpdateSubresource> g_OriginalUpdateSubresourceMap;
+static std::unordered_map<void**, PFN_Map> g_OriginalMapMap;
+static std::unordered_map<void**, PFN_Unmap> g_OriginalUnmapMap;
 static std::unordered_map<void**, PFN_QueryInterface> g_OriginalContextQIMap;
+
+static std::unordered_map<ID3D11Resource*, void*> g_MappedResources;
 
 void STDMETHODCALLTYPE HookedRSSetViewports(ID3D11DeviceContext* pCtx, UINT NumViewports, const D3D11_VIEWPORT* pViewports) {
     PFN_RSSetViewports originalFn = nullptr;
@@ -295,6 +300,176 @@ void STDMETHODCALLTYPE HookedRSSetScissorRects(ID3D11DeviceContext* pCtx, UINT N
     }
 }
 
+void STDMETHODCALLTYPE HookedUpdateSubresource(
+    ID3D11DeviceContext* pCtx, ID3D11Resource* pDstResource, UINT DstSubresource, const D3D11_BOX* pDstBox, const void* pSrcData, UINT SrcRowPitch, UINT SrcDepthPitch) {
+    PFN_UpdateSubresource originalFn = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_HookMtx);
+        if (pCtx) {
+            void** pVTable = *(void***)pCtx;
+            auto it = g_OriginalUpdateSubresourceMap.find(pVTable);
+            if (it != g_OriginalUpdateSubresourceMap.end()) {
+                originalFn = it->second;
+            }
+        }
+    }
+    if (!originalFn) originalFn = g_OriginalUpdateSubresource;
+
+    if (!g_InHook && pDstResource) {
+        DXUpscalerManager& mgr = DXUpscalerManager::Get();
+        if (!mgr.GetKnownProjBuffer()) {
+            if (pSrcData && pDstResource) {
+                D3D11_RESOURCE_DIMENSION dim;
+                pDstResource->GetType(&dim);
+                if (dim == D3D11_RESOURCE_DIMENSION_BUFFER) {
+                    D3D11_BUFFER_DESC desc;
+                    ((ID3D11Buffer*)pDstResource)->GetDesc(&desc);
+                    UINT dataSize = pDstBox ? (pDstBox->right - pDstBox->left) : desc.ByteWidth;
+                    mgr.TryDetectMatrix((ID3D11Buffer*)pDstResource, (const float*)pSrcData, dataSize);
+                }
+            }
+        }
+        
+        if (pDstResource == (ID3D11Resource*)mgr.GetKnownProjBuffer()) {
+            ScopedRecursionGuard guard;
+            
+            UINT dataSize = 0;
+            if (pDstBox) {
+                dataSize = pDstBox->right - pDstBox->left;
+            } else {
+                D3D11_BUFFER_DESC desc;
+                ((ID3D11Buffer*)pDstResource)->GetDesc(&desc);
+                dataSize = desc.ByteWidth;
+            }
+
+            if (dataSize > 0) {
+                std::vector<uint8_t> tempData(dataSize);
+                memcpy(tempData.data(), pSrcData, dataSize);
+                float* fData = (float*)tempData.data();
+                
+                UINT offsetFloats = mgr.GetKnownProjOffset() / 4;
+                if ((offsetFloats + 16) * sizeof(float) <= dataSize) {
+                    mgr.UpdateGameJitterFromData(&fData[offsetFloats]);
+                    mgr.InjectFakeJitterIntoMatrix(&fData[offsetFloats], 16);
+                }
+
+                if (originalFn) {
+                    originalFn(pCtx, pDstResource, DstSubresource, pDstBox, tempData.data(), SrcRowPitch, SrcDepthPitch);
+                }
+                return;
+            }
+        }
+    }
+
+    if (originalFn) {
+        originalFn(pCtx, pDstResource, DstSubresource, pDstBox, pSrcData, SrcRowPitch, SrcDepthPitch);
+    }
+}
+
+HRESULT STDMETHODCALLTYPE HookedMap(
+    ID3D11DeviceContext* pCtx, ID3D11Resource* pResource, UINT Subresource, D3D11_MAP MapType, UINT MapFlags, D3D11_MAPPED_SUBRESOURCE* pMappedResource) {
+    PFN_Map originalFn = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_HookMtx);
+        if (pCtx) {
+            void** pVTable = *(void***)pCtx;
+            auto it = g_OriginalMapMap.find(pVTable);
+            if (it != g_OriginalMapMap.end()) {
+                originalFn = it->second;
+            }
+        }
+    }
+    if (!originalFn) originalFn = g_OriginalMap;
+
+    HRESULT hr = originalFn ? originalFn(pCtx, pResource, Subresource, MapType, MapFlags, pMappedResource) : E_FAIL;
+
+    if (SUCCEEDED(hr) && !g_InHook && pResource && pMappedResource && pMappedResource->pData) {
+        DXUpscalerManager& mgr = DXUpscalerManager::Get();
+        
+        bool shouldTrack = false;
+        if (pResource == (ID3D11Resource*)mgr.GetKnownProjBuffer()) {
+            shouldTrack = true;
+        } else if (!mgr.GetKnownProjBuffer()) {
+            D3D11_RESOURCE_DIMENSION dim;
+            pResource->GetType(&dim);
+            if (dim == D3D11_RESOURCE_DIMENSION_BUFFER) {
+                shouldTrack = true;
+            }
+        }
+
+        if (shouldTrack) {
+            std::lock_guard<std::mutex> lock(g_HookMtx);
+            g_MappedResources[pResource] = pMappedResource->pData;
+        }
+    }
+    return hr;
+}
+
+void STDMETHODCALLTYPE HookedUnmap(
+    ID3D11DeviceContext* pCtx, ID3D11Resource* pResource, UINT Subresource) {
+    PFN_Unmap originalFn = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_HookMtx);
+        if (pCtx) {
+            void** pVTable = *(void***)pCtx;
+            auto it = g_OriginalUnmapMap.find(pVTable);
+            if (it != g_OriginalUnmapMap.end()) {
+                originalFn = it->second;
+            }
+        }
+    }
+    if (!originalFn) originalFn = g_OriginalUnmap;
+
+    if (!g_InHook && pResource) {
+        DXUpscalerManager& mgr = DXUpscalerManager::Get();
+        
+        bool isKnown = (pResource == (ID3D11Resource*)mgr.GetKnownProjBuffer());
+        bool isUnknownBuffer = false;
+        
+        if (!isKnown && !mgr.GetKnownProjBuffer()) {
+            D3D11_RESOURCE_DIMENSION dim;
+            pResource->GetType(&dim);
+            if (dim == D3D11_RESOURCE_DIMENSION_BUFFER) {
+                isUnknownBuffer = true;
+            }
+        }
+
+        if (isKnown || isUnknownBuffer) {
+            ScopedRecursionGuard guard;
+            void* pData = nullptr;
+            {
+                std::lock_guard<std::mutex> lock(g_HookMtx);
+                auto it = g_MappedResources.find(pResource);
+                if (it != g_MappedResources.end()) {
+                    pData = it->second;
+                    g_MappedResources.erase(it);
+                }
+            }
+            if (pData) {
+                float* data = (float*)pData;
+                
+                if (isUnknownBuffer) {
+                    D3D11_BUFFER_DESC desc;
+                    ((ID3D11Buffer*)pResource)->GetDesc(&desc);
+                    mgr.TryDetectMatrix((ID3D11Buffer*)pResource, data, desc.ByteWidth);
+                    // Update isKnown in case it was just detected
+                    isKnown = (pResource == (ID3D11Resource*)mgr.GetKnownProjBuffer());
+                }
+
+                if (isKnown) {
+                    UINT offsetFloats = mgr.GetKnownProjOffset() / 4;
+                    mgr.UpdateGameJitterFromData(&data[offsetFloats]);
+                    mgr.InjectFakeJitterIntoMatrix(&data[offsetFloats], 16);
+                }
+            }
+        }
+    }
+
+    if (originalFn) {
+        originalFn(pCtx, pResource, Subresource);
+    }
+}
+
 void PatchDeviceContextVTable(ID3D11DeviceContext* context) {
     if (!context)
         return;
@@ -323,6 +498,15 @@ void PatchDeviceContextVTable(ID3D11DeviceContext* context) {
     if (g_OriginalClearDepthStencilViewMap.count(pVTable) == 0) {
         g_OriginalClearDepthStencilViewMap[pVTable] = (PFN_ClearDepthStencilView)pVTable[53];
     }
+    if (g_OriginalUpdateSubresourceMap.count(pVTable) == 0) {
+        g_OriginalUpdateSubresourceMap[pVTable] = (PFN_UpdateSubresource)pVTable[48];
+    }
+    if (g_OriginalMapMap.count(pVTable) == 0) {
+        g_OriginalMapMap[pVTable] = (PFN_Map)pVTable[14];
+    }
+    if (g_OriginalUnmapMap.count(pVTable) == 0) {
+        g_OriginalUnmapMap[pVTable] = (PFN_Unmap)pVTable[15];
+    }
     if (g_OriginalContextQIMap.count(pVTable) == 0) {
         g_OriginalContextQIMap[pVTable] = (PFN_QueryInterface)pVTable[0];
     }
@@ -343,14 +527,26 @@ void PatchDeviceContextVTable(ID3D11DeviceContext* context) {
     if (!g_OriginalClearDepthStencilView) {
         g_OriginalClearDepthStencilView = (PFN_ClearDepthStencilView)pVTable[53];
     }
+    if (!g_OriginalUpdateSubresource) {
+        g_OriginalUpdateSubresource = (PFN_UpdateSubresource)pVTable[48];
+    }
+    if (!g_OriginalMap) {
+        g_OriginalMap = (PFN_Map)pVTable[14];
+    }
+    if (!g_OriginalUnmap) {
+        g_OriginalUnmap = (PFN_Unmap)pVTable[15];
+    }
 
     DWORD old;
     if (VirtualProtect(pVTable, 128 * sizeof(void*), PAGE_READWRITE, &old)) {
         pVTable[0] = (void*)HookedContextQueryInterface;
+        pVTable[14] = (void*)HookedMap;
+        pVTable[15] = (void*)HookedUnmap;
         pVTable[33] = (void*)HookedOMSetRenderTargets;
         pVTable[34] = (void*)HookedOMSetRenderTargetsAndUnorderedAccessViews;
         pVTable[44] = (void*)HookedRSSetViewports;
         pVTable[45] = (void*)HookedRSSetScissorRects;
+        pVTable[48] = (void*)HookedUpdateSubresource;
         pVTable[53] = (void*)HookedClearDepthStencilView;
         VirtualProtect(pVTable, 128 * sizeof(void*), old, &old);
         Logger::info("DX Hooks D3D11: Patched DeviceContext VTable (" + std::to_string((uintptr_t)pVTable) + ")");

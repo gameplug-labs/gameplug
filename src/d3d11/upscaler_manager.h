@@ -61,7 +61,16 @@ public:
     bool SetPluginFieldBool(const std::string& name, bool value);
     bool SetPluginFieldFloat(const std::string& name, float value);
     void ScanProjectionMatrix(ID3D11DeviceContext* context);
-    bool IsValidProjectionMatrix(const float* m, float& outFovY, float& outNear, float& outFar, bool& outInverted);
+    bool IsViewProjectionMatrix(const float* m, float& outFovY, float& outNear, float& outFar, bool& outInverted, bool& outIsRowMajor);
+
+    // Native Jitter Extraction & Fake Jitter Injection
+    ID3D11Buffer* GetKnownProjBuffer() const { return m_knownProjBuffer; }
+    UINT GetKnownProjOffset() const { return m_knownProjOffset; }
+    float GetGameJitterX() const { return m_gameJitterX; }
+    float GetGameJitterY() const { return m_gameJitterY; }
+    void UpdateGameJitterFromData(const float* data);
+    bool InjectFakeJitterIntoMatrix(float* data, UINT numElements);
+    bool TryDetectMatrix(ID3D11Buffer* buffer, const float* data, UINT dataSize);
 
 private:
     DXUpscalerManager()
@@ -96,7 +105,14 @@ private:
         , m_downsampledDepthUAV(nullptr)
         , m_downsampledMVTex(nullptr)
         , m_downsampledMVSRV(nullptr)
-        , m_downsampledMVUAV(nullptr) {}
+        , m_downsampledMVUAV(nullptr)
+        , m_knownProjBuffer(nullptr)
+        , m_knownProjOffset(0)
+        , m_knownProjIsRowMajor(true)
+        , m_gameJitterX(0.0f)
+        , m_gameJitterY(0.0f)
+        , m_fakeJitterX(0.0f)
+        , m_fakeJitterY(0.0f) {}
 
     void LoadPlugin();
 
@@ -155,6 +171,13 @@ private:
     ID3D11Texture2D* m_downsampledMVTex;
     ID3D11ShaderResourceView* m_downsampledMVSRV;
     ID3D11UnorderedAccessView* m_downsampledMVUAV;
+    ID3D11Buffer* m_knownProjBuffer;
+    UINT m_knownProjOffset;
+    bool m_knownProjIsRowMajor;
+    float m_gameJitterX;
+    float m_gameJitterY;
+    float m_fakeJitterX;
+    float m_fakeJitterY;
 };
 
 } // namespace GamePlug

@@ -39,6 +39,14 @@ typedef void(STDMETHODCALLTYPE* PFN_OMSetRenderTargetsAndUnorderedAccessViews)(I
     UINT UAVStartSlot, UINT NumUAVs, ID3D11UnorderedAccessView* const* ppUnorderedAccessViews, const UINT* pUAVInitialCounts);
 typedef void(STDMETHODCALLTYPE* PFN_ClearDepthStencilView)(
     ID3D11DeviceContext* pCtx, ID3D11DepthStencilView* pDepthStencilView, UINT ClearFlags, FLOAT Depth, UINT8 Stencil);
+
+typedef void(STDMETHODCALLTYPE* PFN_UpdateSubresource)(
+    ID3D11DeviceContext* pCtx, ID3D11Resource* pDstResource, UINT DstSubresource, const D3D11_BOX* pDstBox, const void* pSrcData, UINT SrcRowPitch, UINT SrcDepthPitch);
+typedef HRESULT(STDMETHODCALLTYPE* PFN_Map)(
+    ID3D11DeviceContext* pCtx, ID3D11Resource* pResource, UINT Subresource, D3D11_MAP MapType, UINT MapFlags, D3D11_MAPPED_SUBRESOURCE* pMappedResource);
+typedef void(STDMETHODCALLTYPE* PFN_Unmap)(
+    ID3D11DeviceContext* pCtx, ID3D11Resource* pResource, UINT Subresource);
+
 typedef HRESULT(STDMETHODCALLTYPE* PFN_CreateDeferredContext)(
     ID3D11Device* pDevice, UINT ContextFlags, ID3D11DeviceContext** ppDeferredContext);
 typedef void(STDMETHODCALLTYPE* PFN_GetImmediateContext)(ID3D11Device* pDevice, ID3D11DeviceContext** ppImmediateContext);
@@ -68,6 +76,11 @@ extern PFN_RSSetScissorRects g_OriginalRSSetScissorRects;
 extern PFN_OMSetRenderTargets g_OriginalOMSetRenderTargets;
 extern PFN_OMSetRenderTargetsAndUnorderedAccessViews g_OriginalOMSetRenderTargetsAndUnorderedAccessViews;
 extern PFN_ClearDepthStencilView g_OriginalClearDepthStencilView;
+
+extern PFN_UpdateSubresource g_OriginalUpdateSubresource;
+extern PFN_Map g_OriginalMap;
+extern PFN_Unmap g_OriginalUnmap;
+
 extern PFN_CreateDeferredContext g_OriginalCreateDeferredContext;
 extern PFN_GetImmediateContext g_OriginalGetImmediateContext;
 extern PFN_CreateSwapChain g_OriginalCreateSwapChain;
@@ -107,6 +120,14 @@ void STDMETHODCALLTYPE HookedOMSetRenderTargets(ID3D11DeviceContext* pCtx, UINT 
 void STDMETHODCALLTYPE HookedOMSetRenderTargetsAndUnorderedAccessViews(ID3D11DeviceContext* pCtx,
     UINT NumRTVs, ID3D11RenderTargetView* const* ppRenderTargetViews, ID3D11DepthStencilView* pDepthStencilView,
     UINT UAVStartSlot, UINT NumUAVs, ID3D11UnorderedAccessView* const* ppUnorderedAccessViews, const UINT* pUAVInitialCounts);
+
+void STDMETHODCALLTYPE HookedUpdateSubresource(
+    ID3D11DeviceContext* pCtx, ID3D11Resource* pDstResource, UINT DstSubresource, const D3D11_BOX* pDstBox, const void* pSrcData, UINT SrcRowPitch, UINT SrcDepthPitch);
+HRESULT STDMETHODCALLTYPE HookedMap(
+    ID3D11DeviceContext* pCtx, ID3D11Resource* pResource, UINT Subresource, D3D11_MAP MapType, UINT MapFlags, D3D11_MAPPED_SUBRESOURCE* pMappedResource);
+void STDMETHODCALLTYPE HookedUnmap(
+    ID3D11DeviceContext* pCtx, ID3D11Resource* pResource, UINT Subresource);
+
 HRESULT STDMETHODCALLTYPE HookedQueryInterface(IUnknown* pUnk, REFIID riid, void** ppvObject);
 HRESULT STDMETHODCALLTYPE HookedPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT Flags);
 HRESULT STDMETHODCALLTYPE HookedPresent1(

@@ -16,6 +16,11 @@ PFN_RSSetScissorRects g_OriginalRSSetScissorRects = nullptr;
 PFN_OMSetRenderTargets g_OriginalOMSetRenderTargets = nullptr;
 PFN_OMSetRenderTargetsAndUnorderedAccessViews g_OriginalOMSetRenderTargetsAndUnorderedAccessViews = nullptr;
 PFN_ClearDepthStencilView g_OriginalClearDepthStencilView = nullptr;
+
+PFN_UpdateSubresource g_OriginalUpdateSubresource = nullptr;
+PFN_Map g_OriginalMap = nullptr;
+PFN_Unmap g_OriginalUnmap = nullptr;
+
 PFN_CreateDeferredContext g_OriginalCreateDeferredContext = nullptr;
 PFN_GetImmediateContext g_OriginalGetImmediateContext = nullptr;
 PFN_CreateSwapChain g_OriginalCreateSwapChain = nullptr;

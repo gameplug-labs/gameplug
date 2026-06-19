@@ -197,6 +197,8 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 4)
         d3d9/d3d9_proxy_device.cpp
         d3d9/d3d9_proxy_surface.cpp
         d3d9/d3d9_proxy_swapchain.cpp
+        d3d9/d3d9_proxy_texture.cpp
+        d3d9/texture_replacer.cpp
         d3d9/dx_overlay.cpp
         ${PROJECT_SOURCE_DIR}/external/imgui/backends/imgui_impl_dx9.cpp
     )
@@ -240,6 +242,8 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 4)
         d3d9/d3d9_proxy_device.cpp
         d3d9/d3d9_proxy_surface.cpp
         d3d9/d3d9_proxy_swapchain.cpp
+        d3d9/d3d9_proxy_texture.cpp
+        d3d9/texture_replacer.cpp
         d3d9/dx_overlay.cpp
         ${PROJECT_SOURCE_DIR}/external/imgui/backends/imgui_impl_dx9.cpp
     )

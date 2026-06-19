@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-06-10
+
+### Added
+- Added D3D9 Texture Replacer & Dumper module managed via `GamePlug.conf`.
+- Redesigned the D3D9 ImGui overlay with collapsible "General" and "Texture Replacer & Dumper" headings, hiding sub-options when inactive.
+- Optimized D3D9 performance by skipping CRC32 texture hash calculations when both replacement and dumping are disabled.
+
 
 ## [1.0.2] - 2026-06-09
 

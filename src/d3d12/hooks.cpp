@@ -147,24 +147,24 @@ void InstallDXGIHooks() {
                     // Hook ResourceBarrier (Index 26) - Most stable for discovery
                     MH_CreateHook(pListVTable[26], (LPVOID)HookedResourceBarrier, (LPVOID*)&g_OriginalResourceBarrier);
 
-                    MH_CreateHook(pListVTable[33], (LPVOID)HookedOMSetRenderTargets, (LPVOID*)&g_OriginalOMSetRenderTargets);
+                    MH_CreateHook(pListVTable[46], (LPVOID)HookedOMSetRenderTargets, (LPVOID*)&g_OriginalOMSetRenderTargets);
 
                     Logger::info(
-                        "DX Hooks: Hooked RSSetViewports (21), RSSetScissorRects (22), ResourceBarrier (26), OMSetRenderTargets (33)");
+                        "DX Hooks: Hooked RSSetViewports (21), RSSetScissorRects (22), ResourceBarrier (26), OMSetRenderTargets (46)");
                 }
             }
 
             if (d3d12Device) {
                 void** pDeviceVTable = *(void***)d3d12Device;
                 MH_CreateHook(pDeviceVTable[20], (LPVOID)HookedCreateRenderTargetView, (LPVOID*)&g_OriginalCreateRenderTargetView);
-                MH_CreateHook(pDeviceVTable[22], (LPVOID)HookedCreateDepthStencilView, (LPVOID*)&g_OriginalCreateDepthStencilView);
+                MH_CreateHook(pDeviceVTable[21], (LPVOID)HookedCreateDepthStencilView, (LPVOID*)&g_OriginalCreateDepthStencilView);
                 MH_CreateHook(pDeviceVTable[23], (LPVOID)HookedCopyDescriptors, (LPVOID*)&g_OriginalCopyDescriptors);
                 MH_CreateHook(pDeviceVTable[24], (LPVOID)HookedCopyDescriptorsSimple, (LPVOID*)&g_OriginalCopyDescriptorsSimple);
                 MH_CreateHook(pDeviceVTable[29], (LPVOID)HookedCreatePlacedResource, (LPVOID*)&g_OriginalCreatePlacedResource);
                 MH_CreateHook(pDeviceVTable[27], (LPVOID)HookedCreateCommittedResource, (LPVOID*)&g_OriginalCreateCommittedResource);
                 MH_CreateHook(pDeviceVTable[8], (LPVOID)HookedCreateCommandQueue, (LPVOID*)&g_OriginalCreateCommandQueue);
                 Logger::info("DX Hooks: Hook ID3D12Device::CreateCommandQueue(8), CreateCommittedResource(27), CreatePlacedResource(29), "
-                             "CreateRenderTargetView(20), CreateDepthStencilView(22), CopyDescriptors(23), CopyDescriptorsSimple(24)");
+                             "CreateRenderTargetView(20), CreateDepthStencilView(21), CopyDescriptors(23), CopyDescriptorsSimple(24)");
             }
 
             MH_EnableHook(MH_ALL_HOOKS);

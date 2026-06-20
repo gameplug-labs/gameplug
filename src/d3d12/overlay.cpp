@@ -81,8 +81,10 @@ D3D12_GPU_DESCRIPTOR_HANDLE GetImGuiSRVForResource(ID3D12Resource* pRes) {
         return g_ImGuiSrvCache[pRes];
     }
 
-    if (g_NextSrvIndex >= 32) {
-        return {0}; // Heap full
+    if (g_NextSrvIndex >= 1024) {
+        Logger::info("GetImGuiSRVForResource: SRV heap limit reached. Clearing cache to evict old resources.");
+        g_ImGuiSrvCache.clear();
+        g_NextSrvIndex = 1;
     }
 
     UINT descriptorSize = g_pd3d12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
@@ -371,7 +373,7 @@ bool InitImGuiDX12(IDXGISwapChain* pSwapChain, ID3D12CommandQueue* pQueue) {
     {
         D3D12_DESCRIPTOR_HEAP_DESC desc = {};
         desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-        desc.NumDescriptors = 32;
+        desc.NumDescriptors = 1024;
         desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
         desc.NodeMask = 0;
 
@@ -514,7 +516,7 @@ IDXGISwapChain* GetCurrentDXSwapChain() {
 void OnDXPresent(IDXGISwapChain* pSwapChain) {
 
     // [FIX] Execute FSR every frame when signaled by the engine
-    if (DXUpscalerManager::Get().IsFSRReady() && DXUpscalerManager::Get().HasValidRT())
+    if (DXUpscalerManager::Get().IsFSRReady() && (DXUpscalerManager::Get().HasValidRT() || DXUpscalerManager::Get().GetFakeBackBuffer() != nullptr))
     {
         Logger::warn("FSR RUNNING IN PRESENT");
         DXUpscalerManager::Get().RunFSRPass();

@@ -216,9 +216,19 @@ HRESULT STDMETHODCALLTYPE HookedGetBuffer(IDXGISwapChain* pSwapChain, UINT Buffe
     ScopedRecursionGuard guard;
 
     if (Buffer == 0) {
-        if (DXUpscalerManager::Get().IsUpscalingEnabled() && DXUpscalerManager::Get().HasValidDevice()) {
+        if (!DXUpscalerManager::Get().HasValidDevice()) {
+            ID3D12Device* device = nullptr;
+            HRESULT hrDev = pSwapChain->GetDevice(__uuidof(ID3D12Device), (void**)&device);
+            if (SUCCEEDED(hrDev) && device) {
+                Logger::info("HookedGetBuffer (DX12): Initializing device from SwapChain.");
+                DXUpscalerManager::Get().InitDX12(device, nullptr);
+                device->Release();
+            }
+        }
+
+        if (DXUpscalerManager::Get().HasValidDevice()) {
             if (!DXUpscalerManager::Get().GetFakeBackBuffer()) {
-                Logger::info("HookedGetBuffer: Fake BackBuffer is NULL, creating...");
+                Logger::info("HookedGetBuffer (DX12): Fake BackBuffer is NULL, creating...");
                 DXUpscalerManager::Get().CreateFakeBackBuffer(pSwapChain);
             }
             ID3D12Resource* fakeBuffer = DXUpscalerManager::Get().GetFakeBackBuffer();

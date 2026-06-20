@@ -90,7 +90,9 @@ void DXUpscalerManager::InitDX12(ID3D12Device* device, ID3D12CommandQueue* queue
     if (!m_pInterface) return;
 
     m_pd3d12Device = device;
-    m_pd3d12Queue = queue;
+    if (queue) {
+        m_pd3d12Queue = queue;
+    }
 
     if (m_pInterface->OnInit) {
         m_pInterface->OnInit(
@@ -181,16 +183,19 @@ void DXUpscalerManager::CreateFakeBackBuffer(IDXGISwapChain* swapChain) {
         return;
     }
 
+    UpdateDimensions(desc.BufferDesc.Width, desc.BufferDesc.Height);
+    
     if (m_fakeBackBuffer) {
         D3D12_RESOURCE_DESC resDesc = m_fakeBackBuffer->GetDesc();
-        if (resDesc.Width == desc.BufferDesc.Width && resDesc.Height == desc.BufferDesc.Height && resDesc.Format == desc.BufferDesc.Format) {
+        if (resDesc.Width == m_renderWidth && resDesc.Height == m_renderHeight && resDesc.Format == desc.BufferDesc.Format) {
             Logger::info("DXUpscalerManager: Fake BackBuffer already exists with correct dimensions.");
             return;
         }
         DestroyFakeBackBuffer();
     }
 
-    Logger::info("DXUpscalerManager: Creating Fake BackBuffer at " + std::to_string(desc.BufferDesc.Width) + "x" + std::to_string(desc.BufferDesc.Height));
+    Logger::info("DXUpscalerManager: Creating Fake BackBuffer at " + std::to_string(m_renderWidth) + "x" + std::to_string(m_renderHeight) +
+                 " (Display: " + std::to_string(m_width) + "x" + std::to_string(m_height) + ")");
 
     D3D12_HEAP_PROPERTIES heapProps = {};
     heapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
@@ -202,8 +207,8 @@ void DXUpscalerManager::CreateFakeBackBuffer(IDXGISwapChain* swapChain) {
     D3D12_RESOURCE_DESC resDesc = {};
     resDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
     resDesc.Alignment = 0;
-    resDesc.Width = desc.BufferDesc.Width;
-    resDesc.Height = desc.BufferDesc.Height;
+    resDesc.Width = m_renderWidth;
+    resDesc.Height = m_renderHeight;
     resDesc.DepthOrArraySize = 1;
     resDesc.MipLevels = 1;
     resDesc.Format = desc.BufferDesc.Format;
@@ -489,11 +494,33 @@ void DXUpscalerManager::GetTargetResolution(uint32_t width, uint32_t height, uin
 
         // Check Native Rendering first
         for (int i = 0; i < count; i++) {
-            if (fields[i].Name && std::string(fields[i].Name) == "Native Rendering") {
-                if (*(bool*)fields[i].Data) {
-                    return; // Return native resolution
+            if (fields[i].Name) {
+                std::string name(fields[i].Name);
+
+                if (name == "Native AA" || name == "Native Rendering" || name == "DLAA") {
+                    bool isBatman = false;
+                    static bool checkedBatman = false;
+                    static bool isBatmanCached = false;
+                    if (!checkedBatman) {
+                        char exePath[MAX_PATH];
+                        GetModuleFileNameA(NULL, exePath, MAX_PATH);
+                        std::string exeName = std::filesystem::path(exePath).filename().string();
+                        std::transform(exeName.begin(), exeName.end(), exeName.begin(), ::tolower);
+                        isBatmanCached = (exeName.find("batman") != std::string::npos);
+                        checkedBatman = true;
+                    }
+                    isBatman = isBatmanCached;
+
+                    if (isBatman) {
+                        *(bool*)fields[i].Data = true;
+                    }
+
+                    if (*(bool*)fields[i].Data) {
+                        return;
+                    }
+
+                    break;
                 }
-                break;
             }
         }
 
@@ -502,9 +529,11 @@ void DXUpscalerManager::GetTargetResolution(uint32_t width, uint32_t height, uin
             if (fields[i].Name && std::string(fields[i].Name) == "Upscale Quality") {
                 int quality = *(int*)fields[i].Data;
                 float ratio = 1.0f;
-                float ratios[] = { 1.2f, 1.3f, 1.5f, 1.7f, 2.0f, 3.0f };
-                if (quality >= 0 && quality < 6) ratio = ratios[quality];
-                else ratio = 1.3f;
+                float ratios[] = {1.2f, 1.3f, 1.5f, 1.7f, 2.0f, 3.0f};
+                if (quality >= 0 && quality < 6)
+                    ratio = ratios[quality];
+                else
+                    ratio = 1.3f;
 
                 outW = (uint32_t)((float)width / ratio + 0.5f);
                 outH = (uint32_t)((float)height / ratio + 0.5f);
@@ -930,10 +959,27 @@ void DXUpscalerManager::RunFSRPass() {
     Logger::info("DX: RunFSRPass - Transitioning dst to COPY_DEST for FSR");
     m_fsrCommandList->ResourceBarrier(1, &clearBarrier);
 
-    Logger::warn("FSR: RunFSRPass 11");
+    // RUN FSR OR COPY DIRECTLY
+    if (IsUpscalingEnabled()) {
+        this->RenderFrame(m_fsrCommandList, src, dst, width, height);
+    } else {
+        // Transition src to COPY_SOURCE
+        D3D12_RESOURCE_BARRIER copySrcBarrier = {};
+        copySrcBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        copySrcBarrier.Transition.pResource = src;
+        copySrcBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        copySrcBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        copySrcBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+        m_fsrCommandList->ResourceBarrier(1, &copySrcBarrier);
 
-    // RUN FSR
-    this->RenderFrame(m_fsrCommandList, src, dst, width, height);
+        // Copy
+        m_fsrCommandList->CopyResource(dst, src);
+
+        // Transition src back to D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+        copySrcBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
+        copySrcBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        m_fsrCommandList->ResourceBarrier(1, &copySrcBarrier);
+    }
 
     Logger::warn("FSR: RunFSRPass 12");
 

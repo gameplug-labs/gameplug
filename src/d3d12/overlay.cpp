@@ -70,6 +70,49 @@ static std::recursive_mutex g_TargetMtx;
 
 static bool g_CleaningUp = false;
 
+static std::unordered_map<ID3D12Resource*, D3D12_GPU_DESCRIPTOR_HANDLE> g_ImGuiSrvCache;
+static uint32_t g_NextSrvIndex = 1; // 0 is used by ImGui Font
+
+D3D12_GPU_DESCRIPTOR_HANDLE GetImGuiSRVForResource(ID3D12Resource* pRes) {
+    if (!pRes || !g_pd3d12Device || !g_pd3dSrvDescHeap) return {0};
+    
+    std::lock_guard<std::mutex> lock(g_QueueMtx); // Reusing QueueMtx for simplicity
+    if (g_ImGuiSrvCache.find(pRes) != g_ImGuiSrvCache.end()) {
+        return g_ImGuiSrvCache[pRes];
+    }
+
+    if (g_NextSrvIndex >= 32) {
+        return {0}; // Heap full
+    }
+
+    UINT descriptorSize = g_pd3d12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle = g_pd3dSrvDescHeap->GetCPUDescriptorHandleForHeapStart();
+    cpuHandle.ptr += g_NextSrvIndex * descriptorSize;
+
+    D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle = g_pd3dSrvDescHeap->GetGPUDescriptorHandleForHeapStart();
+    gpuHandle.ptr += g_NextSrvIndex * descriptorSize;
+
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+    D3D12_RESOURCE_DESC resDesc = pRes->GetDesc();
+    srvDesc.Format = resDesc.Format;
+    
+    // Fix typeless formats for SRV
+    if (srvDesc.Format == DXGI_FORMAT_R32_TYPELESS) srvDesc.Format = DXGI_FORMAT_R32_FLOAT;
+    else if (srvDesc.Format == DXGI_FORMAT_R16_TYPELESS) srvDesc.Format = DXGI_FORMAT_R16_UNORM;
+    else if (srvDesc.Format == DXGI_FORMAT_R32G8X24_TYPELESS) srvDesc.Format = DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS;
+    else if (srvDesc.Format == DXGI_FORMAT_R24G8_TYPELESS) srvDesc.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+
+    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srvDesc.Texture2D.MipLevels = 1;
+
+    g_pd3d12Device->CreateShaderResourceView(pRes, &srvDesc, cpuHandle);
+    
+    g_ImGuiSrvCache[pRes] = gpuHandle;
+    g_NextSrvIndex++;
+    return gpuHandle;
+}
+
 static void LogDeviceRemovedReason(ID3D12Device* device, HRESULT hr) {
     if (hr != DXGI_ERROR_DEVICE_REMOVED && hr != DXGI_ERROR_DEVICE_RESET)
         return;
@@ -200,6 +243,12 @@ void CleanupDX12(bool isResize) {
             Logger::info(" - ImGui Shutdown Complete (Plugins Unloaded)");
         }
 
+        {
+            std::lock_guard<std::mutex> lock(g_QueueMtx);
+            g_ImGuiSrvCache.clear();
+            g_NextSrvIndex = 1;
+        }
+
         // Safe Resource Draining
         for (int i = 0; i < 8; i++) {
             if (g_backBuffers[i]) {
@@ -322,7 +371,7 @@ bool InitImGuiDX12(IDXGISwapChain* pSwapChain, ID3D12CommandQueue* pQueue) {
     {
         D3D12_DESCRIPTOR_HEAP_DESC desc = {};
         desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-        desc.NumDescriptors = 1;
+        desc.NumDescriptors = 32;
         desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
         desc.NodeMask = 0;
 
@@ -445,15 +494,24 @@ void OnDXResize(IDXGISwapChain* pSwapChain) {
     Logger::info("OnDXResize: Status reset to uninitialized");
 }
 
+void CheckSwapChainRelease(void* pSwapChain, ULONG refCount) {
+    std::lock_guard<std::recursive_mutex> lock(g_DXMtx);
+    if (g_currentSwapChain && pSwapChain == g_currentSwapChain) {
+        if (refCount == 0) {
+            Logger::info("DX: SwapChain is being released by the game. Triggering Cleanup.");
+            CleanupDX12(false);
+            g_currentSwapChain = nullptr;
+            g_ImGuiInitialized = false;
+        }
+    }
+}
+
 IDXGISwapChain* GetCurrentDXSwapChain() {
     std::lock_guard<std::recursive_mutex> lock(g_DXMtx);
     return g_currentSwapChain;
 }
 
 void OnDXPresent(IDXGISwapChain* pSwapChain) {
-    if (g_InHook)
-        return;
-    ScopedRecursionGuard guard;
 
     // [FIX] Execute FSR every frame when signaled by the engine
     if (DXUpscalerManager::Get().IsFSRReady() && DXUpscalerManager::Get().HasValidRT())

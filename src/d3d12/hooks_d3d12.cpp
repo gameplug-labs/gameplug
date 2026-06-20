@@ -19,33 +19,153 @@ std::pair<uint32_t, uint32_t> GetCommandListRTSize(ID3D12GraphicsCommandList* pL
     return {0, 0};
 }
 
+static bool IsFakeBackBufferBound(ID3D12GraphicsCommandList* pList) {
+    ID3D12Resource* pRes = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_TrackingMtx);
+        auto it = g_CommandListTargets.find(pList);
+        if (it != g_CommandListTargets.end()) {
+            pRes = it->second;
+        }
+    }
+
+    if (!pRes)
+        return false;
+
+    ID3D12Resource* fakeBB = DXUpscalerManager::Get().GetFakeBackBuffer();
+    if (fakeBB && pRes == fakeBB) {
+        return true;
+    }
+
+    D3D12_RESOURCE_DESC desc = pRes->GetDesc();
+    DXUpscalerManager& mgr = DXUpscalerManager::Get();
+    if (desc.Width > 0 && desc.Width == mgr.GetRenderWidth() && desc.Height == mgr.GetRenderHeight()) {
+        return true;
+    }
+
+    return false;
+}
+
 void STDMETHODCALLTYPE HookedRSSetViewports(ID3D12GraphicsCommandList* pList, UINT Count, const D3D12_VIEWPORT* pViewports) {
-    if (g_InHook) {
+    if (g_InHook || !pViewports || Count == 0) {
         g_OriginalRSSetViewports(pList, Count, pViewports);
         return;
     }
     ScopedRecursionGuard guard;
 
-    if (Count > 0 && pViewports) {
+    DXUpscalerManager& mgr = DXUpscalerManager::Get();
+    uint32_t dispW = mgr.GetDisplayWidth();
+    uint32_t dispH = mgr.GetDisplayHeight();
+    uint32_t rendW = mgr.GetRenderWidth();
+    uint32_t rendH = mgr.GetRenderHeight();
+
+    bool shouldScale = mgr.IsUpscalingEnabled() && dispW > 0 && dispH > 0 && rendW > 0 && rendH > 0 && (rendW != dispW || rendH != dispH) &&
+                       IsFakeBackBufferBound(pList);
+
+    if (!shouldScale) {
         g_OriginalRSSetViewports(pList, Count, pViewports);
         return;
     }
-    g_OriginalRSSetViewports(pList, Count, pViewports);
+
+    if (pViewports[0].Width == (float)rendW && pViewports[0].Height == (float)rendH) {
+        g_OriginalRSSetViewports(pList, Count, pViewports);
+        return;
+    }
+
+    float scaleX = (float)rendW / (float)dispW;
+    float scaleY = (float)rendH / (float)dispH;
+
+    D3D12_VIEWPORT scaled[D3D12_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE];
+    UINT countToScale = (Count < D3D12_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE)
+                     ? Count
+                     : D3D12_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE;
+                     
+    for (UINT i = 0; i < countToScale; ++i) {
+        scaled[i] = pViewports[i];
+        scaled[i].TopLeftX = pViewports[i].TopLeftX * scaleX;
+        scaled[i].TopLeftY = pViewports[i].TopLeftY * scaleY;
+        scaled[i].Width = pViewports[i].Width * scaleX;
+        scaled[i].Height = pViewports[i].Height * scaleY;
+    }
+
+    static uint64_t s_vpLog = 0;
+    if (s_vpLog++ % 100 == 0) {
+        Logger::info("DX12 RSSetViewports [Scaled]: vp[0] pos=(" +
+                     std::to_string((int)pViewports[0].TopLeftX) + "," + std::to_string((int)pViewports[0].TopLeftY) +
+                     ") size=" +
+                     std::to_string((int)pViewports[0].Width) + "x" + std::to_string((int)pViewports[0].Height) +
+                     " -> pos=(" +
+                     std::to_string((int)scaled[0].TopLeftX) + "," + std::to_string((int)scaled[0].TopLeftY) +
+                     ") size=" +
+                     std::to_string((int)scaled[0].Width) + "x" + std::to_string((int)scaled[0].Height) + "  [display " +
+                     std::to_string(dispW) + "x" + std::to_string(dispH) + " render " + std::to_string(rendW) + "x" +
+                     std::to_string(rendH) + "]");
+    }
+
+    g_OriginalRSSetViewports(pList, countToScale, scaled);
 }
 
 void STDMETHODCALLTYPE HookedRSSetScissorRects(ID3D12GraphicsCommandList* pList, UINT Count, const D3D12_RECT* pRects) {
-    if (g_InHook) {
+    if (g_InHook || !pRects || Count == 0) {
         g_OriginalRSSetScissorRects(pList, Count, pRects);
         return;
     }
     ScopedRecursionGuard guard;
 
-    if (Count > 0 && pRects) {
+    DXUpscalerManager& mgr = DXUpscalerManager::Get();
+    uint32_t dispW = mgr.GetDisplayWidth();
+    uint32_t dispH = mgr.GetDisplayHeight();
+    uint32_t rendW = mgr.GetRenderWidth();
+    uint32_t rendH = mgr.GetRenderHeight();
+
+    bool shouldScale = mgr.IsUpscalingEnabled() && dispW > 0 && dispH > 0 && rendW > 0 && rendH > 0 && (rendW != dispW || rendH != dispH) &&
+                       IsFakeBackBufferBound(pList);
+
+    if (!shouldScale) {
         g_OriginalRSSetScissorRects(pList, Count, pRects);
         return;
     }
 
-    g_OriginalRSSetScissorRects(pList, Count, pRects);
+    UINT scW = pRects[0].right - pRects[0].left;
+    UINT scH = pRects[0].bottom - pRects[0].top;
+
+    if (scW == rendW && scH == rendH) {
+        g_OriginalRSSetScissorRects(pList, Count, pRects);
+        return;
+    }
+
+    float scaleX = (float)rendW / (float)dispW;
+    float scaleY = (float)rendH / (float)dispH;
+
+    D3D12_RECT scaled[D3D12_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE];
+    UINT countToScale = (Count < D3D12_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE)
+                     ? Count
+                     : D3D12_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE;
+                     
+    for (UINT i = 0; i < countToScale; ++i) {
+        scaled[i].left = (LONG)(pRects[i].left * scaleX);
+        scaled[i].top = (LONG)(pRects[i].top * scaleY);
+        scaled[i].right = (LONG)(pRects[i].right * scaleX);
+        scaled[i].bottom = (LONG)(pRects[i].bottom * scaleY);
+    }
+
+    static uint64_t s_srLog = 0;
+    if (s_srLog++ % 100 == 0) {
+        Logger::info("DX12 RSSetScissorRects [Scaled]: rect[0] (" +
+                     std::to_string(pRects[0].left) + "," + std::to_string(pRects[0].top) + ")-(" + std::to_string(pRects[0].right) + "," +
+                     std::to_string(pRects[0].bottom) +
+                     ") size=" +
+                     std::to_string(pRects[0].right - pRects[0].left) + "x" + std::to_string(pRects[0].bottom - pRects[0].top) +
+                     " -> (" +
+                     std::to_string(scaled[0].left) + "," + std::to_string(scaled[0].top) + ")-(" + std::to_string(scaled[0].right) + "," +
+                     std::to_string(scaled[0].bottom) +
+                     ") size=" +
+                     std::to_string(scaled[0].right - scaled[0].left) + "x" + std::to_string(scaled[0].bottom - scaled[0].top) +
+                     "  [display " + std::to_string(dispW) + "x" + std::to_string(dispH) + " render " + std::to_string(rendW) + "x" +
+                     std::to_string(rendH) + "]");
+    }
+
+    g_OriginalRSSetScissorRects(pList, countToScale, scaled);
 }
 
 void STDMETHODCALLTYPE HookedOMSetRenderTargets(ID3D12GraphicsCommandList* pList, UINT NumRTs, const D3D12_CPU_DESCRIPTOR_HANDLE* pRTVs,
@@ -87,7 +207,7 @@ void STDMETHODCALLTYPE HookedCreateRenderTargetView(ID3D12Device* pDevice, ID3D1
     const D3D12_RENDER_TARGET_VIEW_DESC* pDesc, D3D12_CPU_DESCRIPTOR_HANDLE DestDescriptor) {
     static uint32_t s_logCount = 0;
     if (s_logCount < 100) {
-        Logger::info("DX12: HookedCreateRenderTargetView triggered [Res=" + std::to_string((uintptr_t)pResource) + "]");
+        // Logger::info("DX12: HookedCreateRenderTargetView triggered [Res=" + std::to_string((uintptr_t)pResource) + "]");
         s_logCount++;
     }
 
@@ -309,6 +429,7 @@ HRESULT STDMETHODCALLTYPE HookedCreateCommittedResource(ID3D12Device* pDevice, c
             std::lock_guard<std::mutex> lock(g_TrackingMtx);
             g_OverriddenResources.insert(pRes);
         }
+        DXUpscalerManager::Get().TrackTexture(pRes);
         if (ppvResource)
             *ppvResource = pRes;
     }
@@ -322,7 +443,7 @@ HRESULT STDMETHODCALLTYPE HookedCreatePlacedResource(ID3D12Device* pDevice, ID3D
         return g_OriginalCreatePlacedResource(
             pDevice, pHeap, HeapOffset, pDesc, InitialResourceState, pOptimizedClearValue, riidResource, ppvResource);
     ScopedRecursionGuard guard;
-    Logger::info("HookedCreatePlacedResource: CreatePlacedResource");
+    // Logger::info("HookedCreatePlacedResource: CreatePlacedResource");
     D3D12_RESOURCE_DESC desc = *pDesc;
     bool overridden = false;
 
@@ -348,6 +469,7 @@ HRESULT STDMETHODCALLTYPE HookedCreatePlacedResource(ID3D12Device* pDevice, ID3D
             std::lock_guard<std::mutex> lock(g_TrackingMtx);
             g_OverriddenResources.insert(pRes);
         }
+        DXUpscalerManager::Get().TrackTexture(pRes);
         if (ppvResource)
             *ppvResource = pRes;
     }

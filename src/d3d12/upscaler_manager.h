@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <mutex>
 #include "upscaler_interface.h"
 #include "framework_export.h"
 #include <optional>
@@ -46,12 +47,7 @@ public:
                      uint32_t width, 
                      uint32_t height);
     
-    // DX11 Call
-    void RenderFrameDX11(ID3D11DeviceContext* context,
-                         ID3D11ShaderResourceView* sourceSRV,
-                         ID3D11RenderTargetView* targetRTV,
-                         uint32_t width,
-                         uint32_t height);
+
 
     void ResetFrame();
     void NewFrame() { m_frameUpscaled = false; }
@@ -59,6 +55,11 @@ public:
 
     bool IsLoaded() const { return m_handle != nullptr; }
     bool IsUpscalingEnabled() const;
+    bool IsShowDebugImageEnabled() const;
+    void SetShowDebugImageEnabled(bool enabled);
+    bool HasValidDevice() const { return m_pd3d12Device != nullptr || m_pd3dDevice != nullptr; }
+    
+    int m_debugPreviewIndex = 0;
     
     uint32_t GetRenderWidth() const { return m_renderWidth; }
     uint32_t GetRenderHeight() const { return m_renderHeight; }
@@ -126,12 +127,45 @@ private:
     bool m_fsrReady = false;
     bool m_hasValidRT = false;
 
+    // Halton Jitter and HDR Tracking
+    bool m_detectedHDR = false;
+    int m_hdrConfidence = 0;
+    int m_jitterIndex = 0;
+    float m_fakeJitterX = 0.0f;
+    float m_fakeJitterY = 0.0f;
+
+    // Camera Info
+    float m_cameraNear = 0.1f;
+    float m_cameraFar = 1000.0f;
+    float m_cameraFov = 90.0f;
+    float m_viewSpaceToMetersFactor = 1.0f;
+    bool m_detectedInvertedDepth = false;
+
     ID3D12Resource* m_fakeBackBuffer = nullptr;
     ID3D12Resource* m_finalOutput = nullptr;
     std::unordered_map<ID3D12Resource*, D3D12_CPU_DESCRIPTOR_HANDLE> m_rtvCache;
     ID3D12DescriptorHeap* m_rtvHeap = nullptr;
     uint32_t m_rtvDescriptorSize = 0;
     uint32_t m_nextRtvIndex = 0;
+
+    // Tracker Resources
+    std::mutex m_trackerMtx;
+    ID3D12Resource* m_depthTexture = nullptr;
+    uint32_t m_depthWidth = 0;
+    uint32_t m_depthHeight = 0;
+    DXGI_FORMAT m_depthFormat = DXGI_FORMAT_UNKNOWN;
+    float m_bestDepthScore = -1.0f;
+
+    ID3D12Resource* m_mvTexture = nullptr;
+    uint32_t m_mvWidth = 0;
+    uint32_t m_mvHeight = 0;
+    DXGI_FORMAT m_mvFormat = DXGI_FORMAT_UNKNOWN;
+    float m_bestMVScore = -1.0f;
+
+public:
+    void TrackTexture(ID3D12Resource* resource);
+
+private:
 
     // FSR Dedicated Resources (DX12)
     IDXGISwapChain* m_currentSwapChain = nullptr;

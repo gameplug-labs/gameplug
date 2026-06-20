@@ -112,6 +112,7 @@ extern void SetDX12CommandQueueOffset(uint32_t offset);
 extern ID3D12CommandList* OnDXExecute(ID3D12CommandQueue* pQueue, bool isSignal);
 extern std::unordered_map<ID3D12Resource*, D3D12_RESOURCE_STATES> g_ResourceStates;
 extern void SetLastEngineRenderTarget(ID3D12Resource* pRes);
+D3D12_GPU_DESCRIPTOR_HANDLE GetImGuiSRVForResource(ID3D12Resource* pRes);
 
 // Recursion guard helper
 struct ScopedRecursionGuard {

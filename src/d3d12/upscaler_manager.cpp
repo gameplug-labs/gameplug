@@ -6,7 +6,7 @@
 #include "config.h"
 #include <MinHook.h>
 #include <sstream>
-
+#include "hooks_common.h"
 #include <iomanip>
 #include <unordered_map>
 
@@ -36,24 +36,24 @@ void DXUpscalerManager::LoadPlugin() {
     char buf[MAX_PATH];
     GetModuleFileNameA(NULL, buf, MAX_PATH);
     std::filesystem::path gamePath = std::filesystem::path(buf).parent_path();
-    std::filesystem::path upscalerPath = gamePath / "dxupscaler.dll";
+    std::filesystem::path upscalerPath = gamePath / "upscaler_plugin.dll";
 
     Logger::info("DXUpscalerManager: Loading " + upscalerPath.string());
 
     if (!std::filesystem::exists(upscalerPath)) {
-        Logger::warn("DXUpscalerManager: dxupscaler.dll NOT found at " + upscalerPath.string());
+        Logger::warn("DXUpscalerManager: upscaler_plugin.dll NOT found at " + upscalerPath.string());
         return;
     }
 
     m_handle = LoadLibraryA(upscalerPath.string().c_str());
     if (!m_handle) {
-        Logger::error("DXUpscalerManager: Failed to load dxupscaler.dll");
+        Logger::error("DXUpscalerManager: Failed to load upscaler_plugin.dll");
         return;
     }
 
     auto getInterface = (GamePlug_GetUpscalerInterfaceFn)GetProcAddress(m_handle, GamePlug_GET_UPSCALER_INTERFACE_NAME);
     if (!getInterface) {
-        Logger::error("DXUpscalerManager: dxupscaler.dll does not export " + std::string(GamePlug_GET_UPSCALER_INTERFACE_NAME));
+        Logger::error("DXUpscalerManager: upscaler_plugin.dll does not export " + std::string(GamePlug_GET_UPSCALER_INTERFACE_NAME));
         FreeLibrary(m_handle);
         m_handle = nullptr;
         return;
@@ -262,11 +262,39 @@ bool DXUpscalerManager::IsUpscalingEnabled() const {
     }
     return false;
 }
+bool DXUpscalerManager::IsShowDebugImageEnabled() const {
+    if (!m_pInterface || !m_pInterface->GetFields)
+        return false;
+    GamePlugUpscalerInterface::FieldDescriptor* fields = nullptr;
+    int count = m_pInterface->GetFields(&fields);
+    for (int i = 0; i < count; i++) {
+        if (fields[i].Name && std::string(fields[i].Name) == "Show Debug Image") {
+            return *(bool*)fields[i].Data;
+        }
+    }
+    return false;
+}
+
+void DXUpscalerManager::SetShowDebugImageEnabled(bool enabled) {
+    if (!m_pInterface || !m_pInterface->GetFields)
+        return;
+    GamePlugUpscalerInterface::FieldDescriptor* fields = nullptr;
+    int count = m_pInterface->GetFields(&fields);
+    for (int i = 0; i < count; i++) {
+        if (fields[i].Name && std::string(fields[i].Name) == "Show Debug Image") {
+            *(bool*)fields[i].Data = enabled;
+            if (m_pInterface->OnFieldsChanged) {
+                m_pInterface->OnFieldsChanged();
+            }
+            break;
+        }
+    }
+}
 
 void DXUpscalerManager::RenderUI(float fps, uint32_t width, uint32_t height) {
     if (!m_pInterface) {
         if (ImGui::CollapsingHeader("DX Upscaler", ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::TextDisabled("dxupscaler.dll not loaded.");
+            ImGui::TextDisabled("upscaler_plugin.dll not loaded.");
             if (ImGui::Button("Retry Loading")) {
                 LoadPlugin();
                 // Potentially re-init if device is known
@@ -376,21 +404,73 @@ void DXUpscalerManager::RenderUI(float fps, uint32_t width, uint32_t height) {
         ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "(%.2fx)", scale);
         ImGui::Spacing();
 
-        if (ImGui::TreeNode("RE Engine Specific")) {
-            bool reGame = Config::Get().GetBool("ReGame", false);
-            if (ImGui::Checkbox("Enable Native Scale Spoofing (ReGame)", &reGame)) {
-                Config::Get().SetBool("ReGame", reGame);
-                if (reGame && !m_reHooksInitialized) {
-                    InitREEngineHooks();
-                }
-            }
-            bool reHooksActive = m_reHooksInitialized;
-            ImGui::Text("Status: %s", reHooksActive ? "Active" : "Ready");
-            if (reHooksActive) {
-                ImGui::BulletText("Hijacking via.SceneView::get_Size");
-            }
-            ImGui::TreePop();
+    }
+
+    if (IsShowDebugImageEnabled()) {
+        bool show = true;
+        ImGui::Begin("Upscaler Debug View", &show);
+        if (!show) {
+            SetShowDebugImageEnabled(false);
         }
+
+        const char* debugItems[] = {"Source (Fake Back Buffer)", "Depth Buffer", "Motion Vectors"};
+        ImGui::Combo("Preview Target", &m_debugPreviewIndex, debugItems, IM_ARRAYSIZE(debugItems));
+
+        uint32_t dw = 0;
+        uint32_t dh = 0;
+        D3D12_GPU_DESCRIPTOR_HANDLE debugSRV = {0};
+        std::string targetName = "";
+
+        {
+            std::lock_guard<std::mutex> lock(m_trackerMtx);
+            if (m_debugPreviewIndex == 0) {
+                dw = m_renderWidth;
+                dh = m_renderHeight;
+                if (m_fakeBackBuffer) {
+                    debugSRV = GetImGuiSRVForResource(m_fakeBackBuffer);
+                }
+                targetName = "Fake Back Buffer";
+            } else if (m_debugPreviewIndex == 1) {
+                dw = m_depthWidth;
+                dh = m_depthHeight;
+                if (m_depthTexture) {
+                    debugSRV = GetImGuiSRVForResource(m_depthTexture);
+                }
+                targetName = "Depth Buffer";
+            } else if (m_debugPreviewIndex == 2) {
+                dw = m_mvWidth;
+                dh = m_mvHeight;
+                if (m_mvTexture) {
+                    debugSRV = GetImGuiSRVForResource(m_mvTexture);
+                }
+                targetName = "Motion Vectors";
+            }
+        }
+
+        if (debugSRV.ptr != 0 && dw > 0 && dh > 0) {
+            ImGui::Text("%s Resource: %u x %u", targetName.c_str(), dw, dh);
+
+            float windowWidth = ImGui::GetContentRegionAvail().x;
+            float windowHeight = ImGui::GetContentRegionAvail().y - 30.0f;
+            float aspect = (float)dh / (float)dw;
+
+            float imgWidth = windowWidth;
+            float imgHeight = windowWidth * aspect;
+
+            if (imgHeight > windowHeight) {
+                imgHeight = windowHeight;
+                imgWidth = windowHeight / aspect;
+            }
+
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (windowWidth - imgWidth) * 0.5f);
+            ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (windowHeight - imgHeight) * 0.5f);
+
+            ImGui::Image((ImTextureID)debugSRV.ptr, ImVec2(imgWidth, imgHeight));
+        } else {
+            ImGui::Text("%s is not available (or cannot be bound as SRV).", targetName.c_str());
+        }
+
+        ImGui::End();
     }
 }
 
@@ -509,6 +589,81 @@ void DXUpscalerManager::RenderFrame(ID3D12GraphicsCommandList* cmd, ID3D12Resour
     m_height = height;
     UpdateDimensions(width, height);
 
+    bool isHDR = false;
+    if (target) {
+        D3D12_RESOURCE_DESC dstDesc = target->GetDesc();
+        if (dstDesc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT || dstDesc.Format == DXGI_FORMAT_R32G32B32A32_FLOAT ||
+            dstDesc.Format == DXGI_FORMAT_R11G11B10_FLOAT || dstDesc.Format == DXGI_FORMAT_R10G10B10A2_UNORM) {
+            isHDR = true;
+        }
+    }
+
+    if (isHDR == m_detectedHDR) {
+        if (m_hdrConfidence < 10) {
+            m_hdrConfidence++;
+            if (m_hdrConfidence == 10) {
+                Logger::info("DXUpscalerManager: HDR state stabilized to: " + std::string(isHDR ? "true" : "false"));
+            }
+        }
+    } else {
+        m_detectedHDR = isHDR;
+        m_hdrConfidence = 1;
+    }
+
+    // Halton sequence for fake jitter generation
+    m_jitterIndex++;
+    if (m_jitterIndex > 128)
+        m_jitterIndex = 1;
+
+    // Generate Halton sequence jitter
+    float haltonX = 0.0f;
+    float haltonY = 0.0f;
+    int index = m_jitterIndex;
+    float f = 1.0f, r = 0.0f;
+    while (index > 0) {
+        f /= 2.0f;
+        r += f * (index % 2);
+        index /= 2;
+    }
+    haltonX = r;
+    index = m_jitterIndex;
+    f = 1.0f;
+    r = 0.0f;
+    while (index > 0) {
+        f /= 3.0f;
+        r += f * (index % 3);
+        index /= 3;
+    }
+    haltonY = r;
+
+    m_fakeJitterX = (haltonX - 0.5f) * 2.0f / (float)width;
+    m_fakeJitterY = (haltonY - 0.5f) * 2.0f / (float)height;
+
+    float jitterX = m_fakeJitterX;
+    float jitterY = m_fakeJitterY;
+
+    uint64_t depthImage = 0;
+    uint32_t depthFormatVal = 0;
+    uint64_t mvImage = 0;
+    uint32_t mvFormatVal = 0;
+
+    {
+        std::lock_guard<std::mutex> lock(m_trackerMtx);
+        if (m_depthTexture) {
+            depthImage = (uint64_t)m_depthTexture;
+            depthFormatVal = (uint32_t)m_depthFormat;
+        }
+        if (m_mvTexture) {
+            mvImage = (uint64_t)m_mvTexture;
+            mvFormatVal = (uint32_t)m_mvFormat;
+        }
+    }
+
+    if (shouldLog) {
+        Logger::info("DXUpscalerManager::RenderFrame [Buffers] depth=" + std::to_string(depthImage) + 
+                     ", mv=" + std::to_string(mvImage));
+    }
+
     m_pInterface->OnRenderFrame(
         (uintptr_t)cmd,
         (uint64_t)source,
@@ -518,49 +673,110 @@ void DXUpscalerManager::RenderFrame(ID3D12GraphicsCommandList* cmd, ID3D12Resour
         height,
         m_renderWidth,
         m_renderHeight,
-        0, 0, // depth
-        0, 0, // mv
-        0.0f, 0.0f, // jitter
-        0.1f, 1000.0f, 90.0f, // camera settings
-        1.0f, false, false // meters factor, inverted depth, hdr
+        depthImage, depthFormatVal,
+        mvImage, mvFormatVal,
+        jitterX, jitterY,
+        m_cameraNear, m_cameraFar, m_cameraFov,
+        m_viewSpaceToMetersFactor, m_detectedInvertedDepth, m_detectedHDR
     );
 }
 
-void DXUpscalerManager::RenderFrameDX11(ID3D11DeviceContext* context, ID3D11ShaderResourceView* sourceSRV, ID3D11RenderTargetView* targetRTV, uint32_t width, uint32_t height) {
-    if (!m_pInterface || !m_pInterface->OnRenderFrame || m_frameUpscaled) return;
-    if (!sourceSRV || !targetRTV) {
-        Logger::warn("DXUpscalerManager: RenderFrameDX11 called with NULL resources");
+
+void DXUpscalerManager::TrackTexture(ID3D12Resource* resource) {
+    if (!resource)
         return;
+
+    std::lock_guard<std::mutex> lock(m_trackerMtx);
+    D3D12_RESOURCE_DESC desc = resource->GetDesc();
+
+    // Identify Depth Buffer candidate
+    if (desc.Flags & D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL) {
+        float score = 0.0f;
+        if (m_width > 0 && desc.Width == m_width && desc.Height == m_height)
+            score += 1000000.0f;
+        if (desc.Width != desc.Height)
+            score += 500000.0f;
+        if (desc.Width >= 640 && desc.Height >= 360)
+            score += 100000.0f;
+
+        // Shadow map penalty
+        if (desc.Width == desc.Height && m_width != m_height)
+            score -= 800000.0f;
+
+        // Minimum size filter
+        if (desc.Width < 320 || desc.Height < 200)
+            score = -100.0f;
+
+        if (score > m_bestDepthScore && score > 0) {
+            if (m_depthTexture) {
+                m_depthTexture->Release();
+            }
+            m_depthTexture = resource;
+            m_depthTexture->AddRef();
+            m_depthWidth = (uint32_t)desc.Width;
+            m_depthHeight = (uint32_t)desc.Height;
+            m_depthFormat = desc.Format;
+            m_bestDepthScore = score;
+
+            Logger::info("DXUpscalerManager (DX12): Depth buffer candidate updated (Width=" + std::to_string(desc.Width) +
+                         ", Height=" + std::to_string(desc.Height) + ", Format=" + std::to_string(desc.Format) +
+                         ", Score=" + std::to_string(score) + ")");
+        }
     }
 
-    Logger::warn("FSR EXECUTED FRAME");
-    Logger::info("DXUpscalerManager: Calling OnRenderFrame (DX11)");
+    // Identify Motion Vector candidate
+    if ((desc.Flags & D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET) || !(desc.Flags & D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE)) {
+        float score = 0.0f;
 
-    m_frameUpscaled = true;
-    m_width = width;
-    m_height = height;
-    UpdateDimensions(width, height);
+        // Size match to current render resolution or display resolution
+        if (m_renderWidth > 0 && desc.Width == m_renderWidth && desc.Height == m_renderHeight) {
+            score += 500000.0f;
+        } else if (m_width > 0 && desc.Width == m_width && desc.Height == m_height) {
+            score += 300000.0f;
+        }
 
-    m_pInterface->OnRenderFrame(
-        (uintptr_t)context,
-        (uint64_t)sourceSRV,
-        (uint64_t)targetRTV,
-        0,
-        width,
-        height,
-        m_renderWidth,
-        m_renderHeight,
-        0, 0,
-        0, 0,
-        0.0f, 0.0f,
-        0.1f, 1000.0f, 90.0f,
-        1.0f, false, false
-    );
+        // Format scoring: R16G16_FLOAT / R32G32_FLOAT etc are very common motion vector formats
+        if (desc.Format == DXGI_FORMAT_R16G16_FLOAT || desc.Format == DXGI_FORMAT_R32G32_FLOAT) {
+            score += 200000.0f;
+        } else if (desc.Format == DXGI_FORMAT_R16G16_SNORM || desc.Format == DXGI_FORMAT_R16G16_UNORM) {
+            score += 150000.0f;
+        } else if (desc.Format == DXGI_FORMAT_R8G8_UNORM || desc.Format == DXGI_FORMAT_R8G8_SNORM) {
+            score += 50000.0f;
+        }
+
+        if (score > m_bestMVScore && score > 0) {
+            if (m_mvTexture) {
+                m_mvTexture->Release();
+            }
+            m_mvTexture = resource;
+            m_mvTexture->AddRef();
+            m_mvWidth = (uint32_t)desc.Width;
+            m_mvHeight = (uint32_t)desc.Height;
+            m_mvFormat = desc.Format;
+            m_bestMVScore = score;
+
+            Logger::info("DXUpscalerManager (DX12): Motion Vector candidate updated (Width=" + std::to_string(desc.Width) +
+                         ", Height=" + std::to_string(desc.Height) + ", Format=" + std::to_string(desc.Format) +
+                         ", Score=" + std::to_string(score) + ")");
+        }
+    }
 }
 
 void DXUpscalerManager::ResetFrame()
 {
     m_frameUpscaled = false;
+    
+    std::lock_guard<std::mutex> lock(m_trackerMtx);
+    if (m_depthTexture) {
+        m_depthTexture->Release();
+        m_depthTexture = nullptr;
+    }
+    if (m_mvTexture) {
+        m_mvTexture->Release();
+        m_mvTexture = nullptr;
+    }
+    m_bestDepthScore = -1.0f;
+    m_bestMVScore = -1.0f;
 }
 
 void DXUpscalerManager::MarkFSRReady() {
@@ -583,7 +799,7 @@ void DXUpscalerManager::RunFSRPass() {
     if (!m_pd3d12Queue || !m_fsrCommandList) {
         static int throttle = 0;
         if (throttle++ % 100 == 0) {
-            Logger::error("FSR: RunFSRPass skipped - No Queue or List! (Queue=" + std::to_string((uintptr_t)m_pd3d12Queue) + ")");
+            Logger::warn("FSR: RunFSRPass skipped - No Queue or List! (Queue=" + std::to_string((uintptr_t)m_pd3d12Queue) + ")");
         }
         return;
     }
@@ -619,7 +835,7 @@ void DXUpscalerManager::RunFSRPass() {
 
     Logger::warn("FSR: RunFSRPass 4");
 
-    ID3D12Resource* src = g_lastEngineRenderTarget;
+    ID3D12Resource* src = m_fakeBackBuffer ? m_fakeBackBuffer : g_lastEngineRenderTarget;
     if (!src) {
         Logger::warn("FSR SKIP: No source RT");
         return;

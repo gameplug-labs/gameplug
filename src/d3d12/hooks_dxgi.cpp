@@ -12,6 +12,10 @@ ULONG STDMETHODCALLTYPE HookedRelease(IUnknown* pUnk) {
     ScopedRecursionGuard guard;
 
     ULONG refCount = g_OriginalRelease(pUnk);
+
+    extern void CheckSwapChainRelease(void* pSwapChain, ULONG refCount);
+    CheckSwapChainRelease(pUnk, refCount);
+
     if (refCount == 0) {
         std::lock_guard<std::mutex> lock(g_HookMtx);
         if (g_HookedVTables.count(pUnk)) {
@@ -212,7 +216,7 @@ HRESULT STDMETHODCALLTYPE HookedGetBuffer(IDXGISwapChain* pSwapChain, UINT Buffe
     ScopedRecursionGuard guard;
 
     if (Buffer == 0) {
-        if (DXUpscalerManager::Get().IsUpscalingEnabled()) {
+        if (DXUpscalerManager::Get().IsUpscalingEnabled() && DXUpscalerManager::Get().HasValidDevice()) {
             if (!DXUpscalerManager::Get().GetFakeBackBuffer()) {
                 Logger::info("HookedGetBuffer: Fake BackBuffer is NULL, creating...");
                 DXUpscalerManager::Get().CreateFakeBackBuffer(pSwapChain);

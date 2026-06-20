@@ -45,7 +45,7 @@ struct FrameContext {
 ID3D12Device* g_pd3d12Device = nullptr;
 static ID3D12DescriptorHeap* g_pd3dRtvDescHeap = nullptr;
 static ID3D12DescriptorHeap* g_pd3dSrvDescHeap = nullptr;
-static std::mutex g_QueueMtx;
+std::mutex g_QueueMtx;
 ID3D12CommandQueue* g_pd3dCommandQueue = nullptr;
 static ID3D12GraphicsCommandList* g_pd3dCommandList = nullptr;
 static ID3D12Resource* g_backBuffers[8] = {};

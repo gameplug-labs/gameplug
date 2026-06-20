@@ -41,8 +41,8 @@ cmake --build build64 --config Release
 ### 🌋 Vulkan (Layer Mode)
 - `vklayer.dll`: The Vulkan interception layer.
 - `VK_LAYER_GAMEPLUG.json`: The manifest file for Vulkan.
-- `gameplug.exe`: The launcher that automatically sets up the Vulkan layer environment.
-- `run_game.bat`: A helper script for launching Vulkan games with the layer.
+- `dinput8.dll`: The proxy loader to automatically set up the Vulkan layer environment.
+- `version.dll`: An alternative proxy loader to automatically set up the Vulkan layer environment.
 
 ### 🎮 DirectX 9 / 10 / 11 / 12 (Proxy Mode)
 - `dinput8.dll`: The universal drop-in proxy for all DirectX games (DX9, DX10, DX11 & DX12).
@@ -51,10 +51,10 @@ cmake --build build64 --config Release
 ## 🔧 Usage
 
 ### 🌋 Vulkan Integration
-Vulkan uses a layer system. The easiest way to use it is via the launcher:
-```powershell
-.\gameplug.exe "C:\Path\To\Game.exe" [args]
-```
+Vulkan uses a layer system, which we automate using proxy DLL loaders.
+1. Place `vklayer.dll`, `VK_LAYER_GAMEPLUG.json`, and either `dinput8.dll` or `version.dll` in the game's executable directory.
+2. Launch the game normally.
+
 **Manual Method:**
 1. Place `vklayer.dll` and `VK_LAYER_GAMEPLUG.json` in a folder.
 2. Set `VK_LAYER_PATH` to that folder and `VK_INSTANCE_LAYERS` to `VK_LAYER_GAMEPLUG`.

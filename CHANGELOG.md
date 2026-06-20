@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Added proxy DLL support via `version.dll` for the D3D9 backend.
 - Added D3D12 overlay support for The Witcher 3.
+- Removed `run_game.bat` and `GAMEPLUG.exe` in favor of `dinput8.dll` and `version.dll` proxy DLLs for Vulkan layer loading.
+- Added autoloading of the Vulkan layer into the D3D9 layer.
 
 ## [1.0.3] - 2026-06-10
 

@@ -65,14 +65,4 @@ configure_file(
 )
 
 
-# Copy Helper Script (Windows-only)
-if(WIN32)
-    add_custom_target(copy_helper_script ALL)
-    add_custom_command(TARGET copy_helper_script POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different 
-                "${CMAKE_SOURCE_DIR}/src/vk/run_game.bat" 
-                "${BIN_OUTPUT_DIR}/run_game.bat"
-        COMMENT "Copying run_game.bat helper to bin/${BIN_ARCH}"
-    )
 
-endif()

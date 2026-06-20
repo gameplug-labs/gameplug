@@ -32,7 +32,7 @@ static bool IsFakeBackBufferBound(ID3D12GraphicsCommandList* pList) {
     if (!pRes)
         return false;
 
-    static const GUID GUID_FakeBackBuffer = {0xf192e666, 0xc0de, 0x4d11, {0x87, 0x65, 0xfc, 0xeb, 0x5a, 0x4b, 0x2b, 0xa1}};
+    static const GUID GUID_FakeBackBuffer = {0xf192e666, 0xc0de, 0x4d12, {0x87, 0x65, 0xfc, 0xeb, 0x5a, 0x4b, 0x2b, 0xa1}};
     UINT tag = 0;
     UINT size = sizeof(tag);
     if (SUCCEEDED(pRes->GetPrivateData(GUID_FakeBackBuffer, &size, &tag)) && tag == 1) {

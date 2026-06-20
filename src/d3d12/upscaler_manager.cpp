@@ -9,6 +9,7 @@
 #include "hooks_common.h"
 #include <iomanip>
 #include <unordered_map>
+#include <d3dcompiler.h>
 
 namespace GamePlug {
 extern std::unordered_map<ID3D12Resource*, D3D12_RESOURCE_STATES> g_ResourceStates;
@@ -115,6 +116,83 @@ void DXUpscalerManager::InitDX12(ID3D12Device* device, ID3D12CommandQueue* queue
         m_pd3d12Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fsrFence));
         m_fsrFenceValue = 1;
         Logger::info("DXUpscalerManager: FSR dedicated command infrastructure initialized.");
+
+        // Compile downsample compute shader
+        const char* shaderSrc = R"(
+Texture2D<float4> InputTex : register(t0);
+RWTexture2D<float4> OutputTex : register(u0);
+
+[numthreads(8, 8, 1)]
+void main(uint3 dispatchThreadID : SV_DispatchThreadID) {
+    uint2 dstSize;
+    OutputTex.GetDimensions(dstSize.x, dstSize.y);
+    if (dispatchThreadID.x >= dstSize.x || dispatchThreadID.y >= dstSize.y) return;
+    
+    uint2 srcSize;
+    InputTex.GetDimensions(srcSize.x, srcSize.y);
+    
+    float2 uv = (float2(dispatchThreadID.xy) + 0.5f) / float2(dstSize);
+    uint2 srcPos = uint2(uv * float2(srcSize));
+    OutputTex[dispatchThreadID.xy] = InputTex[srcPos];
+}
+)";
+        ID3DBlob* csBlob = nullptr;
+        ID3DBlob* errorBlob = nullptr;
+        HRESULT hr = D3DCompile(shaderSrc, strlen(shaderSrc), nullptr, nullptr, nullptr, "main", "cs_5_0", 0, 0, &csBlob, &errorBlob);
+        if (SUCCEEDED(hr)) {
+            // Create Root Signature
+            D3D12_DESCRIPTOR_RANGE ranges[2];
+            ranges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+            ranges[0].NumDescriptors = 1;
+            ranges[0].BaseShaderRegister = 0;
+            ranges[0].RegisterSpace = 0;
+            ranges[0].OffsetInDescriptorsFromTableStart = 0;
+
+            ranges[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+            ranges[1].NumDescriptors = 1;
+            ranges[1].BaseShaderRegister = 0;
+            ranges[1].RegisterSpace = 0;
+            ranges[1].OffsetInDescriptorsFromTableStart = 1;
+
+            D3D12_ROOT_PARAMETER param[1];
+            param[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+            param[0].DescriptorTable.NumDescriptorRanges = 2;
+            param[0].DescriptorTable.pDescriptorRanges = ranges;
+            param[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+            D3D12_ROOT_SIGNATURE_DESC rootDesc = {};
+            rootDesc.NumParameters = 1;
+            rootDesc.pParameters = param;
+            rootDesc.NumStaticSamplers = 0;
+            rootDesc.pStaticSamplers = nullptr;
+            rootDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
+
+            ID3DBlob* signature = nullptr;
+            D3D12SerializeRootSignature(&rootDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, nullptr);
+            m_pd3d12Device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&m_downsampleRootSig));
+            signature->Release();
+
+            // Create PSO
+            D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = {};
+            psoDesc.pRootSignature = m_downsampleRootSig;
+            psoDesc.CS = { csBlob->GetBufferPointer(), csBlob->GetBufferSize() };
+            m_pd3d12Device->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&m_downsamplePSO));
+            csBlob->Release();
+
+            // Create Descriptor Heap
+            D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
+            heapDesc.NumDescriptors = 64; // Ring buffer of 64 descriptors to avoid race condition
+            heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+            heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+            m_pd3d12Device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_downsampleSrvUavHeap));
+
+            Logger::info("DXUpscalerManager: Downsample compute shader initialized in DX12.");
+        } else {
+            if (errorBlob) {
+                Logger::error("DXUpscalerManager: Failed to compile downsample CS: " + std::string((char*)errorBlob->GetBufferPointer()));
+                errorBlob->Release();
+            }
+        }
     }
 
     // Initialize RE Engine Native Scaling if requested
@@ -168,6 +246,12 @@ void DXUpscalerManager::CleanupDX12Resources() {
     m_rtvDescriptorSize = 0;
     m_nextRtvIndex = 0;
     m_finalOutput = nullptr;
+
+    if (m_downsampleRootSig) { m_downsampleRootSig->Release(); m_downsampleRootSig = nullptr; }
+    if (m_downsamplePSO) { m_downsamplePSO->Release(); m_downsamplePSO = nullptr; }
+    if (m_downsampledDepthTex) { m_downsampledDepthTex->Release(); m_downsampledDepthTex = nullptr; }
+    if (m_downsampledMVTex) { m_downsampledMVTex->Release(); m_downsampledMVTex = nullptr; }
+    if (m_downsampleSrvUavHeap) { m_downsampleSrvUavHeap->Release(); m_downsampleSrvUavHeap = nullptr; }
 
     std::lock_guard<std::mutex> lock(m_trackerMtx);
     if (m_depthTexture) {
@@ -447,19 +531,33 @@ void DXUpscalerManager::RenderUI(float fps, uint32_t width, uint32_t height) {
                 }
                 targetName = "Fake Back Buffer";
             } else if (m_debugPreviewIndex == 1) {
-                dw = m_depthWidth;
-                dh = m_depthHeight;
-                if (m_depthTexture) {
-                    debugSRV = GetImGuiSRVForResource(m_depthTexture);
+                if (m_downsampledDepthTex) {
+                    dw = m_renderWidth;
+                    dh = m_renderHeight;
+                    debugSRV = GetImGuiSRVForResource(m_downsampledDepthTex);
+                    targetName = "Depth Buffer (Downsampled)";
+                } else {
+                    dw = m_depthWidth;
+                    dh = m_depthHeight;
+                    if (m_depthTexture) {
+                        debugSRV = GetImGuiSRVForResource(m_depthTexture);
+                    }
+                    targetName = "Depth Buffer";
                 }
-                targetName = "Depth Buffer";
             } else if (m_debugPreviewIndex == 2) {
-                dw = m_mvWidth;
-                dh = m_mvHeight;
-                if (m_mvTexture) {
-                    debugSRV = GetImGuiSRVForResource(m_mvTexture);
+                if (m_downsampledMVTex) {
+                    dw = m_renderWidth;
+                    dh = m_renderHeight;
+                    debugSRV = GetImGuiSRVForResource(m_downsampledMVTex);
+                    targetName = "Motion Vectors (Downsampled)";
+                } else {
+                    dw = m_mvWidth;
+                    dh = m_mvHeight;
+                    if (m_mvTexture) {
+                        debugSRV = GetImGuiSRVForResource(m_mvTexture);
+                    }
+                    targetName = "Motion Vectors";
                 }
-                targetName = "Motion Vectors";
             }
         }
 
@@ -682,38 +780,289 @@ void DXUpscalerManager::RenderFrame(ID3D12GraphicsCommandList* cmd, ID3D12Resour
     float jitterX = m_fakeJitterX;
     float jitterY = m_fakeJitterY;
 
+    // 2. Fetch tracked resources under lock
+    ID3D12Resource* depthTexToDownsample = nullptr;
+    uint32_t depthW = 0, depthH = 0;
+    DXGI_FORMAT depthFmt = DXGI_FORMAT_UNKNOWN;
+
+    ID3D12Resource* mvTexToDownsample = nullptr;
+    uint32_t mvW = 0, mvH = 0;
+    DXGI_FORMAT mvFmt = DXGI_FORMAT_UNKNOWN;
+
+    {
+        std::lock_guard<std::mutex> lock(m_trackerMtx);
+        if (m_depthTexture) {
+            depthTexToDownsample = m_depthTexture;
+            depthTexToDownsample->AddRef();
+            depthW = m_depthWidth;
+            depthH = m_depthHeight;
+            depthFmt = m_depthFormat;
+        }
+        if (m_mvTexture) {
+            mvTexToDownsample = m_mvTexture;
+            mvTexToDownsample->AddRef();
+            mvW = m_mvWidth;
+            mvH = m_mvHeight;
+            mvFmt = m_mvFormat;
+        }
+    }
+
+    auto CreateOrUpdateDownsampledTexture = [&](ID3D12Resource*& outTex, DXGI_FORMAT format) {
+        if (outTex) {
+            D3D12_RESOURCE_DESC desc = outTex->GetDesc();
+            if (desc.Width == m_renderWidth && desc.Height == m_renderHeight && desc.Format == format) {
+                return;
+            }
+            outTex->Release();
+            outTex = nullptr;
+        }
+        
+        D3D12_HEAP_PROPERTIES heapProps = {};
+        heapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
+        
+        D3D12_RESOURCE_DESC resDesc = {};
+        resDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        resDesc.Width = m_renderWidth;
+        resDesc.Height = m_renderHeight;
+        resDesc.DepthOrArraySize = 1;
+        resDesc.MipLevels = 1;
+        resDesc.Format = format;
+        resDesc.SampleDesc.Count = 1;
+        resDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+        resDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+        m_pd3d12Device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &resDesc, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, nullptr, IID_PPV_ARGS(&outTex));
+    };
+
+    static uint32_t s_descIdx = 0;
+    uint32_t currentDescOffset = s_descIdx;
+    s_descIdx = (s_descIdx + 4) % 64;
+
+    bool didDownsampleDepth = false;
+    if (m_downsamplePSO && depthTexToDownsample && (depthW != m_renderWidth || depthH != m_renderHeight) && m_renderWidth > 0 && m_renderHeight > 0) {
+        CreateOrUpdateDownsampledTexture(m_downsampledDepthTex, DXGI_FORMAT_R32_FLOAT);
+        if (m_downsampledDepthTex) {
+            auto GetTypedSRVFormat = [](DXGI_FORMAT fmt) -> DXGI_FORMAT {
+                switch (fmt) {
+                    case DXGI_FORMAT_R32G8X24_TYPELESS: return DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS;
+                    case DXGI_FORMAT_D32_FLOAT_S8X24_UINT: return DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS;
+                    case DXGI_FORMAT_R32_TYPELESS: return DXGI_FORMAT_R32_FLOAT;
+                    case DXGI_FORMAT_D32_FLOAT: return DXGI_FORMAT_R32_FLOAT;
+                    case DXGI_FORMAT_R24G8_TYPELESS: return DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+                    case DXGI_FORMAT_D24_UNORM_S8_UINT: return DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+                    case DXGI_FORMAT_R16_TYPELESS: return DXGI_FORMAT_R16_UNORM;
+                    case DXGI_FORMAT_D16_UNORM: return DXGI_FORMAT_R16_UNORM;
+                    case DXGI_FORMAT_R16G16_TYPELESS: return DXGI_FORMAT_R16G16_FLOAT;
+                    case DXGI_FORMAT_R16G16B16A16_TYPELESS: return DXGI_FORMAT_R16G16B16A16_FLOAT;
+                    case DXGI_FORMAT_R8G8B8A8_TYPELESS: return DXGI_FORMAT_R8G8B8A8_UNORM;
+                    case DXGI_FORMAT_B8G8R8A8_TYPELESS: return DXGI_FORMAT_B8G8R8A8_UNORM;
+                    case DXGI_FORMAT_R10G10B10A2_TYPELESS: return DXGI_FORMAT_R10G10B10A2_UNORM;
+                    case DXGI_FORMAT_R32G32_TYPELESS: return DXGI_FORMAT_R32G32_FLOAT;
+                    default: return fmt;
+                }
+            };
+
+            DXGI_FORMAT srvFormat = GetTypedSRVFormat(depthFmt);
+
+            D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+            srvDesc.Format = srvFormat;
+            srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+            srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            srvDesc.Texture2D.MipLevels = 1;
+
+            D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+            uavDesc.Format = DXGI_FORMAT_R32_FLOAT;
+            uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+
+            D3D12_CPU_DESCRIPTOR_HANDLE heapStart = m_downsampleSrvUavHeap->GetCPUDescriptorHandleForHeapStart();
+            UINT incSize = m_pd3d12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+            
+            D3D12_CPU_DESCRIPTOR_HANDLE srvHandle = heapStart; srvHandle.ptr += incSize * (currentDescOffset + 0);
+            D3D12_CPU_DESCRIPTOR_HANDLE uavHandle = heapStart; uavHandle.ptr += incSize * (currentDescOffset + 1);
+
+            m_pd3d12Device->CreateShaderResourceView(depthTexToDownsample, &srvDesc, srvHandle);
+            m_pd3d12Device->CreateUnorderedAccessView(m_downsampledDepthTex, nullptr, &uavDesc, uavHandle);
+
+            D3D12_RESOURCE_BARRIER barriers[2] = {};
+            barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barriers[0].Transition.pResource = depthTexToDownsample;
+            D3D12_RESOURCE_STATES stateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+            if (g_ResourceStates.count(depthTexToDownsample)) stateBefore = g_ResourceStates[depthTexToDownsample];
+            barriers[0].Transition.StateBefore = stateBefore;
+            barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+            barriers[0].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
+            barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barriers[1].Transition.pResource = m_downsampledDepthTex;
+            barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+            barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+            barriers[1].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+            
+            int numBarriers = 0;
+            if (barriers[0].Transition.StateBefore != barriers[0].Transition.StateAfter) numBarriers++;
+            else barriers[0] = barriers[1];
+            numBarriers++;
+            cmd->ResourceBarrier(numBarriers, barriers);
+
+            cmd->SetPipelineState(m_downsamplePSO);
+            cmd->SetComputeRootSignature(m_downsampleRootSig);
+            ID3D12DescriptorHeap* heaps[] = { m_downsampleSrvUavHeap };
+            cmd->SetDescriptorHeaps(1, heaps);
+            D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle = m_downsampleSrvUavHeap->GetGPUDescriptorHandleForHeapStart();
+            gpuHandle.ptr += incSize * currentDescOffset;
+            cmd->SetComputeRootDescriptorTable(0, gpuHandle);
+
+            cmd->Dispatch((m_renderWidth + 7) / 8, (m_renderHeight + 7) / 8, 1);
+
+            barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+            barriers[0].Transition.StateAfter = stateBefore;
+            barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+            barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+            
+            numBarriers = 0;
+            if (barriers[0].Transition.StateBefore != barriers[0].Transition.StateAfter) numBarriers++;
+            else barriers[0] = barriers[1];
+            numBarriers++;
+            cmd->ResourceBarrier(numBarriers, barriers);
+
+            didDownsampleDepth = true;
+        }
+    }
+
+    bool didDownsampleMV = false;
+    if (m_downsamplePSO && mvTexToDownsample && (mvW != m_renderWidth || mvH != m_renderHeight) && m_renderWidth > 0 && m_renderHeight > 0) {
+        CreateOrUpdateDownsampledTexture(m_downsampledMVTex, DXGI_FORMAT_R16G16_FLOAT);
+        if (m_downsampledMVTex) {
+            auto GetTypedSRVFormat = [](DXGI_FORMAT fmt) -> DXGI_FORMAT {
+                switch (fmt) {
+                    case DXGI_FORMAT_R32G8X24_TYPELESS: return DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS;
+                    case DXGI_FORMAT_D32_FLOAT_S8X24_UINT: return DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS;
+                    case DXGI_FORMAT_R32_TYPELESS: return DXGI_FORMAT_R32_FLOAT;
+                    case DXGI_FORMAT_D32_FLOAT: return DXGI_FORMAT_R32_FLOAT;
+                    case DXGI_FORMAT_R24G8_TYPELESS: return DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+                    case DXGI_FORMAT_D24_UNORM_S8_UINT: return DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+                    case DXGI_FORMAT_R16_TYPELESS: return DXGI_FORMAT_R16_UNORM;
+                    case DXGI_FORMAT_D16_UNORM: return DXGI_FORMAT_R16_UNORM;
+                    case DXGI_FORMAT_R16G16_TYPELESS: return DXGI_FORMAT_R16G16_FLOAT;
+                    case DXGI_FORMAT_R16G16B16A16_TYPELESS: return DXGI_FORMAT_R16G16B16A16_FLOAT;
+                    case DXGI_FORMAT_R8G8B8A8_TYPELESS: return DXGI_FORMAT_R8G8B8A8_UNORM;
+                    case DXGI_FORMAT_B8G8R8A8_TYPELESS: return DXGI_FORMAT_B8G8R8A8_UNORM;
+                    case DXGI_FORMAT_R10G10B10A2_TYPELESS: return DXGI_FORMAT_R10G10B10A2_UNORM;
+                    case DXGI_FORMAT_R32G32_TYPELESS: return DXGI_FORMAT_R32G32_FLOAT;
+                    default: return fmt;
+                }
+            };
+            
+            D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+            srvDesc.Format = GetTypedSRVFormat(mvFmt);
+            srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+            srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            srvDesc.Texture2D.MipLevels = 1;
+
+            D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+            uavDesc.Format = DXGI_FORMAT_R16G16_FLOAT;
+            uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+
+            D3D12_CPU_DESCRIPTOR_HANDLE heapStart = m_downsampleSrvUavHeap->GetCPUDescriptorHandleForHeapStart();
+            UINT incSize = m_pd3d12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+            
+            D3D12_CPU_DESCRIPTOR_HANDLE srvHandle = heapStart; srvHandle.ptr += incSize * (currentDescOffset + 2);
+            D3D12_CPU_DESCRIPTOR_HANDLE uavHandle = heapStart; uavHandle.ptr += incSize * (currentDescOffset + 3);
+
+            m_pd3d12Device->CreateShaderResourceView(mvTexToDownsample, &srvDesc, srvHandle);
+            m_pd3d12Device->CreateUnorderedAccessView(m_downsampledMVTex, nullptr, &uavDesc, uavHandle);
+
+            D3D12_RESOURCE_BARRIER barriers[2] = {};
+            barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barriers[0].Transition.pResource = mvTexToDownsample;
+            D3D12_RESOURCE_STATES stateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+            if (g_ResourceStates.count(mvTexToDownsample)) stateBefore = g_ResourceStates[mvTexToDownsample];
+            barriers[0].Transition.StateBefore = stateBefore;
+            barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+            barriers[0].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
+            barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barriers[1].Transition.pResource = m_downsampledMVTex;
+            barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+            barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+            barriers[1].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+            
+            int numBarriers = 0;
+            if (barriers[0].Transition.StateBefore != barriers[0].Transition.StateAfter) {
+                numBarriers++;
+            } else {
+                barriers[0] = barriers[1];
+            }
+            numBarriers++;
+            cmd->ResourceBarrier(numBarriers, barriers);
+
+            cmd->SetPipelineState(m_downsamplePSO);
+            cmd->SetComputeRootSignature(m_downsampleRootSig);
+            ID3D12DescriptorHeap* heaps[] = { m_downsampleSrvUavHeap };
+            cmd->SetDescriptorHeaps(1, heaps);
+            D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle = m_downsampleSrvUavHeap->GetGPUDescriptorHandleForHeapStart();
+            gpuHandle.ptr += incSize * (currentDescOffset + 2);
+            cmd->SetComputeRootDescriptorTable(0, gpuHandle);
+
+            cmd->Dispatch((m_renderWidth + 7) / 8, (m_renderHeight + 7) / 8, 1);
+
+            barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+            barriers[0].Transition.StateAfter = stateBefore;
+            barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+            barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+            
+            numBarriers = 0;
+            if (barriers[0].Transition.StateBefore != barriers[0].Transition.StateAfter) {
+                numBarriers++;
+            } else {
+                barriers[0] = barriers[1];
+            }
+            numBarriers++;
+            cmd->ResourceBarrier(numBarriers, barriers);
+
+            didDownsampleMV = true;
+        }
+    }
+
     uint64_t depthImage = 0;
     uint32_t depthFormatVal = 0;
     uint64_t mvImage = 0;
     uint32_t mvFormatVal = 0;
 
-    {
-        std::lock_guard<std::mutex> lock(m_trackerMtx);
-        if (m_depthTexture) {
-            depthImage = (uint64_t)m_depthTexture;
-            depthFormatVal = (uint32_t)m_depthFormat;
-        }
-        if (m_mvTexture) {
-            mvImage = (uint64_t)m_mvTexture;
-            mvFormatVal = (uint32_t)m_mvFormat;
-        }
+    if (didDownsampleDepth) {
+        depthImage = (uint64_t)m_downsampledDepthTex;
+        depthFormatVal = (uint32_t)DXGI_FORMAT_R32_FLOAT;
+    } else if (depthTexToDownsample) {
+        depthImage = (uint64_t)depthTexToDownsample;
+        depthFormatVal = (uint32_t)depthFmt;
+    }
+
+    if (didDownsampleMV) {
+        mvImage = (uint64_t)m_downsampledMVTex;
+        mvFormatVal = (uint32_t)DXGI_FORMAT_R16G16_FLOAT;
+    } else if (mvTexToDownsample) {
+        mvImage = (uint64_t)mvTexToDownsample;
+        mvFormatVal = (uint32_t)mvFmt;
     }
 
     if (shouldLog) {
         std::string depthDetails = "NULL";
-        if (m_depthTexture) {
-            depthDetails = "0x" + std::to_string((uintptr_t)m_depthTexture) + " (" +
-                           std::to_string(m_depthWidth) + "x" + std::to_string(m_depthHeight) + ", fmt=" +
+        if (depthImage) {
+            depthDetails = "0x" + std::to_string(depthImage) + " (" +
+                           std::to_string(didDownsampleDepth ? m_renderWidth : depthW) + "x" + std::to_string(didDownsampleDepth ? m_renderHeight : depthH) + ", fmt=" +
                            std::to_string(depthFormatVal) + ")";
         }
         std::string mvDetails = "NULL";
-        if (m_mvTexture) {
-            mvDetails = "0x" + std::to_string((uintptr_t)m_mvTexture) + " (" +
-                        std::to_string(m_mvWidth) + "x" + std::to_string(m_mvHeight) + ", fmt=" +
+        if (mvImage) {
+            mvDetails = "0x" + std::to_string(mvImage) + " (" +
+                        std::to_string(didDownsampleMV ? m_renderWidth : mvW) + "x" + std::to_string(didDownsampleMV ? m_renderHeight : mvH) + ", fmt=" +
                         std::to_string(mvFormatVal) + ")";
         }
         Logger::info("DXUpscalerManager::RenderFrame [Buffers] depth=" + depthDetails + ", mv=" + mvDetails);
     }
+
+    if (depthTexToDownsample) depthTexToDownsample->Release();
+    if (mvTexToDownsample) mvTexToDownsample->Release();
 
     m_pInterface->OnRenderFrame(
         (uintptr_t)cmd,

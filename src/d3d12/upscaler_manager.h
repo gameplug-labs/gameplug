@@ -170,6 +170,13 @@ private:
     ID3D12GraphicsCommandList* m_fsrCommandList = nullptr;
     ID3D12Fence* m_fsrFence = nullptr;
     UINT64 m_fsrFenceValue = 0;
+
+    // DX12 Downsample Resources
+    ID3D12RootSignature* m_downsampleRootSig = nullptr;
+    ID3D12PipelineState* m_downsamplePSO = nullptr;
+    ID3D12Resource* m_downsampledDepthTex = nullptr;
+    ID3D12Resource* m_downsampledMVTex = nullptr;
+    ID3D12DescriptorHeap* m_downsampleSrvUavHeap = nullptr;
 };
 
 } // namespace GamePlug

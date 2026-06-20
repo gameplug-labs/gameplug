@@ -56,6 +56,8 @@ typedef void(STDMETHODCALLTYPE* PFN_CreateRenderTargetView)(ID3D12Device* pDevic
     const D3D12_RENDER_TARGET_VIEW_DESC* pDesc, D3D12_CPU_DESCRIPTOR_HANDLE DestDescriptor);
 typedef void(STDMETHODCALLTYPE* PFN_CreateDepthStencilView)(ID3D12Device* pDevice, ID3D12Resource* pResource,
     const D3D12_DEPTH_STENCIL_VIEW_DESC* pDesc, D3D12_CPU_DESCRIPTOR_HANDLE DestDescriptor);
+typedef void(STDMETHODCALLTYPE* PFN_CopyDescriptorsSimple)(ID3D12Device* pDevice, UINT NumDescriptors, D3D12_CPU_DESCRIPTOR_HANDLE DestDescriptorRangeStart, D3D12_CPU_DESCRIPTOR_HANDLE SrcDescriptorRangeStart, D3D12_DESCRIPTOR_HEAP_TYPE DescriptorHeapsType);
+typedef void(STDMETHODCALLTYPE* PFN_CopyDescriptors)(ID3D12Device* pDevice, UINT NumDestDescriptorRanges, const D3D12_CPU_DESCRIPTOR_HANDLE* pDestDescriptorRangeStarts, const UINT* pDestDescriptorRangeSizes, UINT NumSrcDescriptorRanges, const D3D12_CPU_DESCRIPTOR_HANDLE* pSrcDescriptorRangeStarts, const UINT* pSrcDescriptorRangeSizes, D3D12_DESCRIPTOR_HEAP_TYPE DescriptorHeapsType);
 
 typedef HRESULT(WINAPI* PFN_CreateDXGIFactory)(REFIID riid, void** ppFactory);
 typedef HRESULT(WINAPI* PFN_CreateDXGIFactory2)(UINT Flags, REFIID riid, void** ppFactory);
@@ -83,6 +85,8 @@ extern PFN_CreateSwapChainForHwnd g_OriginalCreateSwapChainForHwnd;
 extern PFN_CreateSwapChainForComposition g_OriginalCreateSwapChainForComposition;
 extern PFN_CreateRenderTargetView g_OriginalCreateRenderTargetView;
 extern PFN_CreateDepthStencilView g_OriginalCreateDepthStencilView;
+extern PFN_CopyDescriptorsSimple g_OriginalCopyDescriptorsSimple;
+extern PFN_CopyDescriptors g_OriginalCopyDescriptors;
 extern PFN_CreateDXGIFactory g_OriginalCreateDXGIFactory;
 extern PFN_CreateDXGIFactory g_OriginalCreateDXGIFactory1;
 extern PFN_CreateDXGIFactory2 g_OriginalCreateDXGIFactory2;
@@ -103,6 +107,7 @@ extern std::set<ID3D12CommandQueue*> g_AllTrackedQueues;
 extern std::mutex g_TrackingMtx;
 extern std::recursive_mutex g_HooksMtx;
 extern std::map<ID3D12GraphicsCommandList*, std::pair<uint32_t, uint32_t>> g_CommandListRTSize;
+extern std::map<ID3D12GraphicsCommandList*, bool> g_CommandListShouldScale;
 extern std::mutex g_HookMtx;
 extern std::set<void*> g_HookedVTables;
 extern uint32_t g_CommandQueueOffset;
@@ -133,6 +138,8 @@ void STDMETHODCALLTYPE HookedCreateRenderTargetView(ID3D12Device* pDevice, ID3D1
     const D3D12_RENDER_TARGET_VIEW_DESC* pDesc, D3D12_CPU_DESCRIPTOR_HANDLE DestDescriptor);
 void STDMETHODCALLTYPE HookedCreateDepthStencilView(ID3D12Device* pDevice, ID3D12Resource* pResource,
     const D3D12_DEPTH_STENCIL_VIEW_DESC* pDesc, D3D12_CPU_DESCRIPTOR_HANDLE DestDescriptor);
+void STDMETHODCALLTYPE HookedCopyDescriptorsSimple(ID3D12Device* pDevice, UINT NumDescriptors, D3D12_CPU_DESCRIPTOR_HANDLE DestDescriptorRangeStart, D3D12_CPU_DESCRIPTOR_HANDLE SrcDescriptorRangeStart, D3D12_DESCRIPTOR_HEAP_TYPE DescriptorHeapsType);
+void STDMETHODCALLTYPE HookedCopyDescriptors(ID3D12Device* pDevice, UINT NumDestDescriptorRanges, const D3D12_CPU_DESCRIPTOR_HANDLE* pDestDescriptorRangeStarts, const UINT* pDestDescriptorRangeSizes, UINT NumSrcDescriptorRanges, const D3D12_CPU_DESCRIPTOR_HANDLE* pSrcDescriptorRangeStarts, const UINT* pSrcDescriptorRangeSizes, D3D12_DESCRIPTOR_HEAP_TYPE DescriptorHeapsType);
 void STDMETHODCALLTYPE HookedExecuteCommandLists(
     ID3D12CommandQueue* pQueue, UINT NumCommandLists, ID3D12CommandList* const* ppCommandLists);
 void HookCommandQueue(ID3D12CommandQueue* pQueue);

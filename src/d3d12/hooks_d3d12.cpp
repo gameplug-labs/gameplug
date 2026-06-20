@@ -32,14 +32,15 @@ static bool IsFakeBackBufferBound(ID3D12GraphicsCommandList* pList) {
     if (!pRes)
         return false;
 
-    ID3D12Resource* fakeBB = DXUpscalerManager::Get().GetFakeBackBuffer();
-    if (fakeBB && pRes == fakeBB) {
+    static const GUID GUID_FakeBackBuffer = {0xf192e666, 0xc0de, 0x4d11, {0x87, 0x65, 0xfc, 0xeb, 0x5a, 0x4b, 0x2b, 0xa1}};
+    UINT tag = 0;
+    UINT size = sizeof(tag);
+    if (SUCCEEDED(pRes->GetPrivateData(GUID_FakeBackBuffer, &size, &tag)) && tag == 1) {
         return true;
     }
 
-    D3D12_RESOURCE_DESC desc = pRes->GetDesc();
-    DXUpscalerManager& mgr = DXUpscalerManager::Get();
-    if (desc.Width > 0 && desc.Width == mgr.GetRenderWidth() && desc.Height == mgr.GetRenderHeight()) {
+    ID3D12Resource* fakeBB = DXUpscalerManager::Get().GetFakeBackBuffer();
+    if (fakeBB && pRes == fakeBB) {
         return true;
     }
 
@@ -166,6 +167,81 @@ void STDMETHODCALLTYPE HookedRSSetScissorRects(ID3D12GraphicsCommandList* pList,
     }
 
     g_OriginalRSSetScissorRects(pList, countToScale, scaled);
+}
+
+void STDMETHODCALLTYPE HookedCopyDescriptorsSimple(
+    ID3D12Device* pDevice, UINT NumDescriptors, D3D12_CPU_DESCRIPTOR_HANDLE DestDescriptorRangeStart,
+    D3D12_CPU_DESCRIPTOR_HANDLE SrcDescriptorRangeStart, D3D12_DESCRIPTOR_HEAP_TYPE DescriptorHeapsType) {
+    
+    if (g_InHook) {
+        g_OriginalCopyDescriptorsSimple(pDevice, NumDescriptors, DestDescriptorRangeStart, SrcDescriptorRangeStart, DescriptorHeapsType);
+        return;
+    }
+    ScopedRecursionGuard guard;
+
+    g_OriginalCopyDescriptorsSimple(pDevice, NumDescriptors, DestDescriptorRangeStart, SrcDescriptorRangeStart, DescriptorHeapsType);
+
+    if (DescriptorHeapsType == D3D12_DESCRIPTOR_HEAP_TYPE_RTV || DescriptorHeapsType == D3D12_DESCRIPTOR_HEAP_TYPE_DSV) {
+        std::lock_guard<std::mutex> lock(g_TrackingMtx);
+        UINT increment = pDevice->GetDescriptorHandleIncrementSize(DescriptorHeapsType);
+        for (UINT i = 0; i < NumDescriptors; i++) {
+            SIZE_T srcPtr = SrcDescriptorRangeStart.ptr + i * increment;
+            SIZE_T dstPtr = DestDescriptorRangeStart.ptr + i * increment;
+            if (DescriptorHeapsType == D3D12_DESCRIPTOR_HEAP_TYPE_RTV) {
+                if (g_RTVToResource.count(srcPtr)) g_RTVToResource[dstPtr] = g_RTVToResource[srcPtr];
+            } else {
+                if (g_DSVToResource.count(srcPtr)) g_DSVToResource[dstPtr] = g_DSVToResource[srcPtr];
+            }
+        }
+    }
+}
+
+void STDMETHODCALLTYPE HookedCopyDescriptors(
+    ID3D12Device* pDevice, UINT NumDestDescriptorRanges, const D3D12_CPU_DESCRIPTOR_HANDLE* pDestDescriptorRangeStarts,
+    const UINT* pDestDescriptorRangeSizes, UINT NumSrcDescriptorRanges, const D3D12_CPU_DESCRIPTOR_HANDLE* pSrcDescriptorRangeStarts,
+    const UINT* pSrcDescriptorRangeSizes, D3D12_DESCRIPTOR_HEAP_TYPE DescriptorHeapsType) {
+
+    if (g_InHook) {
+        g_OriginalCopyDescriptors(pDevice, NumDestDescriptorRanges, pDestDescriptorRangeStarts, pDestDescriptorRangeSizes, NumSrcDescriptorRanges, pSrcDescriptorRangeStarts, pSrcDescriptorRangeSizes, DescriptorHeapsType);
+        return;
+    }
+    ScopedRecursionGuard guard;
+
+    g_OriginalCopyDescriptors(pDevice, NumDestDescriptorRanges, pDestDescriptorRangeStarts, pDestDescriptorRangeSizes, NumSrcDescriptorRanges, pSrcDescriptorRangeStarts, pSrcDescriptorRangeSizes, DescriptorHeapsType);
+
+    if (DescriptorHeapsType == D3D12_DESCRIPTOR_HEAP_TYPE_RTV || DescriptorHeapsType == D3D12_DESCRIPTOR_HEAP_TYPE_DSV) {
+        std::lock_guard<std::mutex> lock(g_TrackingMtx);
+        UINT increment = pDevice->GetDescriptorHandleIncrementSize(DescriptorHeapsType);
+        
+        UINT srcRangeIdx = 0;
+        UINT srcOffset = 0;
+        
+        for (UINT dstRangeIdx = 0; dstRangeIdx < NumDestDescriptorRanges; dstRangeIdx++) {
+            UINT dstSize = pDestDescriptorRangeSizes ? pDestDescriptorRangeSizes[dstRangeIdx] : 1;
+            SIZE_T dstStart = pDestDescriptorRangeStarts[dstRangeIdx].ptr;
+            
+            for (UINT dstOffset = 0; dstOffset < dstSize; dstOffset++) {
+                if (srcRangeIdx >= NumSrcDescriptorRanges) break;
+                UINT srcSize = pSrcDescriptorRangeSizes ? pSrcDescriptorRangeSizes[srcRangeIdx] : 1;
+                SIZE_T srcStart = pSrcDescriptorRangeStarts[srcRangeIdx].ptr;
+                
+                SIZE_T srcPtr = srcStart + srcOffset * increment;
+                SIZE_T dstPtr = dstStart + dstOffset * increment;
+                
+                if (DescriptorHeapsType == D3D12_DESCRIPTOR_HEAP_TYPE_RTV) {
+                    if (g_RTVToResource.count(srcPtr)) g_RTVToResource[dstPtr] = g_RTVToResource[srcPtr];
+                } else {
+                    if (g_DSVToResource.count(srcPtr)) g_DSVToResource[dstPtr] = g_DSVToResource[srcPtr];
+                }
+                
+                srcOffset++;
+                if (srcOffset >= srcSize) {
+                    srcOffset = 0;
+                    srcRangeIdx++;
+                }
+            }
+        }
+    }
 }
 
 void STDMETHODCALLTYPE HookedOMSetRenderTargets(ID3D12GraphicsCommandList* pList, UINT NumRTs, const D3D12_CPU_DESCRIPTOR_HANDLE* pRTVs,

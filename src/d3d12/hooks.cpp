@@ -21,6 +21,9 @@ PFN_CreateCommittedResource g_OriginalCreateCommittedResource = nullptr;
 PFN_CreatePlacedResource g_OriginalCreatePlacedResource = nullptr;
 PFN_CreateCommandQueue g_OriginalCreateCommandQueue = nullptr;
 
+PFN_CopyDescriptorsSimple g_OriginalCopyDescriptorsSimple = nullptr;
+PFN_CopyDescriptors g_OriginalCopyDescriptors = nullptr;
+
 PFN_CreateSwapChain g_OriginalCreateSwapChain = nullptr;
 PFN_CreateSwapChainForHwnd g_OriginalCreateSwapChainForHwnd = nullptr;
 PFN_CreateSwapChainForComposition g_OriginalCreateSwapChainForComposition = nullptr;
@@ -155,11 +158,13 @@ void InstallDXGIHooks() {
                 void** pDeviceVTable = *(void***)d3d12Device;
                 MH_CreateHook(pDeviceVTable[20], (LPVOID)HookedCreateRenderTargetView, (LPVOID*)&g_OriginalCreateRenderTargetView);
                 MH_CreateHook(pDeviceVTable[22], (LPVOID)HookedCreateDepthStencilView, (LPVOID*)&g_OriginalCreateDepthStencilView);
+                MH_CreateHook(pDeviceVTable[23], (LPVOID)HookedCopyDescriptors, (LPVOID*)&g_OriginalCopyDescriptors);
+                MH_CreateHook(pDeviceVTable[24], (LPVOID)HookedCopyDescriptorsSimple, (LPVOID*)&g_OriginalCopyDescriptorsSimple);
                 MH_CreateHook(pDeviceVTable[29], (LPVOID)HookedCreatePlacedResource, (LPVOID*)&g_OriginalCreatePlacedResource);
                 MH_CreateHook(pDeviceVTable[27], (LPVOID)HookedCreateCommittedResource, (LPVOID*)&g_OriginalCreateCommittedResource);
                 MH_CreateHook(pDeviceVTable[8], (LPVOID)HookedCreateCommandQueue, (LPVOID*)&g_OriginalCreateCommandQueue);
                 Logger::info("DX Hooks: Hook ID3D12Device::CreateCommandQueue(8), CreateCommittedResource(27), CreatePlacedResource(29), "
-                             "CreateRenderTargetView(20), CreateDepthStencilView(22)");
+                             "CreateRenderTargetView(20), CreateDepthStencilView(22), CopyDescriptors(23), CopyDescriptorsSimple(24)");
             }
 
             MH_EnableHook(MH_ALL_HOOKS);

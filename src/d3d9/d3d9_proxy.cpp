@@ -116,9 +116,9 @@ void InitializeHooks() {
         for (auto& c : pathStr)
             c = tolower(c);
 
-        bool isDInput8 = (pathStr.find("dinput8.dll") != std::string::npos);
+        bool isProxy = (pathStr.find("dinput8.dll") != std::string::npos) || (pathStr.find("version.dll") != std::string::npos);
 
-        if (isDInput8 && hD3D9 != hMe) {
+        if (isProxy && hD3D9 != hMe) {
             void* pDirect3DCreate9 = (void*)GetProcAddress(hD3D9, "Direct3DCreate9");
             void* pDirect3DCreate9Ex = (void*)GetProcAddress(hD3D9, "Direct3DCreate9Ex");
 

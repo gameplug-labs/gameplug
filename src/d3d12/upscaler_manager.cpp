@@ -531,7 +531,7 @@ void DXUpscalerManager::RenderUI(float fps, uint32_t width, uint32_t height) {
                 }
                 targetName = "Fake Back Buffer";
             } else if (m_debugPreviewIndex == 1) {
-                if (m_downsampledDepthTex) {
+                if (m_downsampledDepthTex && (m_depthWidth != m_renderWidth || m_depthHeight != m_renderHeight)) {
                     dw = m_renderWidth;
                     dh = m_renderHeight;
                     debugSRV = GetImGuiSRVForResource(m_downsampledDepthTex);
@@ -545,7 +545,7 @@ void DXUpscalerManager::RenderUI(float fps, uint32_t width, uint32_t height) {
                     targetName = "Depth Buffer";
                 }
             } else if (m_debugPreviewIndex == 2) {
-                if (m_downsampledMVTex) {
+                if (m_downsampledMVTex && (m_mvWidth != m_renderWidth || m_mvHeight != m_renderHeight)) {
                     dw = m_renderWidth;
                     dh = m_renderHeight;
                     debugSRV = GetImGuiSRVForResource(m_downsampledMVTex);

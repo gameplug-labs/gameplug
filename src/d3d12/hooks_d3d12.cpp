@@ -106,14 +106,14 @@ void STDMETHODCALLTYPE HookedCreateRenderTargetView(ID3D12Device* pDevice, ID3D1
 
 void STDMETHODCALLTYPE HookedExecuteCommandLists(
     ID3D12CommandQueue* pQueue, UINT NumCommandLists, ID3D12CommandList* const* ppCommandLists) {
+    // Discovery & Synchronization (Always run this, even if re-entrant, to ensure we find the queue)
+    SetDX12CommandQueue(pQueue);
+
     if (g_InHook) {
         g_OriginalExecuteCommandLists(pQueue, NumCommandLists, ppCommandLists);
         return;
     }
     ScopedRecursionGuard guard;
-
-    // Discovery & Synchronization
-    SetDX12CommandQueue(pQueue);
 
     // Call original first to let the engine finish its work
     g_OriginalExecuteCommandLists(pQueue, NumCommandLists, ppCommandLists);
@@ -139,7 +139,7 @@ void HookCommandQueue(ID3D12CommandQueue* pQueue) {
     if (!g_OriginalExecuteCommandLists)
         g_OriginalExecuteCommandLists = (PFN_ExecuteCommandLists)pVTable[10];
     if (!g_OriginalSignal)
-        g_OriginalSignal = (PFN_Signal)pVTable[13];
+        g_OriginalSignal = (PFN_Signal)pVTable[14];
 
     DWORD old;
     if (VirtualProtect(pVTable, 16 * sizeof(void*), PAGE_READWRITE, &old)) {
@@ -258,6 +258,40 @@ bool ShouldOverrideD3D12(const D3D12_RESOURCE_DESC& desc) {
     }
 
     return false;
+}
+
+HRESULT STDMETHODCALLTYPE HookedCreateCommandQueue(
+    ID3D12Device* pDevice, const D3D12_COMMAND_QUEUE_DESC* pDesc, REFIID riid, void** ppCommandQueue) {
+    if (g_InHook)
+        return g_OriginalCreateCommandQueue(pDevice, pDesc, riid, ppCommandQueue);
+    ScopedRecursionGuard guard;
+
+    HRESULT hr = g_OriginalCreateCommandQueue(pDevice, pDesc, riid, ppCommandQueue);
+    if (SUCCEEDED(hr) && ppCommandQueue && *ppCommandQueue) {
+        if (pDesc && pDesc->Type == D3D12_COMMAND_LIST_TYPE_DIRECT) {
+            ID3D12CommandQueue* pQueue = (ID3D12CommandQueue*)*ppCommandQueue;
+            {
+                std::lock_guard<std::mutex> lock(g_TrackingMtx);
+                g_AllTrackedQueues.insert(pQueue);
+            }
+            Logger::info("DX Hooks: Tracked new D3D12CommandQueue at " + std::to_string((uintptr_t)pQueue));
+
+            // Force registration immediately (bypass GetDesc ABI issues)
+            extern ID3D12CommandQueue* g_pd3dCommandQueue;
+            extern std::mutex g_QueueMtx;
+            extern void HookCommandQueue(ID3D12CommandQueue * pQueue);
+
+            {
+                std::lock_guard<std::mutex> lock2(g_QueueMtx);
+                if (g_pd3dCommandQueue != pQueue) {
+                    Logger::info("DX12: Primary Graphics Queue identified directly at creation: " + std::to_string((uintptr_t)pQueue));
+                    g_pd3dCommandQueue = pQueue;
+                    HookCommandQueue(pQueue);
+                }
+            }
+        }
+    }
+    return hr;
 }
 
 HRESULT STDMETHODCALLTYPE HookedCreateCommittedResource(ID3D12Device* pDevice, const D3D12_HEAP_PROPERTIES* pHeapProperties,

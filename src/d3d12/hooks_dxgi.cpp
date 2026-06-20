@@ -104,6 +104,7 @@ HRESULT STDMETHODCALLTYPE HookedResizeBuffers(
         vtable[0] = (void*)g_OriginalQueryInterface;
         vtable[2] = (void*)g_OriginalRelease;
         vtable[8] = (void*)g_OriginalPresent;
+        vtable[9] = (void*)g_OriginalGetBuffer;
         vtable[13] = (void*)g_OriginalResizeBuffers;
         vtable[21] = (void*)g_OriginalPresent1;
         vtable[22] = (void*)g_OriginalPresent1;
@@ -118,6 +119,7 @@ HRESULT STDMETHODCALLTYPE HookedResizeBuffers(
         vtable[0] = (void*)HookedQueryInterface;
         vtable[2] = (void*)HookedRelease;
         vtable[8] = (void*)HookedPresent;
+        vtable[9] = (void*)HookedGetBuffer;
         vtable[13] = (void*)HookedResizeBuffers;
         vtable[21] = (void*)HookedPresent1;
         vtable[22] = (void*)HookedPresent1;
@@ -162,6 +164,7 @@ HRESULT STDMETHODCALLTYPE HookedResizeBuffers1(IDXGISwapChain3* pSwapChain, UINT
         vtable[0] = (void*)g_OriginalQueryInterface;
         vtable[2] = (void*)g_OriginalRelease;
         vtable[8] = (void*)g_OriginalPresent;
+        vtable[9] = (void*)g_OriginalGetBuffer;
         vtable[13] = (void*)g_OriginalResizeBuffers;
         vtable[21] = (void*)g_OriginalPresent1;
         vtable[22] = (void*)g_OriginalPresent1;
@@ -175,6 +178,7 @@ HRESULT STDMETHODCALLTYPE HookedResizeBuffers1(IDXGISwapChain3* pSwapChain, UINT
         vtable[0] = (void*)HookedQueryInterface;
         vtable[2] = (void*)HookedRelease;
         vtable[8] = (void*)HookedPresent;
+        vtable[9] = (void*)HookedGetBuffer;
         vtable[13] = (void*)HookedResizeBuffers;
         vtable[21] = (void*)HookedPresent1;
         vtable[22] = (void*)HookedPresent1;
@@ -197,6 +201,39 @@ HRESULT STDMETHODCALLTYPE HookedResizeBuffers1(IDXGISwapChain3* pSwapChain, UINT
         Logger::info("HookedResizeBuffers1: Success");
     }
     return hr;
+}
+
+HRESULT STDMETHODCALLTYPE HookedGetBuffer(IDXGISwapChain* pSwapChain, UINT Buffer, REFIID riid, void** ppSurface) {
+    if (g_InHook)
+        return g_OriginalGetBuffer(pSwapChain, Buffer, riid, ppSurface);
+    ScopedRecursionGuard guard;
+
+    if (Buffer == 0) {
+        if (DXUpscalerManager::Get().IsUpscalingEnabled()) {
+            if (!DXUpscalerManager::Get().GetFakeBackBuffer()) {
+                Logger::info("HookedGetBuffer: Fake BackBuffer is NULL, creating...");
+                DXUpscalerManager::Get().CreateFakeBackBuffer(pSwapChain);
+            }
+            ID3D12Resource* fakeBuffer = DXUpscalerManager::Get().GetFakeBackBuffer();
+            if (fakeBuffer) {
+                HRESULT hr = fakeBuffer->QueryInterface(riid, ppSurface);
+                if (SUCCEEDED(hr)) {
+                    static uint64_t s_logCount = 0;
+                    if (s_logCount++ % 100 == 0) {
+                        Logger::info(
+                            "DX Hooks: Redirected GetBuffer(0) to Fake BackBuffer (" + std::to_string((uintptr_t)*ppSurface) + ")");
+                    }
+                    return S_OK;
+                } else {
+                    Logger::warn("HookedGetBuffer: QueryInterface on Fake BackBuffer FAILED with hr=" + std::to_string(hr));
+                }
+            } else {
+                Logger::warn("HookedGetBuffer: GetFakeBackBuffer returned NULL!");
+            }
+        }
+    }
+
+    return g_OriginalGetBuffer(pSwapChain, Buffer, riid, ppSurface);
 }
 
 void RegisterNativeResources(IDXGISwapChain* pSwapChain) {
@@ -234,12 +271,15 @@ void ApplySwapChainHooks(void* pSwapChain) {
 
     // SCAN FOR QUEUE OFFSET (Only if not found yet and we have a hint)
     // pHintQueue is passed from CreateSwapChain hooks
-    if (g_CommandQueueOffset == 0 && s_lastSeenQueue) {
+    if (g_CommandQueueOffset == 0) {
+        std::lock_guard<std::mutex> lock(g_TrackingMtx);
         for (uint32_t i = 0; i < 1024; i += 8) {
             void* ptr = (void*)((uintptr_t)pSwapChain + i);
             if (IsBadReadPtr(ptr, 8))
                 continue;
-            if (*(void**)ptr == s_lastSeenQueue) {
+
+            ID3D12CommandQueue* possibleQueue = (ID3D12CommandQueue*)*(void**)ptr;
+            if ((s_lastSeenQueue && possibleQueue == s_lastSeenQueue) || g_AllTrackedQueues.count(possibleQueue)) {
                 g_CommandQueueOffset = i;
                 Logger::info("DX Hooks: Found Command Queue Offset via Scan: " + std::to_string(i));
                 SetDX12CommandQueueOffset(i);
@@ -264,6 +304,8 @@ void ApplySwapChainHooks(void* pSwapChain) {
         g_OriginalRelease = (PFN_Release)pVTable[2];
     if (!g_OriginalPresent)
         g_OriginalPresent = (PFN_Present)pVTable[8];
+    if (!g_OriginalGetBuffer)
+        g_OriginalGetBuffer = (PFN_GetBuffer)pVTable[9];
     if (!g_OriginalResizeBuffers)
         g_OriginalResizeBuffers = (PFN_ResizeBuffers)pVTable[13];
     if (!g_OriginalPresent1)
@@ -277,6 +319,7 @@ void ApplySwapChainHooks(void* pSwapChain) {
         pVTable[0] = (void*)HookedQueryInterface;
         pVTable[2] = (void*)HookedRelease;
         pVTable[8] = (void*)HookedPresent;
+        pVTable[9] = (void*)HookedGetBuffer;
         pVTable[13] = (void*)HookedResizeBuffers;
         pVTable[21] = (void*)HookedPresent1;
         pVTable[22] = (void*)HookedPresent1;

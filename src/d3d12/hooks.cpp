@@ -9,6 +9,7 @@ PFN_Present g_OriginalPresent = nullptr;
 PFN_Present1 g_OriginalPresent1 = nullptr;
 PFN_ResizeBuffers g_OriginalResizeBuffers = nullptr;
 PFN_ResizeBuffers1 g_OriginalResizeBuffers1 = nullptr;
+PFN_GetBuffer g_OriginalGetBuffer = nullptr;
 PFN_ExecuteCommandLists g_OriginalExecuteCommandLists = nullptr;
 PFN_Signal g_OriginalSignal = nullptr;
 PFN_ResourceBarrier g_OriginalResourceBarrier = nullptr;
@@ -17,6 +18,7 @@ PFN_RSSetScissorRects g_OriginalRSSetScissorRects = nullptr;
 PFN_OMSetRenderTargets g_OriginalOMSetRenderTargets = nullptr;
 PFN_CreateCommittedResource g_OriginalCreateCommittedResource = nullptr;
 PFN_CreatePlacedResource g_OriginalCreatePlacedResource = nullptr;
+PFN_CreateCommandQueue g_OriginalCreateCommandQueue = nullptr;
 
 PFN_CreateSwapChain g_OriginalCreateSwapChain = nullptr;
 PFN_CreateSwapChainForHwnd g_OriginalCreateSwapChainForHwnd = nullptr;
@@ -37,6 +39,7 @@ std::unordered_map<SIZE_T, ID3D12Resource*> g_RTVToResource;
 std::unordered_map<ID3D12GraphicsCommandList*, ID3D12Resource*> g_CommandListTargets;
 std::set<ID3D12Resource*> g_OverriddenResources;
 std::set<ID3D12Resource*> g_NativeResources;
+std::set<ID3D12CommandQueue*> g_AllTrackedQueues;
 std::mutex g_TrackingMtx;
 std::recursive_mutex g_HooksMtx;
 std::map<ID3D12GraphicsCommandList*, std::pair<uint32_t, uint32_t>> g_CommandListRTSize;
@@ -78,7 +81,7 @@ void InstallDXGIHooks() {
             goto cleanup;
 
         void** pQueueVTable = *(void***)commandQueue;
-        MH_CreateHook(pQueueVTable[12], (LPVOID)HookedExecuteCommandLists, (LPVOID*)&g_OriginalExecuteCommandLists);
+        MH_CreateHook(pQueueVTable[10], (LPVOID)HookedExecuteCommandLists, (LPVOID*)&g_OriginalExecuteCommandLists);
     }
 
     hr = CreateDXGIFactory1(__uuidof(IDXGIFactory4), (void**)&dxgiFactory);
@@ -146,11 +149,12 @@ void InstallDXGIHooks() {
 
             if (d3d12Device) {
                 void** pDeviceVTable = *(void***)d3d12Device;
-                MH_CreateHook(pDeviceVTable[7], (LPVOID)HookedCreateRenderTargetView, (LPVOID*)&g_OriginalCreateRenderTargetView);
-                MH_CreateHook(pDeviceVTable[8], (LPVOID)HookedCreatePlacedResource, (LPVOID*)&g_OriginalCreatePlacedResource);
+                MH_CreateHook(pDeviceVTable[20], (LPVOID)HookedCreateRenderTargetView, (LPVOID*)&g_OriginalCreateRenderTargetView);
+                MH_CreateHook(pDeviceVTable[29], (LPVOID)HookedCreatePlacedResource, (LPVOID*)&g_OriginalCreatePlacedResource);
                 MH_CreateHook(pDeviceVTable[27], (LPVOID)HookedCreateCommittedResource, (LPVOID*)&g_OriginalCreateCommittedResource);
-                Logger::info(
-                    "DX Hooks: Hook ID3D12Device::CreateCommittedResource(27), CreatePlacedResource(8), CreateRenderTargetView(7)");
+                MH_CreateHook(pDeviceVTable[8], (LPVOID)HookedCreateCommandQueue, (LPVOID*)&g_OriginalCreateCommandQueue);
+                Logger::info("DX Hooks: Hook ID3D12Device::CreateCommandQueue(8), CreateCommittedResource(27), CreatePlacedResource(29), "
+                             "CreateRenderTargetView(20)");
             }
 
             MH_EnableHook(MH_ALL_HOOKS);

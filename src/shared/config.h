@@ -57,6 +57,10 @@ private:
     char m_resBuffer[512] = "";
     bool m_resInit = false;
 
+    // UI state for proxy DLL
+    char m_proxyPathBuffer[512] = "";
+    bool m_proxyInit = false;
+
     std::string Trim(const std::string& s);
 };
 

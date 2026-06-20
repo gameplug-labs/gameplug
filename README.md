@@ -46,6 +46,7 @@ cmake --build build64 --config Release
 
 ### 🎮 DirectX 9 / 10 / 11 / 12 (Proxy Mode)
 - `dinput8.dll`: The universal drop-in proxy for all DirectX games (DX9, DX10, DX11 & DX12).
+- `version.dll`: Backend-specific alternative proxy files (for D3D9, D3D10, D3D11, and D3D12) if a game does not load or support `dinput8.dll`.
 
 ## 🔧 Usage
 
@@ -59,8 +60,15 @@ Vulkan uses a layer system. The easiest way to use it is via the launcher:
 2. Set `VK_LAYER_PATH` to that folder and `VK_INSTANCE_LAYERS` to `VK_LAYER_GAMEPLUG`.
 
 ### 🎮 DirectX Integration (9 / 10 / 11 / 12)
-DirectX integration is simpler and uses a single universal proxy:
+DirectX integration is simpler and uses a proxy DLL in the game's executable directory.
+
+#### Method 1: Universal Proxy (Recommended)
 1. Copy `dinput8.dll` into the game's executable directory.
+2. Launch the game normally.
+
+#### Method 2: Alternative Proxy (version.dll)
+If a game is incompatible with `dinput8.dll` or fails to load it:
+1. Copy the appropriate `version.dll` from the corresponding backend build folder (`d3d9`, `d3d10`, `d3d11`, or `d3d12`) into the game's executable directory.
 2. Launch the game normally.
 
 ## 🤝 Contributing

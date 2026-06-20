@@ -81,8 +81,6 @@ public:
     // FSR Timing Fix Support
     void MarkFSRReady();
     bool IsFSRReady() const;
-    void SetHasValidRT(bool ready);
-    bool HasValidRT() const;
     void SetActiveQueue(ID3D12CommandQueue* queue);
 
     // RE Engine Native Scaling Support
@@ -125,7 +123,6 @@ private:
     bool m_frameUpscaled = false;
     bool m_isShuttingDown = false;
     bool m_fsrReady = false;
-    bool m_hasValidRT = false;
 
     // Halton Jitter and HDR Tracking
     bool m_detectedHDR = false;

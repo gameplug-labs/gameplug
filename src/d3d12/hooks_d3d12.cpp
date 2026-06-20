@@ -364,10 +364,6 @@ void STDMETHODCALLTYPE HookedResourceBarrier(ID3D12GraphicsCommandList* pList, U
             if (!isSupportedFormat)
                 continue;
 
-            // SAFE to use captured final scene-like RT
-            SetLastEngineRenderTarget(pRes);
-            DXUpscalerManager::Get().SetHasValidRT(true);
-
             if (s_logCounter < 500 && s_logCounter % 100 == 0) {
                 Logger::warn("FINAL RT CANDIDATE: " + std::to_string(d.Width) + "x" + std::to_string(d.Height) +
                              " fmt=" + std::to_string(d.Format) + " PTR=" + std::to_string((uintptr_t)pRes));

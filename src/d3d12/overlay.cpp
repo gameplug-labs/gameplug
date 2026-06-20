@@ -57,7 +57,7 @@ static ID3D12Fence* g_pFenceSync = nullptr;
 static HANDLE g_FenceEvent = NULL;
 static UINT64 g_FenceValue = 0;
 static UINT64 g_FenceValueSync = 0;
-ID3D12Resource* g_lastEngineRenderTarget = nullptr;
+
 uint64_t g_lastRTFrame = 0;
 static uint64_t g_frameCounter = 0;
 static float g_realFPS = 0.0f;
@@ -145,48 +145,7 @@ void SetDX12CommandQueueOffset(uint32_t offset) {
 
 void SyncDX12Capture(ID3D12CommandQueue* pQueue);
 
-void SetLastEngineRenderTarget(ID3D12Resource* pRes) {
-    std::lock_guard<std::recursive_mutex> lock(g_TargetMtx);
 
-    // Handle explicit clearing
-    if (!pRes) {
-        if (g_lastEngineRenderTarget)
-            g_lastEngineRenderTarget->Release();
-        g_lastEngineRenderTarget = nullptr;
-        g_bestArea = 0;
-        return;
-    }
-
-    D3D12_RESOURCE_DESC desc = pRes->GetDesc();
-    if (desc.Flags & D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL)
-        return;
-
-    uint32_t rw = DXUpscalerManager::Get().GetRenderWidth();
-    uint32_t rh = DXUpscalerManager::Get().GetRenderHeight();
-
-    bool matchesRenderSize = abs((int)desc.Width - (int)rw) < 16 && abs((int)desc.Height - (int)rh) < 16;
-
-    if (!matchesRenderSize)
-        return;
-
-    if (g_lastEngineRenderTarget != pRes) {
-        // [FIX] First-Winner-Logic: If we already found a valid RT this frame, don't overwrite it
-        // This prevents picking up bloom or other post-process buffers that happen later.
-        if (g_lastEngineRenderTarget != nullptr && g_lastRTFrame == g_frameCounter) {
-            return;
-        }
-
-        if (g_lastEngineRenderTarget)
-            g_lastEngineRenderTarget->Release();
-        g_lastEngineRenderTarget = pRes;
-        g_lastEngineRenderTarget->AddRef();
-
-        Logger::info("DX12: RT SELECTED [FIRST-MATCH] " + std::to_string(desc.Width) + "x" + std::to_string(desc.Height) +
-                     " Fmt=" + std::to_string(desc.Format));
-    }
-
-    g_lastRTFrame = g_frameCounter;
-}
 
 extern void HookCommandQueue(ID3D12CommandQueue* pQueue);
 
@@ -226,13 +185,7 @@ void CleanupDX12(bool isResize) {
         Logger::info(" - Releasing Upscaler Resources");
         DXUpscalerManager::Get().CleanupPlugin();
 
-        if (g_lastEngineRenderTarget) {
-            std::lock_guard<std::recursive_mutex> lock(g_TargetMtx);
-            g_lastEngineRenderTarget->Release();
-            g_lastEngineRenderTarget = nullptr;
-            g_lastRTFrame = 0;
-            Logger::info(" - Released Captured RT");
-        }
+
 
         if (g_ImGuiInitialized) {
             ImGui_ImplDX12_Shutdown();
@@ -516,7 +469,7 @@ IDXGISwapChain* GetCurrentDXSwapChain() {
 void OnDXPresent(IDXGISwapChain* pSwapChain) {
 
     // [FIX] Execute FSR every frame when signaled by the engine
-    if (DXUpscalerManager::Get().IsFSRReady() && (DXUpscalerManager::Get().HasValidRT() || DXUpscalerManager::Get().GetFakeBackBuffer() != nullptr))
+    if (DXUpscalerManager::Get().IsFSRReady() && DXUpscalerManager::Get().GetFakeBackBuffer() != nullptr)
     {
         Logger::warn("FSR RUNNING IN PRESENT");
         DXUpscalerManager::Get().RunFSRPass();
@@ -562,13 +515,7 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
     g_needsNewImGuiFrame = true;
     g_totalPresentCalls++;
 
-    // Only clear if too old (staleness check)
-    if (g_lastRTFrame + 1 < g_frameCounter) {
-        if (g_lastEngineRenderTarget) {
-            g_lastEngineRenderTarget->Release();
-            g_lastEngineRenderTarget = nullptr;
-        }
-    }
+
 
     void** vtable = *(void***)pSwapChain;
     if (g_totalPresentCalls < 200) {
@@ -579,7 +526,7 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
                      " calls (Confidence=" + std::to_string(g_confidenceCounter) + ")");
 
         // Final RT Verification Logging
-        ID3D12Resource* finalRT = g_lastEngineRenderTarget;
+        ID3D12Resource* finalRT = DXUpscalerManager::Get().GetFakeBackBuffer();
         if (!finalRT) {
             Logger::warn("No valid final RT this frame");
         } else {
@@ -872,9 +819,6 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
                 SyncDX12Capture(g_pd3dCommandQueue);
 
                 // Finalize Frame Capture: No Release needed for cached backbuffer
-                if (g_lastEngineRenderTarget == pBackBuffer) {
-                    SetLastEngineRenderTarget(nullptr);
-                }
 
                 g_lastInjectionFrame = g_frameCounter;
             }

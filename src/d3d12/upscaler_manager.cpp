@@ -11,7 +11,6 @@
 #include <unordered_map>
 
 namespace GamePlug {
-extern ID3D12Resource* g_lastEngineRenderTarget;
 extern std::unordered_map<ID3D12Resource*, D3D12_RESOURCE_STATES> g_ResourceStates;
 extern bool g_IsResizing;
 typedef GamePlugUpscalerInterface* (*GamePlug_GetUpscalerInterfaceFn)();
@@ -827,13 +826,7 @@ bool DXUpscalerManager::IsFSRReady() const {
     return m_fsrReady;
 }
 
-void DXUpscalerManager::SetHasValidRT(bool ready) {
-    m_hasValidRT = ready;
-}
 
-bool DXUpscalerManager::HasValidRT() const {
-    return m_hasValidRT;
-}
 
 void DXUpscalerManager::RunFSRPass() {
     if (!m_pd3d12Queue || !m_fsrCommandList) {
@@ -851,13 +844,6 @@ void DXUpscalerManager::RunFSRPass() {
     Logger::warn("FSR: RunFSRPass Entry [Queue=" + std::to_string((uintptr_t)m_pd3d12Queue) + "]");
     Logger::warn("FSR: RunFSRPass 1");
     
-    if (!m_hasValidRT) {
-        static uint64_t s_skipCount = 0;
-        if (s_skipCount++ % 60 == 0) {
-            Logger::warn("FSR SKIP: No valid RT yet (Skipped " + std::to_string(s_skipCount) + " times)");
-        }
-        return;
-    }
     Logger::warn("FSR: RunFSRPass 2");
 
     if (!m_pd3d12Device || !m_pd3d12Queue || !m_fsrCommandList || !m_fsrAllocator) {
@@ -875,7 +861,7 @@ void DXUpscalerManager::RunFSRPass() {
 
     Logger::warn("FSR: RunFSRPass 4");
 
-    ID3D12Resource* src = m_fakeBackBuffer ? m_fakeBackBuffer : g_lastEngineRenderTarget;
+    ID3D12Resource* src = m_fakeBackBuffer;
     if (!src) {
         Logger::warn("FSR SKIP: No source RT");
         return;
@@ -1044,7 +1030,6 @@ void DXUpscalerManager::RunFSRPass() {
     g_ResourceStates[src] = srcStateBefore;
     g_ResourceStates[dst] = D3D12_RESOURCE_STATE_PRESENT;
     m_fsrReady = false;
-    m_hasValidRT = false;
 }
 
 void DXUpscalerManager::PerformPropertyInjection() {

@@ -99,6 +99,7 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 8)
         d3d12/hooks.cpp
         d3d12/hooks_d3d12.cpp
         d3d12/hooks_dxgi.cpp
+        d3d12/upscaler_manager.cpp
         ${PROJECT_SOURCE_DIR}/external/imgui/backends/imgui_impl_dx12.cpp
     )
 

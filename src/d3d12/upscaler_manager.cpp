@@ -7,11 +7,6 @@
 #include <MinHook.h>
 #include <sstream>
 
-// REFramework SDK Headers
-#include "sdk/RETypeDB.hpp"
-#include "sdk/REManagedObject.hpp"
-#include "sdk/RETypes.hpp"
-#include "sdk/SceneManager.hpp"
 #include <iomanip>
 #include <unordered_map>
 
@@ -163,6 +158,7 @@ void DXUpscalerManager::CleanupPlugin() {
 }
 
 void DXUpscalerManager::CleanupDX12Resources() {
+    DestroyFakeBackBuffer();
     if (m_fsrAllocator) { m_fsrAllocator->Release(); m_fsrAllocator = nullptr; }
     if (m_fsrCommandList) { m_fsrCommandList->Release(); m_fsrCommandList = nullptr; }
     if (m_fsrFence) { m_fsrFence->Release(); m_fsrFence = nullptr; }
@@ -171,6 +167,87 @@ void DXUpscalerManager::CleanupDX12Resources() {
     m_rtvDescriptorSize = 0;
     m_nextRtvIndex = 0;
     m_finalOutput = nullptr;
+}
+
+void DXUpscalerManager::CreateFakeBackBuffer(IDXGISwapChain* swapChain) {
+    if (!m_pd3d12Device) {
+        Logger::error("DXUpscalerManager: CreateFakeBackBuffer failed - Device is NULL!");
+        return;
+    }
+    
+    DXGI_SWAP_CHAIN_DESC desc;
+    if (FAILED(swapChain->GetDesc(&desc))) {
+        Logger::error("DXUpscalerManager: CreateFakeBackBuffer failed - SwapChain GetDesc failed!");
+        return;
+    }
+
+    if (m_fakeBackBuffer) {
+        D3D12_RESOURCE_DESC resDesc = m_fakeBackBuffer->GetDesc();
+        if (resDesc.Width == desc.BufferDesc.Width && resDesc.Height == desc.BufferDesc.Height && resDesc.Format == desc.BufferDesc.Format) {
+            Logger::info("DXUpscalerManager: Fake BackBuffer already exists with correct dimensions.");
+            return;
+        }
+        DestroyFakeBackBuffer();
+    }
+
+    Logger::info("DXUpscalerManager: Creating Fake BackBuffer at " + std::to_string(desc.BufferDesc.Width) + "x" + std::to_string(desc.BufferDesc.Height));
+
+    D3D12_HEAP_PROPERTIES heapProps = {};
+    heapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
+    heapProps.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+    heapProps.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+    heapProps.CreationNodeMask = 1;
+    heapProps.VisibleNodeMask = 1;
+
+    D3D12_RESOURCE_DESC resDesc = {};
+    resDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    resDesc.Alignment = 0;
+    resDesc.Width = desc.BufferDesc.Width;
+    resDesc.Height = desc.BufferDesc.Height;
+    resDesc.DepthOrArraySize = 1;
+    resDesc.MipLevels = 1;
+    resDesc.Format = desc.BufferDesc.Format;
+    resDesc.SampleDesc.Count = 1;
+    resDesc.SampleDesc.Quality = 0;
+    resDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+    resDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+
+    D3D12_CLEAR_VALUE clearValue = {};
+    clearValue.Format = desc.BufferDesc.Format;
+    clearValue.Color[0] = 0.0f;
+    clearValue.Color[1] = 0.0f;
+    clearValue.Color[2] = 0.0f;
+    clearValue.Color[3] = 1.0f;
+
+    HRESULT hr = m_pd3d12Device->CreateCommittedResource(
+        &heapProps,
+        D3D12_HEAP_FLAG_NONE,
+        &resDesc,
+        D3D12_RESOURCE_STATE_PRESENT,
+        &clearValue,
+        IID_PPV_ARGS(&m_fakeBackBuffer)
+    );
+
+    if (FAILED(hr)) {
+        Logger::error("DXUpscalerManager: Failed to create Fake BackBuffer (HR=" + std::to_string(hr) + ")");
+        m_fakeBackBuffer = nullptr;
+        return;
+    }
+
+    // Attach custom GUID to identify the fake back buffer in hooks
+    static const GUID GUID_FakeBackBuffer = { 0xf192e666, 0xc0de, 0x4d12, { 0x87, 0x65, 0xfc, 0xeb, 0x5a, 0x4b, 0x2b, 0xa1 } };
+    UINT tag = 1;
+    m_fakeBackBuffer->SetPrivateData(GUID_FakeBackBuffer, sizeof(tag), &tag);
+
+    Logger::info("DXUpscalerManager: Fake BackBuffer successfully created.");
+}
+
+void DXUpscalerManager::DestroyFakeBackBuffer() {
+    if (m_fakeBackBuffer) {
+        m_fakeBackBuffer->Release();
+        m_fakeBackBuffer = nullptr;
+        Logger::info("DXUpscalerManager: Fake BackBuffer destroyed.");
+    }
 }
 
 bool DXUpscalerManager::IsUpscalingEnabled() const {
@@ -443,7 +520,9 @@ void DXUpscalerManager::RenderFrame(ID3D12GraphicsCommandList* cmd, ID3D12Resour
         m_renderHeight,
         0, 0, // depth
         0, 0, // mv
-        0.0f, 0.0f // jitter
+        0.0f, 0.0f, // jitter
+        0.1f, 1000.0f, 90.0f, // camera settings
+        1.0f, false, false // meters factor, inverted depth, hdr
     );
 }
 
@@ -473,7 +552,9 @@ void DXUpscalerManager::RenderFrameDX11(ID3D11DeviceContext* context, ID3D11Shad
         m_renderHeight,
         0, 0,
         0, 0,
-        0.0f, 0.0f
+        0.0f, 0.0f,
+        0.1f, 1000.0f, 90.0f,
+        1.0f, false, false
     );
 }
 
@@ -498,147 +579,6 @@ bool DXUpscalerManager::HasValidRT() const {
     return m_hasValidRT;
 }
 
-// void DXUpscalerManager::RunFSRPass() {
-//     if (!m_fsrReady && !m_frameUpscaled) return;
-//     if (!m_hasValidRT) {
-//         Logger::warn("FSR SKIP: No valid RT yet");
-//         return;
-//     }
-
-//     Logger::warn("RunFSRPass CALLED");
-
-//     if (!m_pd3d12Device || !m_pd3d12Queue || !m_fsrCommandList || !m_fsrAllocator) {
-//         Logger::warn("FSR SKIP: Missing DX12 setup");
-//         return;
-//     }
-
-//     if (m_frameUpscaled) {
-//         Logger::warn("FSR SKIP: Already upscaled");
-//         return;
-//     }
-
-//     ID3D12Resource* src = g_lastEngineRenderTarget;
-//     if (!src) {
-//         Logger::warn("FSR SKIP: No source RT");
-//         return;
-//     }
-
-//     if (!m_currentSwapChain) {
-//         Logger::warn("FSR SKIP: No swapchain");
-//         return;
-//     }
-
-//     IDXGISwapChain3* sc3 = nullptr;
-//     if (FAILED(m_currentSwapChain->QueryInterface(__uuidof(IDXGISwapChain3), (void**)&sc3))) return;
-//     UINT bbIdx = sc3->GetCurrentBackBufferIndex();
-//     sc3->Release();
-
-//     ID3D12Resource* dst = nullptr;
-//     if (FAILED(m_currentSwapChain->GetBuffer(bbIdx, IID_PPV_ARGS(&dst)))) return;
-
-//     uint32_t width = m_width;
-//     uint32_t height = m_height;
-//     if (width == 0 || height == 0) {
-//         DXGI_SWAP_CHAIN_DESC sd;
-//         m_currentSwapChain->GetDesc(&sd);
-//         width = sd.BufferDesc.Width;
-//         height = sd.BufferDesc.Height;
-//     }
-
-//     m_fsrAllocator->Reset();
-//     m_fsrCommandList->Reset(m_fsrAllocator, nullptr);
-
-//     // [BEFORE FSR] MANUAL TRANSITIONS
-//     D3D12_RESOURCE_BARRIER barriers[2] = {};
-//     int barrierCount = 0;
-
-//     // Transition src: RENDER_TARGET -> NON_PIXEL_SHADER_RESOURCE
-//     // We assume it's in RENDER_TARGET or whatever state it was last in.
-//     D3D12_RESOURCE_STATES srcStateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-//     if (g_ResourceStates.count(src)) srcStateBefore = g_ResourceStates[src];
-
-//     if (srcStateBefore != D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE) {
-//         barriers[barrierCount].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-//         barriers[barrierCount].Transition.pResource = src;
-//         barriers[barrierCount].Transition.StateBefore = srcStateBefore;
-//         barriers[barrierCount].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-//         barriers[barrierCount].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-//         barrierCount++;
-//     }
-
-//     // Transition dst: PRESENT -> UNORDERED_ACCESS
-//     barriers[barrierCount].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-//     barriers[barrierCount].Transition.pResource = dst;
-//     barriers[barrierCount].Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
-//     barriers[barrierCount].Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
-//     barriers[barrierCount].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-//     barrierCount++;
-
-//     if (barrierCount > 0) {
-//         Logger::info("DX: RunFSRPass - Applying PRE-FSR barriers (Count=" + std::to_string(barrierCount) + ")");
-//         for (int i = 0; i < barrierCount; i++) {
-//             Logger::info("  - Resource: " + std::to_string((uintptr_t)barriers[i].Transition.pResource) + 
-//                          " State: " + std::to_string(barriers[i].Transition.StateBefore) + " -> " + 
-//                          std::to_string(barriers[i].Transition.StateAfter));
-//         }
-//         m_fsrCommandList->ResourceBarrier(barrierCount, barriers);
-//     }
-//     Logger::warn("FSR: RunFSRPass 11");
-//     // RUN FSR
-//     this->RenderFrame(m_fsrCommandList, src, dst, width, height);
-
-//     Logger::warn("FSR: RunFSRPass 12");
-
-//     // [AFTER FSR] RESTORE STATES
-//     D3D12_RESOURCE_BARRIER postBarriers[2] = {};
-//     int postCount = 0;
-
-//     // Restore src to engine's original state
-//     if (srcStateBefore != D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE) {
-//         postBarriers[postCount].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-//         postBarriers[postCount].Transition.pResource = src;
-//         postBarriers[postCount].Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-//         postBarriers[postCount].Transition.StateAfter = srcStateBefore;
-//         postBarriers[postCount].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-//         postCount++;
-//     }
-
-//     // Restore dst to PRESENT for the SwapChain
-//     postBarriers[postCount].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-//     postBarriers[postCount].Transition.pResource = dst;
-//     postBarriers[postCount].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-//     postBarriers[postCount].Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
-//     postBarriers[postCount].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-//     postCount++;
-
-//     if (postCount > 0) {
-//         Logger::info("DX: RunFSRPass - Applying POST-FSR barriers (Count=" + std::to_string(postCount) + ")");
-//         for (int i = 0; i < postCount; i++) {
-//             Logger::info("  - Resource: " + std::to_string((uintptr_t)postBarriers[i].Transition.pResource) + 
-//                          " State: " + std::to_string(postBarriers[i].Transition.StateBefore) + " -> " + 
-//                          std::to_string(postBarriers[i].Transition.StateAfter));
-//         }
-//         m_fsrCommandList->ResourceBarrier(postCount, postBarriers);
-//     }
-
-//     m_fsrCommandList->Close();
-
-//     // EXECUTE & SYNC
-//     ID3D12CommandList* lists[] = { m_fsrCommandList };
-//     m_pd3d12Queue->ExecuteCommandLists(1, lists);
-
-//     UINT64 fenceValue = m_fsrFenceValue++;
-//     m_pd3d12Queue->Signal(m_fsrFence, fenceValue);
-//     if (m_fsrFence->GetCompletedValue() < fenceValue) {
-//         m_fsrFence->SetEventOnCompletion(fenceValue, nullptr);
-//         // Wait on GPU is handled by Signal/Wait pattern or we can just hope for now
-//         // A better sync might be needed if Present is called too fast
-//     }
-
-//     dst->Release();
-//     m_fsrReady = false;
-//     m_hasValidRT = false;
-// }
 void DXUpscalerManager::RunFSRPass() {
     if (!m_pd3d12Queue || !m_fsrCommandList) {
         static int throttle = 0;
@@ -835,49 +775,25 @@ void DXUpscalerManager::RunFSRPass() {
 }
 
 void DXUpscalerManager::PerformPropertyInjection() {
-    if (!IsUpscalingEnabled()) return;
-    
-    // Only override if ReGame is enabled in config
-    if (!Config::Get().GetBool("ReGame", false)) return;
-
-    uint32_t renderW = GetRenderWidth();
-    uint32_t renderH = GetRenderHeight();
-    
-    if (renderW == 0 || renderH == 0) return;
-
-    REManagedObject* main_view = sdk::get_main_view();
-    if (main_view == nullptr) return;
-
-    static auto scene_view_type = sdk::find_type_definition("via.SceneView");
-    if (scene_view_type == nullptr) return;
-
-    // Use set_Size if available (standard in some engine versions)
-    static auto set_size_method = scene_view_type->get_method("set_Size");
-    
-    if (set_size_method != nullptr) {
-        via_Size size{ (float)renderW, (float)renderH };
-        // In RE Engine native calls, structs are often passed by pointer
-        set_size_method->call(sdk::get_thread_context(), main_view, &size);
-        
-        static uint32_t s_logCount = 0;
-        if (s_logCount++ % 120 == 0) {
-            Logger::info("DXUpscalerManager: Successfully injected resolution via set_Size: " + std::to_string(renderW) + "x" + std::to_string(renderH));
-        }
-        return;
-    }
+    // Stub
 }
 
 void DXUpscalerManager::InitREEngineHooks() {
-    // legacy
+    // Stub
 }
 
 void DXUpscalerManager::UpdateREEngineHooks() {
     this->PerformPropertyInjection();
 }
 
-DXUpscalerManager::via_Size DXUpscalerManager::Hooked_get_Size_Native(REManagedObject* scene_view) {
-    // Left as stub, functionality moved to PerformPropertyInjection
-    return {0.0f, 0.0f};
+DXUpscalerManager::via_Size DXUpscalerManager::Hooked_get_Size_Native(void* scene_view) {
+    if (g_IsResizing) {
+        return { (float)DXUpscalerManager::Get().m_width, (float)DXUpscalerManager::Get().m_height };
+    }
+    
+    uint32_t renderW, renderH;
+    DXUpscalerManager::Get().GetTargetResolution(DXUpscalerManager::Get().m_width, DXUpscalerManager::Get().m_height, renderW, renderH);
+    return { (float)renderW, (float)renderH };
 }
 
 } // namespace GamePlug

@@ -1,4 +1,5 @@
 #include "hooks_common.h"
+#include "upscaler_manager.h"
 
 namespace GamePlug {
 
@@ -119,6 +120,7 @@ void STDMETHODCALLTYPE HookedExecuteCommandLists(
     g_OriginalExecuteCommandLists(pQueue, NumCommandLists, ppCommandLists);
 
     // Now signal that FSR is ready to run in the Present pass
+    DXUpscalerManager::Get().MarkFSRReady();
 }
 
 void HookCommandQueue(ID3D12CommandQueue* pQueue) {
@@ -190,8 +192,8 @@ void STDMETHODCALLTYPE HookedResourceBarrier(ID3D12GraphicsCommandList* pList, U
 
             D3D12_RESOURCE_DESC d = pRes->GetDesc();
 
-            uint32_t rw = d.Width;
-            uint32_t rh = d.Height;
+            uint32_t rw = DXUpscalerManager::Get().GetRenderWidth();
+            uint32_t rh = DXUpscalerManager::Get().GetRenderHeight();
 
             // Safety: If upscaler haven't determined resolution yet, skip discovery to avoid picking noise
 
@@ -224,6 +226,7 @@ void STDMETHODCALLTYPE HookedResourceBarrier(ID3D12GraphicsCommandList* pList, U
 
             // SAFE to use captured final scene-like RT
             SetLastEngineRenderTarget(pRes);
+            DXUpscalerManager::Get().SetHasValidRT(true);
 
             if (s_logCounter < 500 && s_logCounter % 100 == 0) {
                 Logger::warn("FINAL RT CANDIDATE: " + std::to_string(d.Width) + "x" + std::to_string(d.Height) +
@@ -236,27 +239,6 @@ void STDMETHODCALLTYPE HookedResourceBarrier(ID3D12GraphicsCommandList* pList, U
 }
 
 bool ShouldOverrideD3D12(const D3D12_RESOURCE_DESC& desc) {
-    if (!Config::Get().GetBool("ReGame", false))
-        return false;
-
-    uint32_t dw = desc.Width;
-    uint32_t dh = desc.Height;
-
-    // Core Check: Does it match the target display resolution exactly?
-    if (desc.Width != dw || desc.Height != dh)
-        return false;
-
-    // Check if it's a primary render resource
-    bool isRenderTarget = (desc.Flags & D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
-    bool isUAV = (desc.Flags & D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-    bool isDepth = (desc.Flags & D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
-
-    // Some engines use simple textures and blit to them.
-    // If it's 1080p and has ANY of these flags, it's a candidate for downsampling.
-    if (isRenderTarget || isUAV || isDepth) {
-        return true;
-    }
-
     return false;
 }
 

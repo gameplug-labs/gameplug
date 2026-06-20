@@ -1,4 +1,5 @@
 #include "hooks_common.h"
+#include "upscaler_manager.h"
 
 namespace GamePlug {
 
@@ -91,6 +92,7 @@ HRESULT STDMETHODCALLTYPE HookedResizeBuffers(
 
     Logger::info("HookedResizeBuffers Entry [SC=" + std::to_string((uintptr_t)pSwapChain) + "]");
     g_IsResizing = true;
+    DXUpscalerManager::Get().UpdateDimensions(Width, Height);
     OnDXResize(pSwapChain);
 
     // Phase 12 & 15: Total Integrity Restoration
@@ -153,6 +155,7 @@ HRESULT STDMETHODCALLTYPE HookedResizeBuffers1(IDXGISwapChain3* pSwapChain, UINT
 
     Logger::info("HookedResizeBuffers1 Entry [SC=" + std::to_string((uintptr_t)pSwapChain) + "]");
     g_IsResizing = true;
+    DXUpscalerManager::Get().UpdateDimensions(Width, Height);
     OnDXResize(pSwapChain);
 
     // Phase 12 & 15: Total Integrity Restoration
@@ -207,6 +210,31 @@ HRESULT STDMETHODCALLTYPE HookedGetBuffer(IDXGISwapChain* pSwapChain, UINT Buffe
     if (g_InHook)
         return g_OriginalGetBuffer(pSwapChain, Buffer, riid, ppSurface);
     ScopedRecursionGuard guard;
+
+    if (Buffer == 0) {
+        if (DXUpscalerManager::Get().IsUpscalingEnabled()) {
+            if (!DXUpscalerManager::Get().GetFakeBackBuffer()) {
+                Logger::info("HookedGetBuffer: Fake BackBuffer is NULL, creating...");
+                DXUpscalerManager::Get().CreateFakeBackBuffer(pSwapChain);
+            }
+            ID3D12Resource* fakeBuffer = DXUpscalerManager::Get().GetFakeBackBuffer();
+            if (fakeBuffer) {
+                HRESULT hr = fakeBuffer->QueryInterface(riid, ppSurface);
+                if (SUCCEEDED(hr)) {
+                    static uint64_t s_logCount = 0;
+                    if (s_logCount++ % 100 == 0) {
+                        Logger::info(
+                            "DX Hooks: Redirected GetBuffer(0) to Fake BackBuffer (" + std::to_string((uintptr_t)*ppSurface) + ")");
+                    }
+                    return S_OK;
+                } else {
+                    Logger::warn("HookedGetBuffer: QueryInterface on Fake BackBuffer FAILED with hr=" + std::to_string(hr));
+                }
+            } else {
+                Logger::warn("HookedGetBuffer: GetFakeBackBuffer returned NULL!");
+            }
+        }
+    }
 
     return g_OriginalGetBuffer(pSwapChain, Buffer, riid, ppSurface);
 }

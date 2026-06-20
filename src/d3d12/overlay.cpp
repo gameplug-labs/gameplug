@@ -8,6 +8,7 @@
 #include <dxgi1_4.h>
 #include <mutex>
 #include <unordered_map>
+#include "upscaler_manager.h"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -115,8 +116,8 @@ void SetLastEngineRenderTarget(ID3D12Resource* pRes) {
     if (desc.Flags & D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL)
         return;
 
-    uint32_t rw = 0;
-    uint32_t rh = 0;
+    uint32_t rw = DXUpscalerManager::Get().GetRenderWidth();
+    uint32_t rh = DXUpscalerManager::Get().GetRenderHeight();
 
     bool matchesRenderSize = abs((int)desc.Width - (int)rw) < 16 && abs((int)desc.Height - (int)rh) < 16;
 
@@ -176,6 +177,9 @@ void CleanupDX12(bool isResize) {
         if (g_pd3d12Device) {
             SyncAllDX12Queues();
         }
+
+        Logger::info(" - Releasing Upscaler Resources");
+        DXUpscalerManager::Get().CleanupPlugin();
 
         if (g_lastEngineRenderTarget) {
             std::lock_guard<std::recursive_mutex> lock(g_TargetMtx);
@@ -417,6 +421,9 @@ bool InitImGuiDX12(IDXGISwapChain* pSwapChain, ID3D12CommandQueue* pQueue) {
 
     // Load Plugins
     PluginManager::Get().LoadPlugins();
+    DXUpscalerManager::Get().InitDX12(g_pd3d12Device, pQueue);
+    DXUpscalerManager::Get().UpdateDimensions(sd.BufferDesc.Width, sd.BufferDesc.Height);
+
 
     Logger::info("DX12 Init: Success");
     return true;
@@ -444,6 +451,18 @@ IDXGISwapChain* GetCurrentDXSwapChain() {
 }
 
 void OnDXPresent(IDXGISwapChain* pSwapChain) {
+    if (g_InHook)
+        return;
+    ScopedRecursionGuard guard;
+
+    // [FIX] Execute FSR every frame when signaled by the engine
+    if (DXUpscalerManager::Get().IsFSRReady() && DXUpscalerManager::Get().HasValidRT())
+    {
+        Logger::warn("FSR RUNNING IN PRESENT");
+        DXUpscalerManager::Get().RunFSRPass();
+    }
+
+    DXUpscalerManager::Get().ResetFrame();
     {
         std::lock_guard<std::recursive_mutex> lock(g_TargetMtx);
         g_bestArea = 0; // Reset capture threshold for new frame
@@ -466,6 +485,8 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
     lastTime = currentTime;
 
     g_frameCounter++;
+
+    DXUpscalerManager::Get().SetCurrentSwapChain(pSwapChain);
 
     // Toggle Visibility with Ctrl + HOME key
     bool ctrlPressed = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
@@ -710,7 +731,9 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
                     ImGui::NewFrame();
 
                     if (g_Visible) {
-                        ImGuiOverlayShared::DrawUI(width, height);
+                        ImGuiOverlayShared::DrawUI(width, height, [desc, width, height]() { 
+                            DXUpscalerManager::Get().RenderUI(g_realFPS, width, height); 
+                        });
                     }
                     ImGui::Render();
                     g_needsNewImGuiFrame = false;

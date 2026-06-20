@@ -9,9 +9,6 @@ target_include_directories(dinput8_d3d12 PRIVATE
     ${PROJECT_SOURCE_DIR}/src/shared
     ${PROJECT_SOURCE_DIR}/external/imgui
     ${PROJECT_SOURCE_DIR}/external/imgui/backends
-    ${PROJECT_SOURCE_DIR}/external/REFramework/shared
-    ${PROJECT_SOURCE_DIR}/external/REFramework/include
-    ${PROJECT_SOURCE_DIR}/external/safetyhook/include
 )
 
 target_compile_definitions(dinput8_d3d12 PRIVATE 
@@ -66,9 +63,6 @@ target_include_directories(version_d3d12 PRIVATE
     ${PROJECT_SOURCE_DIR}/src/shared
     ${PROJECT_SOURCE_DIR}/external/imgui
     ${PROJECT_SOURCE_DIR}/external/imgui/backends
-    ${PROJECT_SOURCE_DIR}/external/REFramework/shared
-    ${PROJECT_SOURCE_DIR}/external/REFramework/include
-    ${PROJECT_SOURCE_DIR}/external/safetyhook/include
 )
 
 target_compile_definitions(version_d3d12 PRIVATE 

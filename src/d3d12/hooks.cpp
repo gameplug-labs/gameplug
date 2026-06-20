@@ -1,4 +1,5 @@
 #include "hooks_common.h"
+#include "upscaler_manager.h"
 
 namespace GamePlug {
 
@@ -50,6 +51,7 @@ void* g_LastHookedSwapChain = nullptr;
 
 void InstallDXGIHooks() {
     Logger::info("InstallDXGIHooks: Start (Signal-Sync Logic Active)");
+    DXUpscalerManager::Get().EarlyInit();
 
     WNDCLASSEX wc = {
         sizeof(WNDCLASSEX), CS_CLASSDC, DefWindowProc, 0L, 0L, GetModuleHandle(NULL), NULL, NULL, NULL, NULL, "GamePlugDummy", NULL};

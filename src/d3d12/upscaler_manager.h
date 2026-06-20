@@ -8,11 +8,10 @@
 #include <memory>
 #include "upscaler_interface.h"
 #include "framework_export.h"
-#include "sdk/REVTableHook.hpp"
 #include <optional>
 #include <memory>
-#include <sdk/REManagedObject.hpp>
 #include <unordered_map>
+#include "upscaler_manager.h" 
 
 
 
@@ -33,6 +32,10 @@ public:
     void UnloadUpscaler();
     void CleanupPlugin(); // New: Cleanup resources without unloading DLL
     void CleanupDX12Resources(); // New: Specifically release DX12 internal objects
+
+    void CreateFakeBackBuffer(IDXGISwapChain* swapChain);
+    void DestroyFakeBackBuffer();
+    ID3D12Resource* GetFakeBackBuffer() { return m_fakeBackBuffer; }
 
     void RenderUI(float fps, uint32_t width, uint32_t height);
     
@@ -89,7 +92,7 @@ public:
     // Size structure used by the engine
     struct via_Size { float w; float h; };
     
-    static via_Size Hooked_get_Size_Native(REManagedObject* scene_view); // Keep for potential debug but remove usage
+    static via_Size Hooked_get_Size_Native(void* scene_view); // Keep for potential debug but remove usage
 
 
 
@@ -123,6 +126,7 @@ private:
     bool m_fsrReady = false;
     bool m_hasValidRT = false;
 
+    ID3D12Resource* m_fakeBackBuffer = nullptr;
     ID3D12Resource* m_finalOutput = nullptr;
     std::unordered_map<ID3D12Resource*, D3D12_CPU_DESCRIPTOR_HANDLE> m_rtvCache;
     ID3D12DescriptorHeap* m_rtvHeap = nullptr;

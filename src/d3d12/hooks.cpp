@@ -1,7 +1,55 @@
 #include "hooks_common.h"
 #include "upscaler_manager.h"
+#include <dbghelp.h>
 
 namespace GamePlug {
+
+static void LogVTable(void** pVTable, int count, const std::string& vtableName) {
+    static const char* commandListNames[] = {
+        "QueryInterface", "AddRef", "Release", "GetPrivateData", "SetPrivateData", "SetPrivateDataInterface", "SetName",
+        "GetDevice", "GetType", "Close", "Reset", "ClearState", "DrawInstanced", "DrawIndexedInstanced", "Dispatch",
+        "CopyBufferRegion", "CopyTextureRegion", "CopyResource", "CopyTiles", "ResolveSubresource", "IASetPrimitiveTopology",
+        "RSSetViewports", "RSSetScissorRects", "OMSetBlendFactor", "OMSetStencilRef", "SetPipelineState", "ResourceBarrier",
+        "ExecuteBundle", "SetDescriptorHeaps", "SetComputeRootSignature", "SetGraphicsRootSignature", "SetComputeRootDescriptorTable",
+        "SetGraphicsRootDescriptorTable", "SetComputeRoot32BitConstant", "SetGraphicsRoot32BitConstant", "SetComputeRoot32BitConstants",
+        "SetGraphicsRoot32BitConstants", "SetComputeRootConstantBufferView", "SetGraphicsRootConstantBufferView",
+        "SetComputeRootShaderResourceView", "SetGraphicsRootShaderResourceView", "SetComputeRootUnorderedAccessView",
+        "SetGraphicsRootUnorderedAccessView", "IASetIndexBuffer", "IASetVertexBuffers", "SOSetTargets", "OMSetRenderTargets",
+        "ClearDepthStencilView", "ClearRenderTargetView", "ClearUnorderedAccessViewUint", "ClearUnorderedAccessViewFloat",
+        "DiscardResource", "BeginQuery", "EndQuery", "ResolveQueryData", "SetPredication", "SetMarker", "BeginEvent",
+        "EndEvent", "ExecuteIndirect"
+    };
+
+    static const char* deviceNames[] = {
+        "QueryInterface", "AddRef", "Release", "GetPrivateData", "SetPrivateData", "SetPrivateDataInterface", "SetName",
+        "GetNodeCount", "CreateCommandQueue", "CreateCommandAllocator", "CreateGraphicsPipelineState", "CreateComputePipelineState",
+        "CreateCommandList", "CheckFeatureSupport", "CreateDescriptorHeap", "GetDescriptorHandleIncrementSize", "CreateRootSignature",
+        "CreateConstantBufferView", "CreateShaderResourceView", "CreateUnorderedAccessView", "CreateRenderTargetView",
+        "CreateDepthStencilView", "CreateSampler", "CopyDescriptors", "CopyDescriptorsSimple", "GetResourceAllocationInfo",
+        "GetCustomHeapProperties", "CreateCommittedResource", "CreateHeap", "CreatePlacedResource", "CreateReservedResource",
+        "CreateSharedHandle", "OpenSharedHandle", "OpenSharedHandleByName", "MakeResident", "Evict", "CreatePipelineLibrary",
+        "QueryVideoMemoryInfo", "SetEventOnMultipleFenceCompletion", "ResolveSubresourceRegion"
+    };
+
+    Logger::info("--- VTable Log for " + vtableName + " ---");
+    for (int i = 0; i < count; ++i) {
+        DWORD64 address = (DWORD64)pVTable[i];
+        if (!address) {
+            Logger::info("  Index " + std::to_string(i) + ": nullptr");
+            continue;
+        }
+
+        std::string name = "UnknownMethod";
+        if (vtableName == "ID3D12GraphicsCommandList" && i < 60) {
+            name = commandListNames[i];
+        } else if (vtableName == "ID3D12Device" && i < 40) {
+            name = deviceNames[i];
+        }
+
+        Logger::info("  Index " + std::to_string(i) + ": " + name + " [Address: 0x" + std::to_string(address) + "]");
+    }
+    Logger::info("---------------------------------");
+}
 
 // Shared Global Hook Pointers Definition
 PFN_QueryInterface g_OriginalQueryInterface = nullptr;
@@ -140,6 +188,8 @@ void InstallDXGIHooks() {
                 if (SUCCEEDED(hr)) {
                     void** pListVTable = *(void***)commandList;
 
+                    LogVTable(pListVTable, 60, "ID3D12GraphicsCommandList");
+
                     // Hook RSSetViewports (21) and RSSetScissorRects (22) for centering fixes
                     MH_CreateHook(pListVTable[21], (LPVOID)HookedRSSetViewports, (LPVOID*)&g_OriginalRSSetViewports);
                     MH_CreateHook(pListVTable[22], (LPVOID)HookedRSSetScissorRects, (LPVOID*)&g_OriginalRSSetScissorRects);
@@ -156,6 +206,7 @@ void InstallDXGIHooks() {
 
             if (d3d12Device) {
                 void** pDeviceVTable = *(void***)d3d12Device;
+                LogVTable(pDeviceVTable, 40, "ID3D12Device");
                 MH_CreateHook(pDeviceVTable[20], (LPVOID)HookedCreateRenderTargetView, (LPVOID*)&g_OriginalCreateRenderTargetView);
                 MH_CreateHook(pDeviceVTable[21], (LPVOID)HookedCreateDepthStencilView, (LPVOID*)&g_OriginalCreateDepthStencilView);
                 MH_CreateHook(pDeviceVTable[23], (LPVOID)HookedCopyDescriptors, (LPVOID*)&g_OriginalCopyDescriptors);

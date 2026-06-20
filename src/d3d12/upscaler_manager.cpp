@@ -169,6 +169,18 @@ void DXUpscalerManager::CleanupDX12Resources() {
     m_rtvDescriptorSize = 0;
     m_nextRtvIndex = 0;
     m_finalOutput = nullptr;
+
+    std::lock_guard<std::mutex> lock(m_trackerMtx);
+    if (m_depthTexture) {
+        m_depthTexture->Release();
+        m_depthTexture = nullptr;
+    }
+    if (m_mvTexture) {
+        m_mvTexture->Release();
+        m_mvTexture = nullptr;
+    }
+    m_bestDepthScore = -1.0f;
+    m_bestMVScore = -1.0f;
 }
 
 void DXUpscalerManager::CreateFakeBackBuffer(IDXGISwapChain* swapChain) {
@@ -805,18 +817,6 @@ void DXUpscalerManager::TrackTexture(ID3D12Resource* resource) {
 void DXUpscalerManager::ResetFrame()
 {
     m_frameUpscaled = false;
-    
-    std::lock_guard<std::mutex> lock(m_trackerMtx);
-    if (m_depthTexture) {
-        m_depthTexture->Release();
-        m_depthTexture = nullptr;
-    }
-    if (m_mvTexture) {
-        m_mvTexture->Release();
-        m_mvTexture = nullptr;
-    }
-    m_bestDepthScore = -1.0f;
-    m_bestMVScore = -1.0f;
 }
 
 void DXUpscalerManager::MarkFSRReady() {

@@ -54,6 +54,8 @@ typedef HRESULT(STDMETHODCALLTYPE* PFN_CreateSwapChainForComposition)(IDXGIFacto
 
 typedef void(STDMETHODCALLTYPE* PFN_CreateRenderTargetView)(ID3D12Device* pDevice, ID3D12Resource* pResource,
     const D3D12_RENDER_TARGET_VIEW_DESC* pDesc, D3D12_CPU_DESCRIPTOR_HANDLE DestDescriptor);
+typedef void(STDMETHODCALLTYPE* PFN_CreateDepthStencilView)(ID3D12Device* pDevice, ID3D12Resource* pResource,
+    const D3D12_DEPTH_STENCIL_VIEW_DESC* pDesc, D3D12_CPU_DESCRIPTOR_HANDLE DestDescriptor);
 
 typedef HRESULT(WINAPI* PFN_CreateDXGIFactory)(REFIID riid, void** ppFactory);
 typedef HRESULT(WINAPI* PFN_CreateDXGIFactory2)(UINT Flags, REFIID riid, void** ppFactory);
@@ -80,6 +82,7 @@ extern PFN_CreateSwapChain g_OriginalCreateSwapChain;
 extern PFN_CreateSwapChainForHwnd g_OriginalCreateSwapChainForHwnd;
 extern PFN_CreateSwapChainForComposition g_OriginalCreateSwapChainForComposition;
 extern PFN_CreateRenderTargetView g_OriginalCreateRenderTargetView;
+extern PFN_CreateDepthStencilView g_OriginalCreateDepthStencilView;
 extern PFN_CreateDXGIFactory g_OriginalCreateDXGIFactory;
 extern PFN_CreateDXGIFactory g_OriginalCreateDXGIFactory1;
 extern PFN_CreateDXGIFactory2 g_OriginalCreateDXGIFactory2;
@@ -92,6 +95,7 @@ extern bool g_IsResizing;
 extern thread_local bool g_InHook;
 
 extern std::unordered_map<SIZE_T, ID3D12Resource*> g_RTVToResource;
+extern std::unordered_map<SIZE_T, ID3D12Resource*> g_DSVToResource;
 extern std::unordered_map<ID3D12GraphicsCommandList*, ID3D12Resource*> g_CommandListTargets;
 extern std::set<ID3D12Resource*> g_OverriddenResources;
 extern std::set<ID3D12Resource*> g_NativeResources;
@@ -127,6 +131,8 @@ void STDMETHODCALLTYPE HookedOMSetRenderTargets(ID3D12GraphicsCommandList* pList
     BOOL singleHandle, const D3D12_CPU_DESCRIPTOR_HANDLE* pDSV);
 void STDMETHODCALLTYPE HookedCreateRenderTargetView(ID3D12Device* pDevice, ID3D12Resource* pResource,
     const D3D12_RENDER_TARGET_VIEW_DESC* pDesc, D3D12_CPU_DESCRIPTOR_HANDLE DestDescriptor);
+void STDMETHODCALLTYPE HookedCreateDepthStencilView(ID3D12Device* pDevice, ID3D12Resource* pResource,
+    const D3D12_DEPTH_STENCIL_VIEW_DESC* pDesc, D3D12_CPU_DESCRIPTOR_HANDLE DestDescriptor);
 void STDMETHODCALLTYPE HookedExecuteCommandLists(
     ID3D12CommandQueue* pQueue, UINT NumCommandLists, ID3D12CommandList* const* ppCommandLists);
 void HookCommandQueue(ID3D12CommandQueue* pQueue);

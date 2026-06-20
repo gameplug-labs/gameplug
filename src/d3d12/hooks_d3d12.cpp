@@ -170,17 +170,27 @@ void STDMETHODCALLTYPE HookedRSSetScissorRects(ID3D12GraphicsCommandList* pList,
 
 void STDMETHODCALLTYPE HookedOMSetRenderTargets(ID3D12GraphicsCommandList* pList, UINT NumRTs, const D3D12_CPU_DESCRIPTOR_HANDLE* pRTVs,
     BOOL singleHandle, const D3D12_CPU_DESCRIPTOR_HANDLE* pDSV) {
-    static uint32_t s_logCount = 0;
-    if (s_logCount < 100) {
-        std::string targetInfo = "None";
-        if (NumRTs > 0 && pRTVs) {
-            std::lock_guard<std::mutex> lock(g_TrackingMtx);
-            if (g_RTVToResource.count(pRTVs[0].ptr)) {
-                targetInfo = std::to_string((uintptr_t)g_RTVToResource[pRTVs[0].ptr]);
+    
+    static uint64_t s_omLogCount = 0;
+    if (s_omLogCount++ % 1000 == 0) {
+        Logger::info("OMSetRenderTargets Trace DX12 (Frame " + std::to_string(s_omLogCount / 60) + "):");
+        std::lock_guard<std::mutex> lock(g_TrackingMtx);
+        for (UINT i = 0; i < NumRTs; ++i) {
+            if (pRTVs && g_RTVToResource.count(pRTVs[i].ptr)) {
+                ID3D12Resource* res = g_RTVToResource[pRTVs[i].ptr];
+                D3D12_RESOURCE_DESC desc = res->GetDesc();
+                Logger::info("  Bound RTV[" + std::to_string(i) + "]: size=" + std::to_string(desc.Width) + "x" +
+                             std::to_string(desc.Height) + " format=" + std::to_string(desc.Format) +
+                             " RTV=" + std::to_string(pRTVs[i].ptr));
             }
         }
-        Logger::info("DX12: HookedOMSetRenderTargets triggered (NumRTs=" + std::to_string(NumRTs) + " Target=" + targetInfo + ")");
-        s_logCount++;
+        if (pDSV && g_DSVToResource.count(pDSV->ptr)) {
+            ID3D12Resource* res = g_DSVToResource[pDSV->ptr];
+            D3D12_RESOURCE_DESC desc = res->GetDesc();
+            Logger::info("  Bound DSV: size=" + std::to_string(desc.Width) + "x" +
+                         std::to_string(desc.Height) + " format=" + std::to_string(desc.Format) +
+                         " DSV=" + std::to_string(pDSV->ptr));
+        }
     }
 
     if (g_InHook) {
@@ -205,12 +215,6 @@ void STDMETHODCALLTYPE HookedOMSetRenderTargets(ID3D12GraphicsCommandList* pList
 
 void STDMETHODCALLTYPE HookedCreateRenderTargetView(ID3D12Device* pDevice, ID3D12Resource* pResource,
     const D3D12_RENDER_TARGET_VIEW_DESC* pDesc, D3D12_CPU_DESCRIPTOR_HANDLE DestDescriptor) {
-    static uint32_t s_logCount = 0;
-    if (s_logCount < 100) {
-        // Logger::info("DX12: HookedCreateRenderTargetView triggered [Res=" + std::to_string((uintptr_t)pResource) + "]");
-        s_logCount++;
-    }
-
     if (g_InHook) {
         g_OriginalCreateRenderTargetView(pDevice, pResource, pDesc, DestDescriptor);
         return;
@@ -223,6 +227,22 @@ void STDMETHODCALLTYPE HookedCreateRenderTargetView(ID3D12Device* pDevice, ID3D1
     }
 
     g_OriginalCreateRenderTargetView(pDevice, pResource, pDesc, DestDescriptor);
+}
+
+void STDMETHODCALLTYPE HookedCreateDepthStencilView(ID3D12Device* pDevice, ID3D12Resource* pResource,
+    const D3D12_DEPTH_STENCIL_VIEW_DESC* pDesc, D3D12_CPU_DESCRIPTOR_HANDLE DestDescriptor) {
+    if (g_InHook) {
+        g_OriginalCreateDepthStencilView(pDevice, pResource, pDesc, DestDescriptor);
+        return;
+    }
+    ScopedRecursionGuard guard;
+
+    if (pResource) {
+        std::lock_guard<std::mutex> lock(g_TrackingMtx);
+        g_DSVToResource[DestDescriptor.ptr] = pResource;
+    }
+
+    g_OriginalCreateDepthStencilView(pDevice, pResource, pDesc, DestDescriptor);
 }
 
 void STDMETHODCALLTYPE HookedExecuteCommandLists(

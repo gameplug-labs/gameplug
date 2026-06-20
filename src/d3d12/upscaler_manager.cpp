@@ -689,8 +689,19 @@ void DXUpscalerManager::RenderFrame(ID3D12GraphicsCommandList* cmd, ID3D12Resour
     }
 
     if (shouldLog) {
-        Logger::info("DXUpscalerManager::RenderFrame [Buffers] depth=" + std::to_string(depthImage) + 
-                     ", mv=" + std::to_string(mvImage));
+        std::string depthDetails = "NULL";
+        if (m_depthTexture) {
+            depthDetails = "0x" + std::to_string((uintptr_t)m_depthTexture) + " (" +
+                           std::to_string(m_depthWidth) + "x" + std::to_string(m_depthHeight) + ", fmt=" +
+                           std::to_string(depthFormatVal) + ")";
+        }
+        std::string mvDetails = "NULL";
+        if (m_mvTexture) {
+            mvDetails = "0x" + std::to_string((uintptr_t)m_mvTexture) + " (" +
+                        std::to_string(m_mvWidth) + "x" + std::to_string(m_mvHeight) + ", fmt=" +
+                        std::to_string(mvFormatVal) + ")";
+        }
+        Logger::info("DXUpscalerManager::RenderFrame [Buffers] depth=" + depthDetails + ", mv=" + mvDetails);
     }
 
     m_pInterface->OnRenderFrame(

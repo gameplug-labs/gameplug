@@ -25,6 +25,7 @@ PFN_CreateSwapChain g_OriginalCreateSwapChain = nullptr;
 PFN_CreateSwapChainForHwnd g_OriginalCreateSwapChainForHwnd = nullptr;
 PFN_CreateSwapChainForComposition g_OriginalCreateSwapChainForComposition = nullptr;
 PFN_CreateRenderTargetView g_OriginalCreateRenderTargetView = nullptr;
+PFN_CreateDepthStencilView g_OriginalCreateDepthStencilView = nullptr;
 PFN_CreateDXGIFactory g_OriginalCreateDXGIFactory = nullptr;
 PFN_CreateDXGIFactory g_OriginalCreateDXGIFactory1 = nullptr;
 PFN_CreateDXGIFactory2 g_OriginalCreateDXGIFactory2 = nullptr;
@@ -37,6 +38,7 @@ bool g_IsResizing = false;
 thread_local bool g_InHook = false;
 
 std::unordered_map<SIZE_T, ID3D12Resource*> g_RTVToResource;
+std::unordered_map<SIZE_T, ID3D12Resource*> g_DSVToResource;
 std::unordered_map<ID3D12GraphicsCommandList*, ID3D12Resource*> g_CommandListTargets;
 std::set<ID3D12Resource*> g_OverriddenResources;
 std::set<ID3D12Resource*> g_NativeResources;
@@ -152,11 +154,12 @@ void InstallDXGIHooks() {
             if (d3d12Device) {
                 void** pDeviceVTable = *(void***)d3d12Device;
                 MH_CreateHook(pDeviceVTable[20], (LPVOID)HookedCreateRenderTargetView, (LPVOID*)&g_OriginalCreateRenderTargetView);
+                MH_CreateHook(pDeviceVTable[22], (LPVOID)HookedCreateDepthStencilView, (LPVOID*)&g_OriginalCreateDepthStencilView);
                 MH_CreateHook(pDeviceVTable[29], (LPVOID)HookedCreatePlacedResource, (LPVOID*)&g_OriginalCreatePlacedResource);
                 MH_CreateHook(pDeviceVTable[27], (LPVOID)HookedCreateCommittedResource, (LPVOID*)&g_OriginalCreateCommittedResource);
                 MH_CreateHook(pDeviceVTable[8], (LPVOID)HookedCreateCommandQueue, (LPVOID*)&g_OriginalCreateCommandQueue);
                 Logger::info("DX Hooks: Hook ID3D12Device::CreateCommandQueue(8), CreateCommittedResource(27), CreatePlacedResource(29), "
-                             "CreateRenderTargetView(20)");
+                             "CreateRenderTargetView(20), CreateDepthStencilView(22)");
             }
 
             MH_EnableHook(MH_ALL_HOOKS);

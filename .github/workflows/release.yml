@@ -98,10 +98,10 @@ jobs:
           zip -j assets/d3d12_x64.zip bin/x64/d3d12/dinput8.dll bin/x64/d3d12/version.dll
           
           # vk_x32.zip
-          zip -j assets/vk_x32.zip bin/x32/vklayer.dll bin/x32/VK_LAYER_GAMEPLUG.json bin/x32/GAMEPLUG.exe bin/x32/run_game.bat
+          zip -j assets/vk_x32.zip bin/x32/vklayer.dll bin/x32/VK_LAYER_GAMEPLUG.json bin/x32/dinput8.dll bin/x32/version.dll
           
           # vk_x64.zip
-          zip -j assets/vk_x64.zip bin/x64/vklayer.dll bin/x64/VK_LAYER_GAMEPLUG.json bin/x64/GAMEPLUG.exe bin/x64/run_game.bat
+          zip -j assets/vk_x64.zip bin/x64/vklayer.dll bin/x64/VK_LAYER_GAMEPLUG.json bin/x64/dinput8.dll bin/x64/version.dll
 
           # Create Nexus Mods GamePlug structure
           mkdir -p nexus/GamePlug/d3d9_x32
@@ -120,8 +120,8 @@ jobs:
           cp bin/x32/d3d11/dinput8.dll bin/x32/d3d11/version.dll nexus/GamePlug/d3d11_x32/
           cp bin/x64/d3d11/dinput8.dll bin/x64/d3d11/version.dll nexus/GamePlug/d3d11_x64/
           cp bin/x64/d3d12/dinput8.dll bin/x64/d3d12/version.dll nexus/GamePlug/d3d12_x64/
-          cp bin/x32/vklayer.dll bin/x32/VK_LAYER_GAMEPLUG.json bin/x32/GAMEPLUG.exe bin/x32/run_game.bat nexus/GamePlug/vk_x32/
-          cp bin/x64/vklayer.dll bin/x64/VK_LAYER_GAMEPLUG.json bin/x64/GAMEPLUG.exe bin/x64/run_game.bat nexus/GamePlug/vk_x64/
+          cp bin/x32/vklayer.dll bin/x32/VK_LAYER_GAMEPLUG.json bin/x32/dinput8.dll bin/x32/version.dll nexus/GamePlug/vk_x32/
+          cp bin/x64/vklayer.dll bin/x64/VK_LAYER_GAMEPLUG.json bin/x64/dinput8.dll bin/x64/version.dll nexus/GamePlug/vk_x64/
 
           # Create readme.txt
           cat << 'EOF' > nexus/GamePlug/readme.txt

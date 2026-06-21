@@ -391,9 +391,6 @@ IDirect3DTexture9* TextureReplacer::LoadDDS(IDirect3DDevice9* pDevice, const std
 }
 
 void TextureReplacer::RenderUI(IDirect3DDevice9* pDevice) {
-    ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::Spacing();
 
     if (ImGui::CollapsingHeader("Texture Replacer & Dumper")) {
         ImGui::Indent();

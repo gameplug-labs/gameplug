@@ -718,5 +718,96 @@ void STDMETHODCALLTYPE HookedClearDepthStencilView(
         originalFn(pCtx, pDepthStencilView, ClearFlags, Depth, Stencil);
     }
 }
+static HMODULE g_hProxyDll = nullptr;
+static std::string g_lastProxyPath = "";
+static std::mutex g_proxyMtx;
+
+static HMODULE GetProxyDllModule() {
+    std::lock_guard<std::mutex> lock(g_proxyMtx);
+    std::string proxyPath = Config::Get().GetString("ProxyDllPath", "other_d3d11.dll");
+    if (proxyPath != g_lastProxyPath) {
+        if (g_hProxyDll) {
+            FreeLibrary(g_hProxyDll);
+            g_hProxyDll = nullptr;
+            Logger::info("Unloaded previous proxy DLL");
+        }
+        g_lastProxyPath = proxyPath;
+        if (!proxyPath.empty()) {
+            g_hProxyDll = LoadLibraryA(proxyPath.c_str());
+            if (g_hProxyDll) {
+                Logger::info("Successfully loaded proxy DLL: " + proxyPath);
+            } else {
+                Logger::error("Failed to load proxy DLL: " + proxyPath);
+            }
+        }
+    }
+    return g_hProxyDll;
+}
+
+HRESULT WINAPI HookedD3D11CreateDevice(IDXGIAdapter* pAdapter, D3D_DRIVER_TYPE DriverType, HMODULE Software, UINT Flags,
+    const D3D_FEATURE_LEVEL* pFeatureLevels, UINT FeatureLevels, UINT SDKVersion, ID3D11Device** ppDevice, D3D_FEATURE_LEVEL* pFeatureLevel,
+    ID3D11DeviceContext** ppImmediateContext) {
+    if (g_InHook) {
+        if (g_OriginalD3D11CreateDevice) {
+            return g_OriginalD3D11CreateDevice(pAdapter, DriverType, Software, Flags, pFeatureLevels, FeatureLevels, SDKVersion, ppDevice,
+                pFeatureLevel, ppImmediateContext);
+        }
+        return E_FAIL;
+    }
+    ScopedRecursionGuard guard;
+
+    if (Config::Get().GetBool("ProxyDllEnabled", false)) {
+        HMODULE hProxy = GetProxyDllModule();
+        if (hProxy) {
+            auto pfn = (PFN_D3D11CreateDevice)GetProcAddress(hProxy, "D3D11CreateDevice");
+            if (pfn) {
+                Logger::info("Chaining D3D11CreateDevice to proxy DLL: " + g_lastProxyPath);
+                return pfn(pAdapter, DriverType, Software, Flags, pFeatureLevels, FeatureLevels, SDKVersion, ppDevice, pFeatureLevel,
+                    ppImmediateContext);
+            } else {
+                Logger::error("Proxy DLL does not export D3D11CreateDevice: " + g_lastProxyPath);
+            }
+        }
+    }
+
+    if (g_OriginalD3D11CreateDevice) {
+        return g_OriginalD3D11CreateDevice(
+            pAdapter, DriverType, Software, Flags, pFeatureLevels, FeatureLevels, SDKVersion, ppDevice, pFeatureLevel, ppImmediateContext);
+    }
+    return E_FAIL;
+}
+
+HRESULT WINAPI HookedD3D11CreateDeviceAndSwapChain(IDXGIAdapter* pAdapter, D3D_DRIVER_TYPE DriverType, HMODULE Software, UINT Flags,
+    const D3D_FEATURE_LEVEL* pFeatureLevels, UINT FeatureLevels, UINT SDKVersion, const DXGI_SWAP_CHAIN_DESC* pSwapChainDesc,
+    IDXGISwapChain** ppSwapChain, ID3D11Device** ppDevice, D3D_FEATURE_LEVEL* pFeatureLevel, ID3D11DeviceContext** ppImmediateContext) {
+    if (g_InHook) {
+        if (g_OriginalD3D11CreateDeviceAndSwapChain) {
+            return g_OriginalD3D11CreateDeviceAndSwapChain(pAdapter, DriverType, Software, Flags, pFeatureLevels, FeatureLevels, SDKVersion,
+                pSwapChainDesc, ppSwapChain, ppDevice, pFeatureLevel, ppImmediateContext);
+        }
+        return E_FAIL;
+    }
+    ScopedRecursionGuard guard;
+
+    if (Config::Get().GetBool("ProxyDllEnabled", false)) {
+        HMODULE hProxy = GetProxyDllModule();
+        if (hProxy) {
+            auto pfn = (PFN_D3D11CreateDeviceAndSwapChain)GetProcAddress(hProxy, "D3D11CreateDeviceAndSwapChain");
+            if (pfn) {
+                Logger::info("Chaining D3D11CreateDeviceAndSwapChain to proxy DLL: " + g_lastProxyPath);
+                return pfn(pAdapter, DriverType, Software, Flags, pFeatureLevels, FeatureLevels, SDKVersion, pSwapChainDesc, ppSwapChain,
+                    ppDevice, pFeatureLevel, ppImmediateContext);
+            } else {
+                Logger::error("Proxy DLL does not export D3D11CreateDeviceAndSwapChain: " + g_lastProxyPath);
+            }
+        }
+    }
+
+    if (g_OriginalD3D11CreateDeviceAndSwapChain) {
+        return g_OriginalD3D11CreateDeviceAndSwapChain(pAdapter, DriverType, Software, Flags, pFeatureLevels, FeatureLevels, SDKVersion,
+            pSwapChainDesc, ppSwapChain, ppDevice, pFeatureLevel, ppImmediateContext);
+    }
+    return E_FAIL;
+}
 
 } // namespace GamePlug

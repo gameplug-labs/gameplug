@@ -1164,6 +1164,7 @@ STDMETHODIMP ProxyDirect3DDevice9::ResetEx(D3DPRESENT_PARAMETERS* pPP, D3DDISPLA
         m_pFakeBackBuffer->SetInternalSurface(nullptr);
         m_pFakeBackBuffer->Release();
         m_pFakeBackBuffer = nullptr;
+    }
     if (m_pFakeBackBufferTex) {
         m_pFakeBackBufferTex->Release();
         m_pFakeBackBufferTex = nullptr;

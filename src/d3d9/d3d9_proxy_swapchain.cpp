@@ -40,12 +40,19 @@ STDMETHODIMP ProxyDirect3DSwapChain9::GetFrontBufferData(IDirect3DSurface9* pDes
 STDMETHODIMP ProxyDirect3DSwapChain9::GetBackBuffer(UINT iBackBuffer, D3DBACKBUFFER_TYPE Type, IDirect3DSurface9** ppBackBuffer) {
     if (!ppBackBuffer)
         return D3DERR_INVALIDCALL;
-    ProxyDirect3DDevice9* pProxyDevice = (ProxyDirect3DDevice9*)m_pProxyDevice;
-    if (pProxyDevice->IsUpscaling() && pProxyDevice->GetFakeBackBuffer() && iBackBuffer == 0) {
-        *ppBackBuffer = pProxyDevice->GetFakeBackBuffer();
-        (*ppBackBuffer)->AddRef();
-        return S_OK;
+
+    if (m_pProxyDevice) {
+        ProxyDirect3DDevice9* pProxyDevice = static_cast<ProxyDirect3DDevice9*>(m_pProxyDevice);
+
+        if (pProxyDevice->IsUpscaling() && pProxyDevice->GetFakeBackBuffer() && iBackBuffer == 0) {
+            *ppBackBuffer = pProxyDevice->GetFakeBackBuffer();
+            (*ppBackBuffer)->AddRef();
+            return S_OK;
+        }
+
+        return pProxyDevice->GetBackBuffer(m_swapChainIndex, iBackBuffer, Type, ppBackBuffer);
     }
+
     return m_pReal->GetBackBuffer(iBackBuffer, Type, ppBackBuffer);
 }
 

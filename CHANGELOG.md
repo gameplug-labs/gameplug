@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.4] - 2026-06-20
+
+### Added
+- Added proxy DLL support via `version.dll` for the D3D9 backend.
+- Added D3D12 overlay support for The Witcher 3.
+- Removed `run_game.bat` and `GAMEPLUG.exe` in favor of `dinput8.dll` and `version.dll` proxy DLLs for Vulkan layer loading.
+- Added autoloading of the Vulkan layer into the D3D9 layer.
+
+## [1.0.3] - 2026-06-10
+
+### Added
+- Added D3D9 Texture Replacer & Dumper module managed via `GamePlug.conf`.
+- Redesigned the D3D9 ImGui overlay with collapsible "General" and "Texture Replacer & Dumper" headings, hiding sub-options when inactive.
+- Optimized D3D9 performance by skipping CRC32 texture hash calculations when both replacement and dumping are disabled.
+
+
+## [1.0.2] - 2026-06-09
+
+### Added
+- Added proxy DLL support via `version.dll` for all renderer backends (D3D9, D3D9 Skyrim, D3D10, D3D11, and D3D12).
+- Added support for 32-bit (x32) D3D11 architecture.
+
 
 ## [1.0.1] - 2026-05-28
 

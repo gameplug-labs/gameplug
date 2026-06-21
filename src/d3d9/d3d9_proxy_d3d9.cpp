@@ -5,12 +5,12 @@
 ProxyDirect3D9::ProxyDirect3D9(IDirect3D9* pReal)
     : m_pReal(pReal)
     , m_pRealEx(nullptr) {
-    m_pReal->QueryInterface(IID_IDirect3D9Ex, (void**)&m_pRealEx);
+    if (SUCCEEDED(m_pReal->QueryInterface(IID_IDirect3D9Ex, (void**)&m_pRealEx))) {
+        m_pRealEx->Release();
+    }
 }
 
 ProxyDirect3D9::~ProxyDirect3D9() {
-    if (m_pRealEx)
-        m_pRealEx->Release();
 }
 
 STDMETHODIMP ProxyDirect3D9::QueryInterface(REFIID riid, void** ppvObj) {
@@ -115,6 +115,17 @@ STDMETHODIMP_(HMONITOR) ProxyDirect3D9::GetAdapterMonitor(UINT A) {
     return m_pReal->GetAdapterMonitor(A);
 }
 
+static void LogPresentParameters(const char* prefix, const D3DPRESENT_PARAMETERS* pPP) {
+    if (!pPP)
+        return;
+    Logger::info("{}: W={}, H={}, Fmt={}, Cnt={}, MSType={}, MSQual={}, Swap={}, "
+                 "hWnd={:p}, Wnd={}, Depth={}, DSFormat={}, Flags={}, "
+                 "Refresh={}, Interval={}",
+        prefix, pPP->BackBufferWidth, pPP->BackBufferHeight, (int)pPP->BackBufferFormat, pPP->BackBufferCount, (int)pPP->MultiSampleType,
+        pPP->MultiSampleQuality, (int)pPP->SwapEffect, (void*)pPP->hDeviceWindow, pPP->Windowed, pPP->EnableAutoDepthStencil,
+        (int)pPP->AutoDepthStencilFormat, pPP->Flags, pPP->FullScreen_RefreshRateInHz, pPP->PresentationInterval);
+}
+
 STDMETHODIMP ProxyDirect3D9::CreateDevice(UINT A, D3DDEVTYPE DT, HWND hFW, DWORD BF, D3DPRESENT_PARAMETERS* pPP, IDirect3DDevice9** ppRDI) {
     if (!pPP)
         return D3DERR_INVALIDCALL;
@@ -149,20 +160,25 @@ STDMETHODIMP ProxyDirect3D9::CreateDevice(UINT A, D3DDEVTYPE DT, HWND hFW, DWORD
     realPP.BackBufferWidth = nativeW;
     realPP.BackBufferHeight = nativeH;
 
-    Logger::info("CreateDevice: Game requested {}x{}, Proxy creating device at {}x{}, Game will see {}x{}", requestedW, requestedH, nativeW,
-        nativeH, scaledW, scaledH);
+    Logger::info("CreateDevice: Game requested {}x{}, Proxy creating device at "
+                 "{}x{}, Game will see {}x{}",
+        pPP->BackBufferWidth, pPP->BackBufferHeight, nativeW, nativeH, scaledW, scaledH);
+
+    LogPresentParameters("CreateDevice (Game input)", pPP);
+    LogPresentParameters("CreateDevice (Real output)", &realPP);
 
     HRESULT hr = m_pReal->CreateDevice(A, DT, hFW, BF, &realPP, ppRDI);
     if (SUCCEEDED(hr) && ppRDI && *ppRDI) {
         pPP->BackBufferWidth = scaledW;
         pPP->BackBufferHeight = scaledH;
-        *ppRDI = (IDirect3DDevice9*)new ProxyDirect3DDevice9(*ppRDI, (IDirect3D9*)this, scaledW, scaledH, nativeW, nativeH, true);
+        *ppRDI = (IDirect3DDevice9*)new ProxyDirect3DDevice9(*ppRDI, (IDirect3D9*)this, hFW, scaledW, scaledH, nativeW, nativeH, true);
     }
     return hr;
 }
 
 // IDirect3D9Ex methods
-STDMETHODIMP_(UINT) ProxyDirect3D9::GetAdapterModeCountEx(UINT A, CONST D3DDISPLAYMODEFILTER* pF) {
+STDMETHODIMP_(UINT)
+ProxyDirect3D9::GetAdapterModeCountEx(UINT A, CONST D3DDISPLAYMODEFILTER* pF) {
     if (!m_pRealEx)
         return 0;
     UINT realCount = m_pRealEx->GetAdapterModeCountEx(A, pF);
@@ -242,11 +258,15 @@ STDMETHODIMP ProxyDirect3D9::CreateDeviceEx(
 
     if (!m_pRealEx)
         return E_NOTIMPL;
+
+    LogPresentParameters("CreateDeviceEx (Game input)", pPP);
+    LogPresentParameters("CreateDeviceEx (Real output)", &realPP);
+
     HRESULT hr = m_pRealEx->CreateDeviceEx(A, DT, hFW, BF, &realPP, pFDM, ppRDI);
     if (SUCCEEDED(hr) && ppRDI && *ppRDI) {
         pPP->BackBufferWidth = scaledW;
         pPP->BackBufferHeight = scaledH;
-        *ppRDI = new ProxyDirect3DDevice9(*ppRDI, (IDirect3D9*)this, scaledW, scaledH, nativeW, nativeH, true);
+        *ppRDI = new ProxyDirect3DDevice9(*ppRDI, (IDirect3D9*)this, hFW, scaledW, scaledH, nativeW, nativeH, true);
     }
     return hr;
 }

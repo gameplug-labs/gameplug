@@ -67,6 +67,11 @@ HRESULT STDMETHODCALLTYPE HookedPresent(IDXGISwapChain* pSwapChain, UINT SyncInt
     // Logger::info("HookedPresent D3D11 Entry [SC=" + std::to_string((uintptr_t)pSwapChain) +
     //              " VT=" + std::to_string((uintptr_t)(*(void***)pSwapChain)) + "]");
     OnDXPresent(pSwapChain);
+
+    if (DXUpscalerManager::Get().PresentFrameDX11(pSwapChain, SyncInterval, Flags)) {
+        return S_OK; // Plugin handled presentation (e.g. Frame Generation)
+    }
+
     return g_OriginalPresent(pSwapChain, SyncInterval, Flags);
 }
 
@@ -82,6 +87,11 @@ HRESULT STDMETHODCALLTYPE HookedPresent1(
     }
     g_frameCount++;
     OnDXPresent(pSwapChain);
+
+    if (DXUpscalerManager::Get().PresentFrameDX11(pSwapChain, SyncInterval, PresentFlags)) {
+        return S_OK;
+    }
+
     return g_OriginalPresent1(pSwapChain, SyncInterval, PresentFlags, pPresentParameters);
 }
 

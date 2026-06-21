@@ -34,6 +34,8 @@ public:
     void RenderFrameDX11(ID3D11DeviceContext* context, ID3D11ShaderResourceView* sourceSRV, ID3D11RenderTargetView* targetRTV,
         uint32_t width, uint32_t height);
 
+    bool PresentFrameDX11(IDXGISwapChain* swapChain, uint32_t syncInterval, uint32_t flags);
+
     void ResetFrame();
     void NewFrame() { m_frameUpscaled = false; }
     bool WasUpscaledThisFrame() const { return m_frameUpscaled; }

@@ -241,6 +241,8 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 4)
         d3d9/d3d9_proxy_device.cpp
         d3d9/d3d9_proxy_surface.cpp
         d3d9/d3d9_proxy_swapchain.cpp
+        d3d9/d3d9_proxy_texture.cpp
+        d3d9/texture_replacer.cpp
         d3d9/dx_overlay.cpp
         d3d9/upscaler_manager.cpp
         ${PROJECT_SOURCE_DIR}/external/imgui/backends/imgui_impl_dx9.cpp
@@ -285,6 +287,8 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 4)
         d3d9/d3d9_proxy_device.cpp
         d3d9/d3d9_proxy_surface.cpp
         d3d9/d3d9_proxy_swapchain.cpp
+        d3d9/d3d9_proxy_texture.cpp
+        d3d9/texture_replacer.cpp
         d3d9/dx_overlay.cpp
         d3d9/upscaler_manager.cpp
         ${PROJECT_SOURCE_DIR}/external/imgui/backends/imgui_impl_dx9.cpp
@@ -322,28 +326,25 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 4)
     add_subdirectory(d3d9)
 endif()
 
-# --- Vulkan Loader ---
-add_executable(GAMEPLUG 
-    vk/main.cpp
-)
-
-target_link_libraries(GAMEPLUG 
-    PRIVATE 
-    kernel32.lib
-    shlwapi.lib
-)
-
-if(MSVC)
-    target_compile_options(GAMEPLUG PRIVATE /FS)
-endif()
-
-set_target_properties(GAMEPLUG PROPERTIES OUTPUT_NAME "GAMEPLUG")
-
-add_custom_command(TARGET GAMEPLUG POST_BUILD
+# --- Vulkan Loader Proxies ---
+add_library(version SHARED vk/version.cpp)
+target_link_libraries(version PRIVATE shlwapi.lib)
+set_target_properties(version PROPERTIES PREFIX "")
+add_custom_command(TARGET version POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "$<TARGET_FILE:GAMEPLUG>"
-            "${BIN_OUTPUT_DIR}/$<TARGET_FILE_NAME:GAMEPLUG>"
-    COMMENT "Copying loader EXE to bin folder"
+            "$<TARGET_FILE:version>"
+            "${BIN_OUTPUT_DIR}/$<TARGET_FILE_NAME:version>"
+    COMMENT "Copying version proxy to bin folder"
+)
+
+add_library(dinput8 SHARED vk/dinput8.cpp)
+target_link_libraries(dinput8 PRIVATE shlwapi.lib)
+set_target_properties(dinput8 PROPERTIES PREFIX "")
+add_custom_command(TARGET dinput8 POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:dinput8>"
+            "${BIN_OUTPUT_DIR}/$<TARGET_FILE_NAME:dinput8>"
+    COMMENT "Copying dinput8 proxy to bin folder"
 )
 
 

@@ -3,6 +3,8 @@
 namespace GamePlug {
 
 // Shared Global Hook Pointers Definition
+PFN_D3D11CreateDevice g_OriginalD3D11CreateDevice = nullptr;
+PFN_D3D11CreateDeviceAndSwapChain g_OriginalD3D11CreateDeviceAndSwapChain = nullptr;
 PFN_QueryInterface g_OriginalQueryInterface = nullptr;
 PFN_Release g_OriginalRelease = nullptr;
 PFN_Present g_OriginalPresent = nullptr;
@@ -107,6 +109,25 @@ void InstallDXGIHooks() {
             if (d3d11Context) {
                 // Apply VTable patching directly to pre-initialize variables on the dummy context
                 PatchDeviceContextVTable(d3d11Context);
+            }
+
+            HMODULE d3d11 = GetModuleHandle("d3d11.dll");
+            if (!d3d11) {
+                d3d11 = LoadLibrary("d3d11.dll");
+            }
+            if (d3d11) {
+                void* pCreateDevice = GetProcAddress(d3d11, "D3D11CreateDevice");
+                void* pCreateDeviceAndSwapChain = GetProcAddress(d3d11, "D3D11CreateDeviceAndSwapChain");
+
+                if (pCreateDevice) {
+                    MH_CreateHook(pCreateDevice, (LPVOID)HookedD3D11CreateDevice, (LPVOID*)&g_OriginalD3D11CreateDevice);
+                    Logger::info("DX Hooks D3D11: Hooked D3D11CreateDevice");
+                }
+                if (pCreateDeviceAndSwapChain) {
+                    MH_CreateHook(pCreateDeviceAndSwapChain, (LPVOID)HookedD3D11CreateDeviceAndSwapChain,
+                        (LPVOID*)&g_OriginalD3D11CreateDeviceAndSwapChain);
+                    Logger::info("DX Hooks D3D11: Hooked D3D11CreateDeviceAndSwapChain");
+                }
             }
 
             MH_EnableHook(MH_ALL_HOOKS);

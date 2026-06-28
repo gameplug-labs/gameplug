@@ -1,13 +1,23 @@
 #include "d3d9_proxy_surface.h"
+#include "d3d9_proxy_texture.h"
+#include "texture_replacer.h"
 
-ProxySurface9::ProxySurface9(IDirect3DSurface9* pReal, IDirect3DDevice9* pDev, uint32_t vw, uint32_t vh)
+ProxySurface9::ProxySurface9(
+    IDirect3DSurface9* pReal, IDirect3DDevice9* pDev, uint32_t vw, uint32_t vh, ProxyTexture9* pParentTexture, UINT level)
     : m_pReal(pReal)
     , m_pDevice(pDev)
+    , m_pParentTexture(pParentTexture)
+    , m_level(level)
     , m_virtualW(vw)
     , m_virtualH(vh)
     , m_refCount(1) {
     if (m_pReal)
         m_pReal->AddRef();
+    GamePlug::TextureReplacer::Get().OnSurfaceCreated(this);
+}
+
+ProxySurface9::~ProxySurface9() {
+    GamePlug::TextureReplacer::Get().OnSurfaceDestroyed(this);
 }
 
 void ProxySurface9::SetInternalSurface(IDirect3DSurface9* pNew) {
@@ -83,6 +93,12 @@ STDMETHODIMP_(D3DRESOURCETYPE) ProxySurface9::GetType() {
 
 // IDirect3DSurface9
 STDMETHODIMP ProxySurface9::GetContainer(REFIID r, void** ppC) {
+    if (m_pParentTexture &&
+        (r == IID_IDirect3DTexture9 || r == IID_IDirect3DBaseTexture9 || r == IID_IUnknown || r == IID_IDirect3DResource9)) {
+        *ppC = m_pParentTexture;
+        m_pParentTexture->AddRef();
+        return S_OK;
+    }
     return m_pReal->GetContainer(r, ppC);
 }
 
@@ -96,10 +112,17 @@ STDMETHODIMP ProxySurface9::GetDesc(D3DSURFACE_DESC* pD) {
 }
 
 STDMETHODIMP ProxySurface9::LockRect(D3DLOCKED_RECT* pL, const RECT* pR, DWORD f) {
-    return m_pReal->LockRect(pL, pR, f);
+    HRESULT hr = m_pReal->LockRect(pL, pR, f);
+    if (SUCCEEDED(hr) && pL && m_pParentTexture) {
+        m_pParentTexture->RecordLock(m_level, *pL, f, pR);
+    }
+    return hr;
 }
 
 STDMETHODIMP ProxySurface9::UnlockRect() {
+    if (m_pParentTexture && m_level == 0) {
+        m_pParentTexture->OnLevelUnlocked(0);
+    }
     return m_pReal->UnlockRect();
 }
 

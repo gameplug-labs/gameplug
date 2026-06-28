@@ -160,8 +160,9 @@ STDMETHODIMP ProxyDirect3D9::CreateDevice(UINT A, D3DDEVTYPE DT, HWND hFW, DWORD
     realPP.BackBufferWidth = nativeW;
     realPP.BackBufferHeight = nativeH;
 
-    Logger::info("CreateDevice: Game requested {}x{}, Proxy creating device at {}x{}, Game will see {}x{}", requestedW, requestedH, nativeW,
-        nativeH, scaledW, scaledH);
+    Logger::info("CreateDevice: Game requested {}x{}, Proxy creating device at "
+                 "{}x{}, Game will see {}x{}",
+        pPP->BackBufferWidth, pPP->BackBufferHeight, nativeW, nativeH, scaledW, scaledH);
 
     LogPresentParameters("CreateDevice (Game input)", pPP);
     LogPresentParameters("CreateDevice (Real output)", &realPP);

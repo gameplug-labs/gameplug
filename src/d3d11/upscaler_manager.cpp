@@ -869,6 +869,13 @@ void DXUpscalerManager::RenderFrameDX11(
     lastH = height;
 }
 
+bool DXUpscalerManager::PresentFrameDX11(IDXGISwapChain* swapChain, uint32_t syncInterval, uint32_t flags) {
+    if (m_pInterface && m_pInterface->OnPresent) {
+        return m_pInterface->OnPresent((uintptr_t)swapChain, syncInterval, flags);
+    }
+    return false;
+}
+
 void DXUpscalerManager::TrackTexture(ID3D11Texture2D* texture, const D3D11_TEXTURE2D_DESC* desc) {
     if (!texture || !desc)
         return;

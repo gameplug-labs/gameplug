@@ -60,12 +60,13 @@ public:
     void GetTargetResolution(uint32_t width, uint32_t height, uint32_t& outW, uint32_t& outH);
     float GetScaleFactor() const;
 
+    bool IsSkyrimActive() const { return m_isSkyrim; }
+    void SetSkyrimActive(bool active) { m_isSkyrim = active; }
 #ifdef SKYRIM_AE
     // Skyrim Bridge API Support
     void SetSkyrimData(const GamePlugSkyrimData* data);
     bool HasSkyrimData() const { return m_hasSkyrimData; }
     const GamePlugSkyrimData& GetSkyrimData() const { return m_skyrimData; }
-    void SetSkyrimActive(bool active) { m_isSkyrim = active; }
 #endif
     // Depth & Motion Vector tracking
     void TrackTexture(ID3D11Texture2D* texture, const D3D11_TEXTURE2D_DESC* desc);
@@ -75,6 +76,10 @@ public:
     bool SetPluginFieldFloat(const std::string& name, float value);
     void ScanProjectionMatrix(ID3D11DeviceContext* context);
     bool IsValidProjectionMatrix(const float* m, float& outFovY, float& outNear, float& outFar, bool& outInverted);
+
+    ID3D11RenderTargetView* BeginUI();
+    void EndUI();
+    void BlendUI(ID3D11DeviceContext* context, ID3D11RenderTargetView* targetRTV);
 
 private:
     DXUpscalerManager()
@@ -118,24 +123,38 @@ private:
     ID3D11Texture2D* m_fakeBackBuffer = nullptr;
     ID3D11ShaderResourceView* m_fakeBackBufferSRV = nullptr;
 
+    // Native UI resources
+    ID3D11Texture2D* m_uiTexture = nullptr;
+    ID3D11RenderTargetView* m_uiRTV = nullptr;
+    ID3D11ShaderResourceView* m_uiSRV = nullptr;
+
+    ID3D11VertexShader* m_uiVS = nullptr;
+    ID3D11PixelShader* m_uiPS = nullptr;
+    ID3D11BlendState* m_uiBlendState = nullptr;
+    ID3D11SamplerState* m_uiSamplerState = nullptr;
+
+    void InitUIResources();
+    void CleanupUIResources();
+
     uint32_t m_renderWidth = 0;
     uint32_t m_renderHeight = 0;
     uint32_t m_width = 0;
     uint32_t m_height = 0;
-    bool m_frameUpscaled = false;
     bool m_isShuttingDown = false;
-#ifdef SKYRIM_AE
     bool m_isSkyrim = false;
-
+    bool m_frameUpscaled = false;
+#ifdef SKYRIM_AE
     // Skyrim Bridge Data
     GamePlugSkyrimData m_skyrimData = {};
     bool m_hasSkyrimData = false;
     ID3D11ShaderResourceView* m_skyrimDepthSRV = nullptr;
     ID3D11ShaderResourceView* m_skyrimMotionVectorSRV = nullptr;
     ID3D11ShaderResourceView* m_skyrimSourceSRV = nullptr;
+    ID3D11RenderTargetView* m_skyrimTargetRTV = nullptr;
     ID3D11Texture2D* m_lastDepthTexture = nullptr;
     ID3D11Texture2D* m_lastMotionVectorTexture = nullptr;
     ID3D11Texture2D* m_lastSourceTexture = nullptr;
+    ID3D11Texture2D* m_lastTargetTexture = nullptr;
 #endif
 
     // Depth & Motion Vector tracked resources

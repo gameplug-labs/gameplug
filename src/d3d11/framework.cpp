@@ -88,4 +88,40 @@ extern "C" FRAMEWORK_API void GamePlug_GetResolutionOverride(uint32_t outputW, u
 extern "C" FRAMEWORK_API bool GamePlug_IsOverlayVisible() {
     return GamePlug::IsOverlayVisible();
 }
+
+extern "C" FRAMEWORK_API ID3D11RenderTargetView* GamePlug_BeginUI() {
+    return GamePlug::DXUpscalerManager::Get().BeginUI();
+}
+
+extern "C" FRAMEWORK_API void GamePlug_EndUI() {
+    GamePlug::DXUpscalerManager::Get().EndUI();
+}
+
+namespace GamePlug {
+    extern ID3D11RenderTargetView* g_mainRenderTargetView;
+    extern ID3D11DeviceContext* g_pd3dDeviceContext;
+}
+
+extern "C" FRAMEWORK_API void GamePlug_TriggerUpscale() {
+    static uint64_t s_triggerCount = 0;
+    bool shouldLog = (s_triggerCount++ % 1000 == 0);
+
+    if (shouldLog) {
+        GamePlug::Logger::info("GamePlug_TriggerUpscale invoked [Count=" + std::to_string(s_triggerCount) + 
+            "] RTV=" + std::to_string((uintptr_t)GamePlug::g_mainRenderTargetView) + 
+            " Ctx=" + std::to_string((uintptr_t)GamePlug::g_pd3dDeviceContext) +
+            " Enabled=" + std::to_string(GamePlug::DXUpscalerManager::Get().IsUpscalingEnabled()));
+    }
+
+    if (GamePlug::g_mainRenderTargetView && GamePlug::g_pd3dDeviceContext && GamePlug::DXUpscalerManager::Get().IsUpscalingEnabled()) {
+        GamePlug::Logger::info("GamePlug_TriggerUpscale RenderFrameDX11");
+        GamePlug::DXUpscalerManager::Get().RenderFrameDX11(
+            GamePlug::g_pd3dDeviceContext,
+            nullptr, // sourceSRV is overridden inside RenderFrameDX11 with m_skyrimSourceSRV
+            GamePlug::g_mainRenderTargetView,
+            GamePlug::DXUpscalerManager::Get().GetDisplayWidth(),
+            GamePlug::DXUpscalerManager::Get().GetDisplayHeight()
+        );
+    }
+}
 #endif

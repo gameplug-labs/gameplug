@@ -36,8 +36,8 @@ static std::recursive_mutex g_DXMtx;
 
 // DX11 Resources
 static ID3D11Device* g_pd3dDevice = nullptr;
-static ID3D11DeviceContext* g_pd3dDeviceContext = nullptr;
-static ID3D11RenderTargetView* g_mainRenderTargetView = nullptr;
+ID3D11DeviceContext* g_pd3dDeviceContext = nullptr;
+ID3D11RenderTargetView* g_mainRenderTargetView = nullptr;
 static bool g_pendingResize = false;
 
 void CleanupDX11() {

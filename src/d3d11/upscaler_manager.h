@@ -132,8 +132,10 @@ private:
     bool m_hasSkyrimData = false;
     ID3D11ShaderResourceView* m_skyrimDepthSRV = nullptr;
     ID3D11ShaderResourceView* m_skyrimMotionVectorSRV = nullptr;
+    ID3D11ShaderResourceView* m_skyrimSourceSRV = nullptr;
     ID3D11Texture2D* m_lastDepthTexture = nullptr;
     ID3D11Texture2D* m_lastMotionVectorTexture = nullptr;
+    ID3D11Texture2D* m_lastSourceTexture = nullptr;
 #endif
 
     // Depth & Motion Vector tracked resources

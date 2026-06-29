@@ -156,6 +156,14 @@ IDXGISwapChain* GetCurrentDXSwapChain() {
     std::lock_guard<std::recursive_mutex> lock(g_DXMtx);
     return g_currentSwapChain;
 }
+
+void ClearCurrentDXSwapChainIfMatch(IDXGISwapChain* swapChain) {
+    std::lock_guard<std::recursive_mutex> lock(g_DXMtx);
+    if (g_currentSwapChain == swapChain) {
+        Logger::info("ClearCurrentDXSwapChainIfMatch: Nulling g_currentSwapChain (object destroyed).");
+        g_currentSwapChain = nullptr;
+    }
+}
 #ifdef SKYRIM_AE
 
 void SetCurrentDXSwapChain(IDXGISwapChain* swapChain) {

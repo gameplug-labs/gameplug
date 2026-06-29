@@ -91,8 +91,9 @@ extern std::set<void*> g_HookedVTables;
 // Forward Declarations of engine-integration functions
 extern void OnDXPresent(IDXGISwapChain* pSwapChain);
 extern void OnDXResize(IDXGISwapChain* pSwapChain);
-#ifdef SKYRIM_AE
 extern IDXGISwapChain* GetCurrentDXSwapChain();
+extern void ClearCurrentDXSwapChainIfMatch(IDXGISwapChain* swapChain);
+#ifdef SKYRIM_AE
 extern void SetCurrentDXSwapChain(IDXGISwapChain* swapChain);
 #endif
 

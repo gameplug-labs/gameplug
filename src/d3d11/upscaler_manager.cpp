@@ -387,10 +387,10 @@ void DXUpscalerManager::CleanupPlugin() {
 }
 
 bool DXUpscalerManager::IsLoadingDelayActive() const {
-    static auto start_time = std::chrono::steady_clock::now();
-    return std::chrono::duration_cast<std::chrono::seconds>(
-        std::chrono::steady_clock::now() - start_time).count() < 12;
-    // return false;
+    // static auto start_time = std::chrono::steady_clock::now();
+    // return std::chrono::duration_cast<std::chrono::seconds>(
+    //     std::chrono::steady_clock::now() - start_time).count() < 12;
+    return false;
 }
 
 bool DXUpscalerManager::IsUpscalingEnabled() const {
@@ -561,90 +561,90 @@ void DXUpscalerManager::RenderUI(float fps, uint32_t width, uint32_t height) {
         if (m_pInterface->OnImGuiRender)
             m_pInterface->OnImGuiRender();
 
-        // ImGui::Spacing();
-        // ImGui::Separator();
-        // ImGui::Spacing();
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
 
-        // ImGui::TextColored(ImVec4(0.0f, 0.9f, 1.0f, 1.0f), "[ DX SYSTEM ACTIVE ]");
-        // ImGui::SameLine();
-        // float availW = ImGui::GetContentRegionAvail().x;
-        // float textW = ImGui::CalcTextSize("120 FPS").x;
-        // if (availW > textW)
-        //     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + availW - textW);
-        // ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.4f, 1.0f), "%.0f FPS", fps);
+        ImGui::TextColored(ImVec4(0.0f, 0.9f, 1.0f, 1.0f), "[ DX SYSTEM ACTIVE ]");
+        ImGui::SameLine();
+        float availW = ImGui::GetContentRegionAvail().x;
+        float textW = ImGui::CalcTextSize("120 FPS").x;
+        if (availW > textW)
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + availW - textW);
+        ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.4f, 1.0f), "%.0f FPS", fps);
 
-        // ImGui::TextDisabled("PIPELINE RESOLUTION:");
-        // ImGui::Text("  Target: %d x %d", width, height);
-        // ImGui::Text("  Render: %d x %d", m_renderWidth, m_renderHeight);
-        // float scale = (float)width / (float)m_renderWidth;
-        // ImGui::SameLine();
-        // ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "(%.2fx)", scale);
+        ImGui::TextDisabled("PIPELINE RESOLUTION:");
+        ImGui::Text("  Target: %d x %d", width, height);
+        ImGui::Text("  Render: %d x %d", m_renderWidth, m_renderHeight);
+        float scale = (float)width / (float)m_renderWidth;
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "(%.2fx)", scale);
     }
 
-    // if (IsShowDebugImageEnabled()) {
-    //     bool show = true;
-    //     ImGui::Begin("Upscaler Debug View", &show);
-    //     if (!show) {
-    //         SetShowDebugImageEnabled(false);
-    //     }
+    if (IsShowDebugImageEnabled()) {
+        bool show = true;
+        ImGui::Begin("Upscaler Debug View", &show);
+        if (!show) {
+            SetShowDebugImageEnabled(false);
+        }
 
-    //     const char* debugItems[] = {"Source (Fake Back Buffer)", "Depth Buffer", "Motion Vectors"};
-    //     ImGui::Combo("Preview Target", &m_debugPreviewIndex, debugItems, IM_ARRAYSIZE(debugItems));
+        const char* debugItems[] = {"Source (Fake Back Buffer)", "Depth Buffer", "Motion Vectors"};
+        ImGui::Combo("Preview Target", &m_debugPreviewIndex, debugItems, IM_ARRAYSIZE(debugItems));
 
-    //     uint32_t dw = 0;
-    //     uint32_t dh = 0;
-    //     ID3D11ShaderResourceView* debugSRV = nullptr;
-    //     std::string targetName = "";
+        uint32_t dw = 0;
+        uint32_t dh = 0;
+        ID3D11ShaderResourceView* debugSRV = nullptr;
+        std::string targetName = "";
 
-    //     {
-    //         std::lock_guard<std::mutex> lock(m_trackerMtx);
-    //         if (m_debugPreviewIndex == 0) {
-    //             dw = m_renderWidth;
-    //             dh = m_renderHeight;
-    //             debugSRV = m_fakeBackBufferSRV;
-    //             targetName = "Fake Back Buffer";
-    //         } else if (m_debugPreviewIndex == 1) {
-    //             dw = m_depthWidth;
-    //             dh = m_depthHeight;
-    //             debugSRV = m_depthSRV;
-    //             targetName = "Depth Buffer";
-    //         } else if (m_debugPreviewIndex == 2) {
-    //             dw = m_mvWidth;
-    //             dh = m_mvHeight;
-    //             debugSRV = m_mvSRV;
-    //             targetName = "Motion Vectors";
-    //         }
-    //     }
+        {
+            std::lock_guard<std::mutex> lock(m_trackerMtx);
+            if (m_debugPreviewIndex == 0) {
+                dw = m_renderWidth;
+                dh = m_renderHeight;
+                debugSRV = m_fakeBackBufferSRV;
+                targetName = "Fake Back Buffer";
+            } else if (m_debugPreviewIndex == 1) {
+                dw = m_depthWidth;
+                dh = m_depthHeight;
+                debugSRV = m_depthSRV;
+                targetName = "Depth Buffer";
+            } else if (m_debugPreviewIndex == 2) {
+                dw = m_mvWidth;
+                dh = m_mvHeight;
+                debugSRV = m_mvSRV;
+                targetName = "Motion Vectors";
+            }
+        }
 
-    //     if (debugSRV && dw > 0 && dh > 0) {
-    //         ImGui::Text("%s Resource: %u x %u", targetName.c_str(), dw, dh);
+        if (debugSRV && dw > 0 && dh > 0) {
+            ImGui::Text("%s Resource: %u x %u", targetName.c_str(), dw, dh);
 
-    //         float windowWidth = ImGui::GetContentRegionAvail().x;
-    //         float windowHeight = ImGui::GetContentRegionAvail().y - 30.0f;
-    //         float aspect = (float)dh / (float)dw;
+            float windowWidth = ImGui::GetContentRegionAvail().x;
+            float windowHeight = ImGui::GetContentRegionAvail().y - 30.0f;
+            float aspect = (float)dh / (float)dw;
 
-    //         float imgWidth = windowWidth;
-    //         float imgHeight = windowWidth * aspect;
+            float imgWidth = windowWidth;
+            float imgHeight = windowWidth * aspect;
 
-    //         if (imgHeight > windowHeight) {
-    //             imgHeight = windowHeight;
-    //             imgWidth = windowHeight / aspect;
-    //         }
+            if (imgHeight > windowHeight) {
+                imgHeight = windowHeight;
+                imgWidth = windowHeight / aspect;
+            }
 
-    //         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (windowWidth - imgWidth) * 0.5f);
-    //         ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (windowHeight - imgHeight) * 0.5f);
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (windowWidth - imgWidth) * 0.5f);
+            ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (windowHeight - imgHeight) * 0.5f);
 
-    //         ImGui::Image((ImTextureID)debugSRV, ImVec2(imgWidth, imgHeight));
-    //     } else {
-    //         ImGui::Text("%s is not available (or cannot be bound as SRV).", targetName.c_str());
-    //     }
+            ImGui::Image((ImTextureID)debugSRV, ImVec2(imgWidth, imgHeight));
+        } else {
+            ImGui::Text("%s is not available (or cannot be bound as SRV).", targetName.c_str());
+        }
 
-    //     ImGui::SetCursorPosY(ImGui::GetWindowHeight() - 25.0f);
-    //     if (ImGui::Button("Close")) {
-    //         SetShowDebugImageEnabled(false);
-    //     }
-    //     ImGui::End();
-    // }
+        ImGui::SetCursorPosY(ImGui::GetWindowHeight() - 25.0f);
+        if (ImGui::Button("Close")) {
+            SetShowDebugImageEnabled(false);
+        }
+        ImGui::End();
+    }
 }
 
 void DXUpscalerManager::UpdateDimensions(uint32_t width, uint32_t height) {
@@ -846,22 +846,55 @@ void DXUpscalerManager::RenderFrameDX11(
 
     {
         std::lock_guard<std::mutex> lock(m_trackerMtx);
-        depthImage = m_depthTexture ? (uint64_t)m_depthTexture : 0;
-        depthFormatVal = m_depthTexture ? (uint32_t)m_depthFormat : 0;
-        mvImage = m_mvTexture ? (uint64_t)m_mvTexture : 0;
-        mvFormatVal = m_mvTexture ? (uint32_t)m_mvFormat : 0;
+
+#ifdef SKYRIM_AE
+        if (m_hasSkyrimData) {
+            // Use raw ID3D11Texture2D* from the SKSE bridge data.
+            // IMPORTANT: DLSS handler casts depth/mv uint64_t directly to ID3D11Texture2D* —
+            // passing an SRV pointer here causes an immediate crash. Always use the raw texture.
+            if (m_skyrimData.depthBuffer) {
+                depthImage = (uint64_t)m_skyrimData.depthBuffer;
+                D3D11_TEXTURE2D_DESC desc = {};
+                m_skyrimData.depthBuffer->GetDesc(&desc);
+                depthFormatVal = (uint32_t)desc.Format;
+            }
+            if (m_skyrimData.motionVectorBuffer) {
+                mvImage = (uint64_t)m_skyrimData.motionVectorBuffer;
+                D3D11_TEXTURE2D_DESC desc = {};
+                m_skyrimData.motionVectorBuffer->GetDesc(&desc);
+                mvFormatVal = (uint32_t)desc.Format;
+            }
+
+            // Use the authoritative jitter from the engine instead of the local Halton sequence
+            jitterX = m_skyrimData.jitterX;
+            jitterY = m_skyrimData.jitterY;
+        } else {
+#endif
+            depthImage     = m_depthTexture ? (uint64_t)m_depthTexture : 0;
+            depthFormatVal = m_depthTexture ? (uint32_t)m_depthFormat  : 0;
+            mvImage        = m_mvTexture    ? (uint64_t)m_mvTexture    : 0;
+            mvFormatVal    = m_mvTexture    ? (uint32_t)m_mvFormat     : 0;
+#ifdef SKYRIM_AE
+        }
+#endif
 
         if (shouldLog) {
             std::string depthName = m_depthTexture ? DXGIFormatToString(m_depthFormat) : "DXGI_FORMAT_UNKNOWN";
             std::string mvName = m_mvTexture ? DXGIFormatToString(m_mvFormat) : "DXGI_FORMAT_UNKNOWN";
-
             Logger::info("DXUpscalerManager::RenderFrameDX11 [Buffers] depth=" + std::to_string(depthImage) + " (" +
                          std::to_string(m_depthWidth) + "x" + std::to_string(m_depthHeight) + ", fmt=" + depthName +
                          "), mv=" + std::to_string(mvImage) + " (fmt=" + mvName + ")");
         }
     }
 
-    m_pInterface->OnRenderFrame((uintptr_t)context, (uint64_t)sourceSRV, (uint64_t)targetRTV, 0, width, height, m_renderWidth,
+    ID3D11ShaderResourceView* inputSRV = sourceSRV;
+#ifdef SKYRIM_AE
+    if (m_hasSkyrimData && m_skyrimSourceSRV) {
+        inputSRV = m_skyrimSourceSRV;
+    }
+#endif
+
+    m_pInterface->OnRenderFrame((uintptr_t)context, (uint64_t)inputSRV, (uint64_t)targetRTV, 0, width, height, m_renderWidth,
         m_renderHeight, depthImage, depthFormatVal, mvImage, mvFormatVal, jitterX, jitterY, m_cameraNear, m_cameraFar, m_cameraFov,
         m_viewSpaceToMetersFactor, m_detectedInvertedDepth, m_detectedHDR);
 
@@ -1117,8 +1150,13 @@ void DXUpscalerManager::CleanupSkyrimSRVs() {
         m_skyrimMotionVectorSRV->Release();
         m_skyrimMotionVectorSRV = nullptr;
     }
+    if (m_skyrimSourceSRV) {
+        m_skyrimSourceSRV->Release();
+        m_skyrimSourceSRV = nullptr;
+    }
     m_lastDepthTexture = nullptr;
     m_lastMotionVectorTexture = nullptr;
+    m_lastSourceTexture = nullptr;
 }
 
 void DXUpscalerManager::SetSkyrimData(const GamePlugSkyrimData* data) {
@@ -1226,6 +1264,52 @@ void DXUpscalerManager::SetSkyrimData(const GamePlugSkyrimData* data) {
             m_skyrimMotionVectorSRV = nullptr;
         }
         m_lastMotionVectorTexture = nullptr;
+    }
+
+    // Handle Pre-UI Source Color SRV
+    if (data->sourceBuffer) {
+        if (data->sourceBuffer != m_lastSourceTexture) {
+            if (m_skyrimSourceSRV) {
+                m_skyrimSourceSRV->Release();
+                m_skyrimSourceSRV = nullptr;
+            }
+            m_lastSourceTexture = data->sourceBuffer;
+
+            D3D11_TEXTURE2D_DESC desc = {};
+            data->sourceBuffer->GetDesc(&desc);
+
+            D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+            srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+            srvDesc.Texture2D.MipLevels = 1;
+            srvDesc.Texture2D.MostDetailedMip = 0;
+
+            if (desc.Format == DXGI_FORMAT_R16G16B16A16_TYPELESS) {
+                srvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+            } else if (desc.Format == DXGI_FORMAT_R8G8B8A8_TYPELESS) {
+                srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+            } else if (desc.Format == DXGI_FORMAT_B8G8R8A8_TYPELESS) {
+                srvDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+            } else if (desc.Format == DXGI_FORMAT_R10G10B10A2_TYPELESS) {
+                srvDesc.Format = DXGI_FORMAT_R10G10B10A2_UNORM;
+            } else {
+                srvDesc.Format = desc.Format;
+            }
+
+            HRESULT hr = m_pd3dDevice->CreateShaderResourceView(data->sourceBuffer, &srvDesc, &m_skyrimSourceSRV);
+            if (FAILED(hr)) {
+                Logger::error("[GamePlug] Failed to create Pre-UI Source SRV for Skyrim (HR=" + std::to_string(hr) + ")");
+                m_skyrimSourceSRV = nullptr;
+                m_lastSourceTexture = nullptr;
+            } else {
+                Logger::info("[GamePlug] Created Pre-UI Source SRV for Skyrim (Format=" + std::to_string(srvDesc.Format) + ")");
+            }
+        }
+    } else {
+        if (m_skyrimSourceSRV) {
+            m_skyrimSourceSRV->Release();
+            m_skyrimSourceSRV = nullptr;
+        }
+        m_lastSourceTexture = nullptr;
     }
 }
 #endif

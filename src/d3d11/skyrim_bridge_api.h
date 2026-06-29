@@ -14,6 +14,7 @@ struct GamePlugSkyrimData {
 
     ID3D11Texture2D* depthBuffer;
     ID3D11Texture2D* motionVectorBuffer;
+    ID3D11Texture2D* sourceBuffer;
 
     GamePlugMatrix projectionMatrix;
     GamePlugMatrix prevProjectionMatrix;

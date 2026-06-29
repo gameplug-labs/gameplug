@@ -21,6 +21,9 @@ ULONG STDMETHODCALLTYPE HookedRelease(IUnknown* pUnk) {
         if (g_HookedVTables.count(pUnk)) {
             g_HookedVTables.erase(pUnk);
             Logger::info("DX Hooks D3D11: Object " + std::to_string((uintptr_t)pUnk) + " destroyed. Removed from tracking.");
+            // Null g_currentSwapChain if this is the swapchain being destroyed,
+            // to prevent GetCurrentDXSwapChain() from returning a dangling pointer.
+            ClearCurrentDXSwapChainIfMatch(reinterpret_cast<IDXGISwapChain*>(pUnk));
         }
     }
     return refCount;

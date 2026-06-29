@@ -15,7 +15,6 @@ struct GamePlugSkyrimData {
     ID3D11Texture2D* depthBuffer;
     ID3D11Texture2D* motionVectorBuffer;
     ID3D11Texture2D* sourceBuffer;
-    ID3D11Texture2D* targetBuffer;
 
     GamePlugMatrix projectionMatrix;
     GamePlugMatrix prevProjectionMatrix;
@@ -35,7 +34,4 @@ struct GamePlugSkyrimData {
 FRAMEWORK_API void GamePlug_SetSkyrimData(const GamePlugSkyrimData* data);
 FRAMEWORK_API void GamePlug_GetResolutionOverride(uint32_t outputW, uint32_t outputH, uint32_t* renderW, uint32_t* renderH);
 FRAMEWORK_API bool GamePlug_IsOverlayVisible();
-FRAMEWORK_API void GamePlug_TriggerUpscale();
-FRAMEWORK_API ID3D11RenderTargetView* GamePlug_BeginUI();
-FRAMEWORK_API void GamePlug_EndUI();
 }

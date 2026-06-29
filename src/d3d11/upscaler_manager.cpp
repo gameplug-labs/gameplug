@@ -1,6 +1,4 @@
 #include "upscaler_manager.h"
-#include "ui_blend_vs.h"
-#include "ui_blend_ps.h"
 #include "config.h"
 #include "imgui.h"
 #include "logger.h"
@@ -12,7 +10,6 @@
 #include <chrono>
 
 namespace GamePlug {
-extern ID3D11RenderTargetView* g_mainRenderTargetView;
 extern void PatchDeviceContextVTable(ID3D11DeviceContext* context);
 typedef GamePlugUpscalerInterface* (*GamePlug_GetUpscalerInterfaceFn)();
 
@@ -309,7 +306,6 @@ void DXUpscalerLogBridge(GamePlugUpscalerInterface::LogLevel level, const char* 
 DXUpscalerManager::~DXUpscalerManager() {
     UnloadUpscaler();
     ResetTracker();
-    CleanupUIResources();
 }
 
 void DXUpscalerManager::LoadPlugin() {
@@ -353,22 +349,6 @@ void DXUpscalerManager::InitDX11(ID3D11Device* device, ID3D11DeviceContext* cont
 
     m_pd3dDevice = device;
     m_pd3dDeviceContext = context;
-
-    char exePath[MAX_PATH];
-    GetModuleFileNameA(NULL, exePath, MAX_PATH);
-    Logger::info("DXUpscalerManager::InitDX11: exePath = " + std::string(exePath));
-    std::string exeName = std::filesystem::path(exePath).filename().string();
-    std::transform(exeName.begin(), exeName.end(), exeName.begin(), ::tolower);
-    Logger::info("DXUpscalerManager::InitDX11: exeName = " + exeName);
-#ifdef SKYRIM_AE
-    Logger::info("DXUpscalerManager::InitDX11: SKYRIM_AE is DEFINED!");
-#else
-    Logger::info("DXUpscalerManager::InitDX11: SKYRIM_AE is NOT defined!");
-#endif
-    if (exeName.find("skyrim") != std::string::npos) {
-        m_isSkyrim = true;
-        Logger::info("DXUpscalerManager::InitDX11: Detected Skyrim executable. Activating early Skyrim features.");
-    }
 
     PatchDeviceContextVTable(context);
 
@@ -744,22 +724,7 @@ void DXUpscalerManager::RenderFrameDX11(
     ID3D11DeviceContext* context, ID3D11ShaderResourceView* sourceSRV, ID3D11RenderTargetView* targetRTV, uint32_t width, uint32_t height) {
     if (!m_pInterface || !m_pInterface->OnRenderFrame || m_frameUpscaled)
         return;
-
-    ID3D11ShaderResourceView* inputSRV = sourceSRV;
-#ifdef SKYRIM_AE
-    if (m_hasSkyrimData && m_skyrimSourceSRV) {
-        inputSRV = m_skyrimSourceSRV;
-    }
-#endif
-
-    ID3D11RenderTargetView* inputRTV = targetRTV;
-#ifdef SKYRIM_AE
-    if (m_hasSkyrimData && m_skyrimTargetRTV) {
-        inputRTV = m_skyrimTargetRTV;
-    }
-#endif
-
-    if (!inputSRV || !inputRTV) {
+    if (!sourceSRV || !targetRTV) {
         Logger::warn("DXUpscalerManager: RenderFrameDX11 called with NULL resources");
         return;
     }
@@ -922,22 +887,22 @@ void DXUpscalerManager::RenderFrameDX11(
         }
     }
 
-    // inputSRV has been already determined and verified at the beginning of the function
+    ID3D11ShaderResourceView* inputSRV = sourceSRV;
+#ifdef SKYRIM_AE
+    if (m_hasSkyrimData && m_skyrimSourceSRV) {
+        inputSRV = sourceSRV;
+    }
+#endif
 
     m_pInterface->OnRenderFrame((uintptr_t)context, (uint64_t)inputSRV, (uint64_t)targetRTV, 0, width, height, m_renderWidth,
         m_renderHeight, depthImage, depthFormatVal, mvImage, mvFormatVal, jitterX, jitterY, m_cameraNear, m_cameraFar, m_cameraFov,
         m_viewSpaceToMetersFactor, m_detectedInvertedDepth, m_detectedHDR);
 
-    m_frameUpscaled = true;
     lastW = width;
     lastH = height;
 }
 
 bool DXUpscalerManager::PresentFrameDX11(IDXGISwapChain* swapChain, uint32_t syncInterval, uint32_t flags) {
-    if (m_isSkyrim && m_pd3dDeviceContext && g_mainRenderTargetView) {
-        BlendUI(m_pd3dDeviceContext, g_mainRenderTargetView);
-    }
-
     if (m_pInterface && m_pInterface->OnPresent) {
         return m_pInterface->OnPresent((uintptr_t)swapChain, syncInterval, flags);
     }
@@ -1132,7 +1097,6 @@ void DXUpscalerManager::CreateFakeBackBuffer(IDXGISwapChain* swapChain) {
     }
 
     Logger::info("DXUpscalerManager: Fake BackBuffer successfully created.");
-    InitUIResources();
 }
 
 void DXUpscalerManager::DestroyFakeBackBuffer() {
@@ -1144,7 +1108,6 @@ void DXUpscalerManager::DestroyFakeBackBuffer() {
         m_fakeBackBuffer->Release();
         m_fakeBackBuffer = nullptr;
     }
-    CleanupUIResources();
     Logger::info("DXUpscalerManager: Fake BackBuffer destroyed.");
 }
 
@@ -1191,14 +1154,9 @@ void DXUpscalerManager::CleanupSkyrimSRVs() {
         m_skyrimSourceSRV->Release();
         m_skyrimSourceSRV = nullptr;
     }
-    if (m_skyrimTargetRTV) {
-        m_skyrimTargetRTV->Release();
-        m_skyrimTargetRTV = nullptr;
-    }
     m_lastDepthTexture = nullptr;
     m_lastMotionVectorTexture = nullptr;
     m_lastSourceTexture = nullptr;
-    m_lastTargetTexture = nullptr;
 }
 
 void DXUpscalerManager::SetSkyrimData(const GamePlugSkyrimData* data) {
@@ -1352,32 +1310,6 @@ void DXUpscalerManager::SetSkyrimData(const GamePlugSkyrimData* data) {
             m_skyrimSourceSRV = nullptr;
         }
         m_lastSourceTexture = nullptr;
-    }
-
-    // Handle targetBuffer RTV
-    if (data->targetBuffer) {
-        if (data->targetBuffer != m_lastTargetTexture) {
-            if (m_skyrimTargetRTV) {
-                m_skyrimTargetRTV->Release();
-                m_skyrimTargetRTV = nullptr;
-            }
-            m_lastTargetTexture = data->targetBuffer;
-
-            HRESULT hr = m_pd3dDevice->CreateRenderTargetView(data->targetBuffer, nullptr, &m_skyrimTargetRTV);
-            if (FAILED(hr)) {
-                Logger::error("[GamePlug] Failed to create Target RTV for Skyrim (HR=" + std::to_string(hr) + ")");
-                m_skyrimTargetRTV = nullptr;
-                m_lastTargetTexture = nullptr;
-            } else {
-                Logger::info("[GamePlug] Created Target RTV for Skyrim");
-            }
-        }
-    } else {
-        if (m_skyrimTargetRTV) {
-            m_skyrimTargetRTV->Release();
-            m_skyrimTargetRTV = nullptr;
-        }
-        m_lastTargetTexture = nullptr;
     }
 }
 #endif
@@ -1661,173 +1593,6 @@ void DXUpscalerManager::ScanProjectionMatrix(ID3D11DeviceContext* context) {
                          ", RowMajor=" + std::to_string(cand.isRow) + "): [" + matrixStr + "]");
         }
     }
-}
-
-void DXUpscalerManager::InitUIResources() {
-    if (!m_pd3dDevice) return;
-
-    CleanupUIResources();
-
-    Logger::info("DXUpscalerManager: Creating Native UI resources at " + std::to_string(m_width) + "x" + std::to_string(m_height));
-
-    D3D11_TEXTURE2D_DESC desc = {};
-    desc.Width = m_width;
-    desc.Height = m_height;
-    desc.MipLevels = 1;
-    desc.ArraySize = 1;
-    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    desc.SampleDesc.Count = 1;
-    desc.SampleDesc.Quality = 0;
-    desc.Usage = D3D11_USAGE_DEFAULT;
-    desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
-    desc.CPUAccessFlags = 0;
-    desc.MiscFlags = 0;
-
-    HRESULT hr = m_pd3dDevice->CreateTexture2D(&desc, nullptr, &m_uiTexture);
-    if (FAILED(hr)) {
-        Logger::error("DXUpscalerManager: Failed to create UI texture (HR=" + std::to_string(hr) + ")");
-        return;
-    }
-
-    hr = m_pd3dDevice->CreateRenderTargetView(m_uiTexture, nullptr, &m_uiRTV);
-    if (FAILED(hr)) {
-        Logger::error("DXUpscalerManager: Failed to create UI RTV (HR=" + std::to_string(hr) + ")");
-        return;
-    }
-
-    hr = m_pd3dDevice->CreateShaderResourceView(m_uiTexture, nullptr, &m_uiSRV);
-    if (FAILED(hr)) {
-        Logger::error("DXUpscalerManager: Failed to create UI SRV (HR=" + std::to_string(hr) + ")");
-        return;
-    }
-
-    // Create UI shaders from fxc-precompiled bytecode
-    hr = m_pd3dDevice->CreateVertexShader(g_uiVSBytecode, sizeof(g_uiVSBytecode), nullptr, &m_uiVS);
-    if (FAILED(hr)) {
-        Logger::error("DXUpscalerManager: Failed to create UI Vertex Shader (HR=" + std::to_string(hr) + ")");
-        return;
-    }
-
-    hr = m_pd3dDevice->CreatePixelShader(g_uiPSBytecode, sizeof(g_uiPSBytecode), nullptr, &m_uiPS);
-    if (FAILED(hr)) {
-        Logger::error("DXUpscalerManager: Failed to create UI Pixel Shader (HR=" + std::to_string(hr) + ")");
-        return;
-    }
-
-    // Create Blend State
-    D3D11_BLEND_DESC blendDesc = {};
-    blendDesc.AlphaToCoverageEnable = FALSE;
-    blendDesc.IndependentBlendEnable = FALSE;
-    blendDesc.RenderTarget[0].BlendEnable = TRUE;
-    blendDesc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
-    blendDesc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
-    blendDesc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
-    blendDesc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
-    blendDesc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
-    blendDesc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
-    blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
-
-    hr = m_pd3dDevice->CreateBlendState(&blendDesc, &m_uiBlendState);
-    if (FAILED(hr)) {
-        Logger::error("DXUpscalerManager: Failed to create UI Blend State (HR=" + std::to_string(hr) + ")");
-        return;
-    }
-
-    // Create Sampler State
-    D3D11_SAMPLER_DESC samplerDesc = {};
-    samplerDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
-    samplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
-    samplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
-    samplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
-    samplerDesc.ComparisonFunc = D3D11_COMPARISON_NEVER;
-    samplerDesc.MinLOD = 0;
-    samplerDesc.MaxLOD = D3D11_FLOAT32_MAX;
-
-    hr = m_pd3dDevice->CreateSamplerState(&samplerDesc, &m_uiSamplerState);
-    if (FAILED(hr)) {
-        Logger::error("DXUpscalerManager: Failed to create UI Sampler State (HR=" + std::to_string(hr) + ")");
-        return;
-    }
-
-    Logger::info("DXUpscalerManager: Native UI resources initialized successfully.");
-}
-
-void DXUpscalerManager::CleanupUIResources() {
-    if (m_uiSamplerState) { m_uiSamplerState->Release(); m_uiSamplerState = nullptr; }
-    if (m_uiBlendState) { m_uiBlendState->Release(); m_uiBlendState = nullptr; }
-    if (m_uiPS) { m_uiPS->Release(); m_uiPS = nullptr; }
-    if (m_uiVS) { m_uiVS->Release(); m_uiVS = nullptr; }
-    if (m_uiSRV) { m_uiSRV->Release(); m_uiSRV = nullptr; }
-    if (m_uiRTV) { m_uiRTV->Release(); m_uiRTV = nullptr; }
-    if (m_uiTexture) { m_uiTexture->Release(); m_uiTexture = nullptr; }
-}
-
-ID3D11RenderTargetView* DXUpscalerManager::BeginUI() {
-    if (!m_uiRTV || !m_pd3dDeviceContext) return nullptr;
-
-    // Clear the native UI texture to transparent black
-    float clearColor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-    m_pd3dDeviceContext->ClearRenderTargetView(m_uiRTV, clearColor);
-
-    // Bind UI RTV as the active render target
-    m_pd3dDeviceContext->OMSetRenderTargets(1, &m_uiRTV, nullptr);
-
-    // Configure full display/native resolution viewport
-    D3D11_VIEWPORT vp{};
-    vp.Width = (float)m_width;
-    vp.Height = (float)m_height;
-    vp.MinDepth = 0.0f;
-    vp.MaxDepth = 1.0f;
-    vp.TopLeftX = 0.0f;
-    vp.TopLeftY = 0.0f;
-    m_pd3dDeviceContext->RSSetViewports(1, &vp);
-
-    return m_uiRTV;
-}
-
-void DXUpscalerManager::EndUI() {
-    // Left empty for plugin compatibility
-}
-
-void DXUpscalerManager::BlendUI(ID3D11DeviceContext* context, ID3D11RenderTargetView* targetRTV) {
-    if (!context || !targetRTV || !m_uiSRV || !m_uiVS || !m_uiPS || !m_uiBlendState) return;
-
-    // Set shaders
-    context->VSSetShader(m_uiVS, nullptr, 0);
-    context->PSSetShader(m_uiPS, nullptr, 0);
-
-    // Set sampler and resource views
-    context->PSSetShaderResources(0, 1, &m_uiSRV);
-    if (m_uiSamplerState) {
-        context->PSSetSamplers(0, 1, &m_uiSamplerState);
-    }
-
-    // Bind upscaled target RTV
-    context->OMSetRenderTargets(1, &targetRTV, nullptr);
-
-    // Configure native/display viewport
-    D3D11_VIEWPORT vp{};
-    vp.Width = (float)m_width;
-    vp.Height = (float)m_height;
-    vp.MinDepth = 0.0f;
-    vp.MaxDepth = 1.0f;
-    vp.TopLeftX = 0.0f;
-    vp.TopLeftY = 0.0f;
-    context->RSSetViewports(1, &vp);
-
-    // Set Blend State
-    float blendFactor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-    context->OMSetBlendState(m_uiBlendState, blendFactor, 0xFFFFFFFF);
-
-    // Draw full-screen quad (3 vertices generated by shader SV_VertexID)
-    context->IASetInputLayout(nullptr);
-    context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    context->Draw(3, 0);
-
-    // Clean up pipeline bindings
-    ID3D11ShaderResourceView* nullSRV = nullptr;
-    context->PSSetShaderResources(0, 1, &nullSRV);
-    context->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
 }
 
 } // namespace GamePlug

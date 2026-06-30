@@ -379,4 +379,8 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
     }
 }
 
+bool IsOverlayVisible() {
+    return g_Visible;
+}
+
 } // namespace GamePlug

@@ -377,13 +377,200 @@ void DXUpscalerManager::CleanupPlugin() {
         Logger::info("DXUpscalerManager: Calling OnShutdown (Reset)");
         m_pInterface->OnShutdown();
     }
+#ifdef FALLOUT4
+    CleanupFallout4SRVs();
+#endif
     DestroyFakeBackBuffer();
     ResetTracker();
     m_pd3dDevice = nullptr;
     m_pd3dDeviceContext = nullptr;
 }
 
+#ifdef FALLOUT4
+void DXUpscalerManager::CleanupFallout4SRVs() {
+    if (m_fallout4DepthSRV) {
+        m_fallout4DepthSRV->Release();
+        m_fallout4DepthSRV = nullptr;
+    }
+    if (m_fallout4MotionVectorSRV) {
+        m_fallout4MotionVectorSRV->Release();
+        m_fallout4MotionVectorSRV = nullptr;
+    }
+    if (m_fallout4SourceSRV) {
+        m_fallout4SourceSRV->Release();
+        m_fallout4SourceSRV = nullptr;
+    }
+    m_lastDepthTexture = nullptr;
+    m_lastMotionVectorTexture = nullptr;
+    m_lastSourceTexture = nullptr;
+}
+
+void DXUpscalerManager::SetFallout4Data(const GamePlugFallout4Data* data) {
+    if (!data) {
+        m_hasFallout4Data = false;
+        CleanupFallout4SRVs();
+        return;
+    }
+
+    static uint64_t s_bridgeLogCount = 0;
+    if (s_bridgeLogCount++ % 1000 == 0) {
+        std::string depthFormatStr = "N/A";
+        std::string mvFormatStr = "N/A";
+        if (data->depthBuffer) {
+            D3D11_TEXTURE2D_DESC desc;
+            data->depthBuffer->GetDesc(&desc);
+            depthFormatStr = std::to_string(desc.Format);
+        }
+        if (data->motionVectorBuffer) {
+            D3D11_TEXTURE2D_DESC desc;
+            data->motionVectorBuffer->GetDesc(&desc);
+            mvFormatStr = std::to_string(desc.Format);
+        }
+        Logger::info("[GamePlug] Fallout4 Bridge Data: Frame=" + std::to_string(data->frameCount) +
+                     ", DepthTex=" + std::to_string((uintptr_t)data->depthBuffer) + " (Format=" + depthFormatStr + ")" +
+                     ", MVTex=" + std::to_string((uintptr_t)data->motionVectorBuffer) + " (Format=" + mvFormatStr + ")" + ", Jitter=(" +
+                     std::to_string(data->jitterX) + ", " + std::to_string(data->jitterY) + ")" +
+                      ", Near=" + std::to_string(data->cameraNear) + ", Far=" + std::to_string(data->cameraFar) + ", Fov=" + std::to_string(data->cameraFov) +
+                      ", metersFactor=" + std::to_string(data->viewSpaceToMetersFactor));
+    }
+
+    m_fallout4Data = *data;
+    m_hasFallout4Data = true;
+    m_isFallout4 = true;
+    m_cameraNear = data->cameraNear;
+    m_cameraFar = data->cameraFar;
+    m_cameraFov = data->cameraFov;
+    m_viewSpaceToMetersFactor = data->viewSpaceToMetersFactor;
+
+    if (!m_pd3dDevice)
+        return;
+
+    // Handle Depth Buffer SRV
+    if (data->depthBuffer) {
+        if (data->depthBuffer != m_lastDepthTexture) {
+            if (m_fallout4DepthSRV) {
+                m_fallout4DepthSRV->Release();
+                m_fallout4DepthSRV = nullptr;
+            }
+            m_lastDepthTexture = data->depthBuffer;
+
+            D3D11_TEXTURE2D_DESC desc;
+            data->depthBuffer->GetDesc(&desc);
+
+            D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+            srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+            srvDesc.Texture2D.MipLevels = 1;
+            srvDesc.Texture2D.MostDetailedMip = 0;
+
+            // Map typeless formats to readable depth formats
+            if (desc.Format == DXGI_FORMAT_R32_TYPELESS) {
+                srvDesc.Format = DXGI_FORMAT_R32_FLOAT;
+            } else if (desc.Format == DXGI_FORMAT_R24G8_TYPELESS) {
+                srvDesc.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+            } else if (desc.Format == DXGI_FORMAT_R16_TYPELESS) {
+                srvDesc.Format = DXGI_FORMAT_R16_UNORM;
+            } else {
+                srvDesc.Format = desc.Format;
+            }
+
+            HRESULT hr = m_pd3dDevice->CreateShaderResourceView(data->depthBuffer, &srvDesc, &m_fallout4DepthSRV);
+            if (FAILED(hr)) {
+                Logger::error("[GamePlug] Failed to create Depth SRV for Fallout4 (HR=" + std::to_string(hr) + ")");
+                m_fallout4DepthSRV = nullptr;
+                m_lastDepthTexture = nullptr;
+            } else {
+                Logger::info("[GamePlug] Created Depth SRV for Fallout4");
+            }
+        }
+    } else {
+        if (m_fallout4DepthSRV) {
+            m_fallout4DepthSRV->Release();
+            m_fallout4DepthSRV = nullptr;
+        }
+        m_lastDepthTexture = nullptr;
+    }
+
+    // Handle Motion Vector SRV
+    if (data->motionVectorBuffer) {
+        if (data->motionVectorBuffer != m_lastMotionVectorTexture) {
+            if (m_fallout4MotionVectorSRV) {
+                m_fallout4MotionVectorSRV->Release();
+                m_fallout4MotionVectorSRV = nullptr;
+            }
+            m_lastMotionVectorTexture = data->motionVectorBuffer;
+
+            D3D11_TEXTURE2D_DESC desc;
+            data->motionVectorBuffer->GetDesc(&desc);
+
+            D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+            srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+            srvDesc.Texture2D.MipLevels = 1;
+            srvDesc.Texture2D.MostDetailedMip = 0;
+            srvDesc.Format = desc.Format;
+
+            HRESULT hr = m_pd3dDevice->CreateShaderResourceView(data->motionVectorBuffer, &srvDesc, &m_fallout4MotionVectorSRV);
+            if (FAILED(hr)) {
+                Logger::error("[GamePlug] Failed to create MV SRV for Fallout4 (HR=" + std::to_string(hr) + ")");
+                m_fallout4MotionVectorSRV = nullptr;
+                m_lastMotionVectorTexture = nullptr;
+            } else {
+                Logger::info("[GamePlug] Created MV SRV for Fallout4");
+            }
+        }
+    } else {
+        if (m_fallout4MotionVectorSRV) {
+            m_fallout4MotionVectorSRV->Release();
+            m_fallout4MotionVectorSRV = nullptr;
+        }
+        m_lastMotionVectorTexture = nullptr;
+    }
+
+    // Handle Source Buffer SRV
+    if (data->sourceBuffer) {
+        if (data->sourceBuffer != m_lastSourceTexture) {
+            if (m_fallout4SourceSRV) {
+                m_fallout4SourceSRV->Release();
+                m_fallout4SourceSRV = nullptr;
+            }
+            m_lastSourceTexture = data->sourceBuffer;
+
+            D3D11_TEXTURE2D_DESC desc;
+            data->sourceBuffer->GetDesc(&desc);
+
+            D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+            srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+            srvDesc.Texture2D.MipLevels = 1;
+            srvDesc.Texture2D.MostDetailedMip = 0;
+            srvDesc.Format = desc.Format;
+
+            HRESULT hr = m_pd3dDevice->CreateShaderResourceView(data->sourceBuffer, &srvDesc, &m_fallout4SourceSRV);
+            if (FAILED(hr)) {
+                Logger::error("[GamePlug] Failed to create Source SRV for Fallout4 (HR=" + std::to_string(hr) + ")");
+                m_fallout4SourceSRV = nullptr;
+                m_lastSourceTexture = nullptr;
+            } else {
+                Logger::info("[GamePlug] Created Source SRV for Fallout4");
+            }
+        }
+    } else {
+        if (m_fallout4SourceSRV) {
+            m_fallout4SourceSRV->Release();
+            m_fallout4SourceSRV = nullptr;
+        }
+        m_lastSourceTexture = nullptr;
+    }
+}
+#endif
+
+bool DXUpscalerManager::IsLoadingDelayActive() const {
+    return false;
+}
+
 bool DXUpscalerManager::IsUpscalingEnabled() const {
+    if (IsLoadingDelayActive()) {
+        return false;
+    }
+
     if (!m_pInterface || !m_pInterface->GetFields)
         return false;
     GamePlugUpscalerInterface::FieldDescriptor* fields = nullptr;
@@ -393,6 +580,13 @@ bool DXUpscalerManager::IsUpscalingEnabled() const {
             int type = *(int*)fields[i].Data;
             return type > 0;
         }
+    }
+    return false;
+}
+
+bool DXUpscalerManager::PresentFrameDX11(IDXGISwapChain* swapChain, uint32_t syncInterval, uint32_t flags) {
+    if (m_pInterface && m_pInterface->OnPresent) {
+        return m_pInterface->OnPresent((uintptr_t)swapChain, syncInterval, flags);
     }
     return false;
 }

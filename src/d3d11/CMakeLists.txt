@@ -98,3 +98,53 @@ add_custom_command(TARGET version_d3d11 POST_BUILD
     COMMENT "Copying version.dll proxy to bin/d3d11 folder"
 )
 
+
+# --- Fallout 4 variant: same DLL but built from framework_d3d11_fallout4 (FALLOUT4 defined) ---
+add_library(version_d3d11_fallout4 SHARED
+    version.cpp
+    version_fallout4.def
+)
+
+target_include_directories(version_d3d11_fallout4 PRIVATE
+    ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/src/d3d11
+    ${PROJECT_SOURCE_DIR}/src/shared
+    ${PROJECT_SOURCE_DIR}/external/imgui
+    ${PROJECT_SOURCE_DIR}/external/imgui/backends
+)
+
+target_link_libraries(version_d3d11_fallout4 PRIVATE
+    shlwapi
+    framework_d3d11_fallout4
+    minhook
+    d3d11
+    dxgi
+    d3dcompiler
+    delayimp.lib
+)
+
+if(MSVC)
+    target_compile_options(version_d3d11_fallout4 PRIVATE /utf-8 /FS)
+    set_target_properties(version_d3d11_fallout4 PROPERTIES
+        PREFIX ""
+        SUFFIX ".dll"
+        OUTPUT_NAME "version"
+        LINK_FLAGS "/DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3dcompiler_47.dll"
+    )
+else()
+    set_target_properties(version_d3d11_fallout4 PROPERTIES
+        PREFIX ""
+        SUFFIX ".dll"
+        OUTPUT_NAME "version"
+    )
+endif()
+
+# Post-build copy to bin/d3d11_fallout4 folder
+add_custom_command(TARGET version_d3d11_fallout4 POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${PROJECT_SOURCE_DIR}/bin/${BIN_ARCH}/d3d11_fallout4"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:version_d3d11_fallout4>"
+            "${PROJECT_SOURCE_DIR}/bin/${BIN_ARCH}/d3d11_fallout4/$<TARGET_FILE_NAME:version_d3d11_fallout4>"
+    COMMENT "Copying version.dll (Fallout 4) proxy to bin/d3d11_fallout4 folder"
+)
+

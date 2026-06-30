@@ -1,6 +1,9 @@
 #pragma once
 #include "framework_export.h"
 #include "upscaler_interface.h"
+#ifdef FALLOUT4
+#include "fallout4_bridge_api.h"
+#endif
 #include <d3d11.h>
 #include <memory>
 #include <mutex>
@@ -35,11 +38,14 @@ public:
     void RenderFrameDX11(ID3D11DeviceContext* context, ID3D11ShaderResourceView* sourceSRV, ID3D11RenderTargetView* targetRTV,
         uint32_t width, uint32_t height);
 
+    bool PresentFrameDX11(IDXGISwapChain* swapChain, uint32_t syncInterval, uint32_t flags);
+
     void ResetFrame();
     void NewFrame() { m_frameUpscaled = false; }
     bool WasUpscaledThisFrame() const { return m_frameUpscaled; }
 
     bool IsLoaded() const { return m_handle != nullptr; }
+    bool IsLoadingDelayActive() const;
     bool IsUpscalingEnabled() const;
     bool IsShowDebugImageEnabled() const;
     void SetShowDebugImageEnabled(bool enabled);
@@ -54,6 +60,14 @@ public:
     void UpdateDimensions(uint32_t width, uint32_t height);
     void GetTargetResolution(uint32_t width, uint32_t height, uint32_t& outW, uint32_t& outH);
     float GetScaleFactor() const;
+
+#ifdef FALLOUT4
+    // Fallout 4 Bridge API Support
+    void SetFallout4Data(const GamePlugFallout4Data* data);
+    bool HasFallout4Data() const { return m_hasFallout4Data; }
+    const GamePlugFallout4Data& GetFallout4Data() const { return m_fallout4Data; }
+    void SetFallout4Active(bool active) { m_isFallout4 = active; }
+#endif
 
     // Depth & Motion Vector tracking
     void TrackTexture(ID3D11Texture2D* texture, const D3D11_TEXTURE2D_DESC* desc);
@@ -93,6 +107,9 @@ private:
         , m_viewSpaceToMetersFactor(1.0f) {}
 
     void LoadPlugin();
+#ifdef FALLOUT4
+    void CleanupFallout4SRVs();
+#endif
 
     HMODULE m_handle;
     GamePlugUpscalerInterface* m_pInterface;
@@ -109,6 +126,20 @@ private:
     uint32_t m_height = 0;
     bool m_frameUpscaled = false;
     bool m_isShuttingDown = false;
+
+#ifdef FALLOUT4
+    bool m_isFallout4 = false;
+
+    // Fallout 4 Bridge Data
+    GamePlugFallout4Data m_fallout4Data = {};
+    bool m_hasFallout4Data = false;
+    ID3D11ShaderResourceView* m_fallout4DepthSRV = nullptr;
+    ID3D11ShaderResourceView* m_fallout4MotionVectorSRV = nullptr;
+    ID3D11ShaderResourceView* m_fallout4SourceSRV = nullptr;
+    ID3D11Texture2D* m_lastDepthTexture = nullptr;
+    ID3D11Texture2D* m_lastMotionVectorTexture = nullptr;
+    ID3D11Texture2D* m_lastSourceTexture = nullptr;
+#endif
 
     // Depth & Motion Vector tracked resources
     ID3D11Texture2D* m_depthTexture;

@@ -22,6 +22,7 @@ typedef HRESULT(STDMETHODCALLTYPE* PFN_ResizeBuffers)(
     IDXGISwapChain* pSwapChain, UINT BufferCount, UINT Width, UINT Height, DXGI_FORMAT NewFormat, UINT SwapChainFlags);
 typedef HRESULT(STDMETHODCALLTYPE* PFN_ResizeBuffers1)(IDXGISwapChain3* pSwapChain, UINT BufferCount, UINT Width, UINT Height,
     DXGI_FORMAT NewFormat, UINT SwapChainFlags, const UINT* pNodeMask, IUnknown* const* ppPresentQueue);
+typedef HRESULT(STDMETHODCALLTYPE* PFN_GetBuffer)(IDXGISwapChain* pSwapChain, UINT Buffer, REFIID riid, void** ppSurface);
 typedef void(STDMETHODCALLTYPE* PFN_ExecuteCommandLists)(
     ID3D12CommandQueue* pQueue, UINT NumCommandLists, ID3D12CommandList* const* ppCommandLists);
 typedef HRESULT(STDMETHODCALLTYPE* PFN_Signal)(ID3D12CommandQueue* pQueue, ID3D12Fence* pFence, UINT64 Value);
@@ -33,6 +34,8 @@ typedef void(STDMETHODCALLTYPE* PFN_OMSetRenderTargets)(ID3D12GraphicsCommandLis
     const D3D12_CPU_DESCRIPTOR_HANDLE* pRenderTargetDescriptors, BOOL RTsSingleHandleToDescriptorRange,
     const D3D12_CPU_DESCRIPTOR_HANDLE* pDepthStencilDescriptor);
 
+typedef HRESULT(STDMETHODCALLTYPE* PFN_CreateCommandQueue)(
+    ID3D12Device* pDevice, const D3D12_COMMAND_QUEUE_DESC* pDesc, REFIID riid, void** ppCommandQueue);
 typedef HRESULT(STDMETHODCALLTYPE* PFN_CreateCommittedResource)(ID3D12Device* pDevice, const D3D12_HEAP_PROPERTIES* pHeapProperties,
     D3D12_HEAP_FLAGS HeapFlags, const D3D12_RESOURCE_DESC* pDesc, D3D12_RESOURCE_STATES InitialResourceState,
     const D3D12_CLEAR_VALUE* pOptimizedClearValue, REFIID riidResource, void** ppvResource);
@@ -62,12 +65,14 @@ extern PFN_Present g_OriginalPresent;
 extern PFN_Present1 g_OriginalPresent1;
 extern PFN_ResizeBuffers g_OriginalResizeBuffers;
 extern PFN_ResizeBuffers1 g_OriginalResizeBuffers1;
+extern PFN_GetBuffer g_OriginalGetBuffer;
 extern PFN_ExecuteCommandLists g_OriginalExecuteCommandLists;
 extern PFN_Signal g_OriginalSignal;
 extern PFN_ResourceBarrier g_OriginalResourceBarrier;
 extern PFN_RSSetViewports g_OriginalRSSetViewports;
 extern PFN_RSSetScissorRects g_OriginalRSSetScissorRects;
 extern PFN_OMSetRenderTargets g_OriginalOMSetRenderTargets;
+extern PFN_CreateCommandQueue g_OriginalCreateCommandQueue;
 extern PFN_CreateCommittedResource g_OriginalCreateCommittedResource;
 extern PFN_CreatePlacedResource g_OriginalCreatePlacedResource;
 
@@ -90,6 +95,7 @@ extern std::unordered_map<SIZE_T, ID3D12Resource*> g_RTVToResource;
 extern std::unordered_map<ID3D12GraphicsCommandList*, ID3D12Resource*> g_CommandListTargets;
 extern std::set<ID3D12Resource*> g_OverriddenResources;
 extern std::set<ID3D12Resource*> g_NativeResources;
+extern std::set<ID3D12CommandQueue*> g_AllTrackedQueues;
 extern std::mutex g_TrackingMtx;
 extern std::recursive_mutex g_HooksMtx;
 extern std::map<ID3D12GraphicsCommandList*, std::pair<uint32_t, uint32_t>> g_CommandListRTSize;
@@ -128,6 +134,9 @@ void ClearActiveQueues();
 ULONG STDMETHODCALLTYPE HookedRelease(IUnknown* pUnk);
 void STDMETHODCALLTYPE HookedResourceBarrier(ID3D12GraphicsCommandList* pList, UINT NumBarriers, const D3D12_RESOURCE_BARRIER* pBarriers);
 bool ShouldOverrideD3D12(const D3D12_RESOURCE_DESC& desc);
+HRESULT STDMETHODCALLTYPE HookedCreateCommandQueue(
+    ID3D12Device* pDevice, const D3D12_COMMAND_QUEUE_DESC* pDesc, REFIID riid, void** ppCommandQueue);
+
 HRESULT STDMETHODCALLTYPE HookedCreateCommittedResource(ID3D12Device* pDevice, const D3D12_HEAP_PROPERTIES* pHeapProperties,
     D3D12_HEAP_FLAGS HeapFlags, const D3D12_RESOURCE_DESC* pDesc, D3D12_RESOURCE_STATES InitialResourceState,
     const D3D12_CLEAR_VALUE* pOptimizedClearValue, REFIID riidResource, void** ppvResource);
@@ -143,6 +152,7 @@ HRESULT STDMETHODCALLTYPE HookedResizeBuffers(
     IDXGISwapChain* pSwapChain, UINT BufferCount, UINT Width, UINT Height, DXGI_FORMAT NewFormat, UINT SwapChainFlags);
 HRESULT STDMETHODCALLTYPE HookedResizeBuffers1(IDXGISwapChain3* pSwapChain, UINT BufferCount, UINT Width, UINT Height,
     DXGI_FORMAT NewFormat, UINT SwapChainFlags, const UINT* pNodeMask, IUnknown* const* ppPresentQueue);
+HRESULT STDMETHODCALLTYPE HookedGetBuffer(IDXGISwapChain* pSwapChain, UINT Buffer, REFIID riid, void** ppSurface);
 void RegisterNativeResources(IDXGISwapChain* pSwapChain);
 void ApplySwapChainHooks(void* pSwapChain);
 void ApplySwapChainHooksWithQueue(void* pSwapChain, ID3D12CommandQueue* pQueue);

@@ -10,14 +10,16 @@ All games use `dinput8.dll` (or alternatively `version.dll`) by default unless s
 | Batman: Arkham City | d3d11 (x32) | |
 | Batman: Arkham Knight | d3d11 | |
 | Batman: Arkham Origins | d3d11 (x32) | |
-| Resident Evil 4 Remake | d3d12 | |
+| Fallout 4 | d3d11 (x64) | version.dll |
+| Fallout New Vegas | d3d9 (x32) | |
 | Resident Evil 5 | d3d9 | |
 | Resident Evil 6 | d3d9, vulkan | |
 | Resident Evil Revelations | d3d9 | |
 | Resident Evil Revelations 2 | d3d9 | |
 | The Elder Scrolls V: Skyrim - Legendary Edition | d3d9 | |
-| The Elder Scrolls V: Skyrim Anniversary | d3d11 | |
-| The Elder Scrolls V: Skyrim Special Edition | d3d11 | |
+| The Elder Scrolls V: Skyrim Anniversary | d3d11 (x64) | |
+| The Elder Scrolls V: Skyrim Special Edition | d3d11 (x64) | |
+| The Witcher 3 - Complete Edition | d3d11, d3d12 (x64) | |
 
 ## Contributing to the Compatibility List
 

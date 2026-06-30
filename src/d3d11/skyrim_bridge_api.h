@@ -26,6 +26,8 @@ struct GamePlugSkyrimData {
 
     float cameraNear;
     float cameraFar;
+    float cameraFov;
+    float viewSpaceToMetersFactor;
 
     bool isVR;
     uint32_t activeEye; // 0 = Left/Flat, 1 = Right

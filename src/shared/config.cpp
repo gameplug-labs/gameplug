@@ -239,12 +239,6 @@ std::string Config::Trim(const std::string& s) {
 }
 
 void Config::RenderUI(bool showResolutionEnumeration) {
-    bool vsync = GetBool("VSync", true);
-    if (ImGui::Checkbox("VSync", &vsync)) {
-        SetBool("VSync", vsync);
-        Save();
-        Load();
-    }
 
 #ifdef GAMEPLUG_WIN32
     showResolutionEnumeration = true;

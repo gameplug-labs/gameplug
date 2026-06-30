@@ -77,6 +77,10 @@ public:
     bool SetPluginFieldFloat(const std::string& name, float value);
     void ScanProjectionMatrix(ID3D11DeviceContext* context);
     bool IsValidProjectionMatrix(const float* m, float& outFovY, float& outNear, float& outFar, bool& outInverted);
+    bool TryDetectProjectionMatrix(ID3D11Buffer* buffer, const float* data, UINT dataSizeBytes);
+    bool InjectJitterIntoProjectionMatrix(float* data, UINT numFloats);
+    ID3D11Buffer* GetKnownProjectionBuffer() const { return m_knownProjBuffer; }
+    UINT GetKnownProjectionOffset() const { return m_knownProjOffset; }
 
 private:
     DXUpscalerManager()
@@ -104,7 +108,9 @@ private:
         , m_cameraNear(0.1f)
         , m_cameraFar(1000.0f)
         , m_cameraFov(60.0f)
-        , m_viewSpaceToMetersFactor(1.0f) {}
+        , m_viewSpaceToMetersFactor(1.0f)
+        , m_currentJitterX(0.0f)
+        , m_currentJitterY(0.0f) {}
 
     void LoadPlugin();
 #ifdef FALLOUT4
@@ -174,11 +180,15 @@ private:
     bool m_detectedHDR;
     int m_hdrConfidence;
     uint32_t m_projScanCounter;
+    ID3D11Buffer* m_knownProjBuffer = nullptr;
+    UINT m_knownProjOffset = 0;
 
     float m_cameraNear;
     float m_cameraFar;
     float m_cameraFov;
     float m_viewSpaceToMetersFactor;
+    float m_currentJitterX;
+    float m_currentJitterY;
 };
 
 } // namespace GamePlug

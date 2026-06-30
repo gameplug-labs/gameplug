@@ -1,5 +1,6 @@
 #include "hooks_common.h"
 #include "upscaler_manager.h"
+#include <cstring>
 #include <unordered_map>
 
 namespace GamePlug {
@@ -91,7 +92,11 @@ static std::unordered_map<void**, PFN_RSSetViewports> g_OriginalRSSetViewportsMa
 static std::unordered_map<void**, PFN_RSSetScissorRects> g_OriginalRSSetScissorRectsMap;
 static std::unordered_map<void**, PFN_OMSetRenderTargets> g_OriginalOMSetRenderTargetsMap;
 static std::unordered_map<void**, PFN_ClearDepthStencilView> g_OriginalClearDepthStencilViewMap;
+static std::unordered_map<void**, PFN_UpdateSubresource> g_OriginalUpdateSubresourceMap;
+static std::unordered_map<void**, PFN_Map> g_OriginalMapMap;
+static std::unordered_map<void**, PFN_Unmap> g_OriginalUnmapMap;
 static std::unordered_map<void**, PFN_QueryInterface> g_OriginalContextQIMap;
+static std::unordered_map<ID3D11Resource*, void*> g_MappedResources;
 
 typedef void (STDMETHODCALLTYPE* PFN_CopyResource)(ID3D11DeviceContext* pCtx, ID3D11Resource* pDstResource, ID3D11Resource* pSrcResource);
 typedef void (STDMETHODCALLTYPE* PFN_ResolveSubresource)(ID3D11DeviceContext* pCtx, ID3D11Resource* pDstResource, UINT DstSubresource, ID3D11Resource* pSrcResource, UINT SrcSubresource, DXGI_FORMAT Format);
@@ -567,6 +572,151 @@ void STDMETHODCALLTYPE HookedCopySubresourceRegion(ID3D11DeviceContext* pCtx, ID
     }
 }
 
+void STDMETHODCALLTYPE HookedUpdateSubresource(
+    ID3D11DeviceContext* pCtx, ID3D11Resource* pDstResource, UINT DstSubresource, const D3D11_BOX* pDstBox, const void* pSrcData, UINT SrcRowPitch,
+    UINT SrcDepthPitch) {
+    PFN_UpdateSubresource originalFn = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_HookMtx);
+        if (pCtx) {
+            void** pVTable = *(void***)pCtx;
+            auto it = g_OriginalUpdateSubresourceMap.find(pVTable);
+            if (it != g_OriginalUpdateSubresourceMap.end()) {
+                originalFn = it->second;
+            }
+        }
+    }
+    if (!originalFn) {
+        originalFn = g_OriginalUpdateSubresource;
+    }
+
+    if (!g_InHook && pDstResource && pSrcData) {
+        D3D11_RESOURCE_DIMENSION dim = D3D11_RESOURCE_DIMENSION_UNKNOWN;
+        pDstResource->GetType(&dim);
+        if (dim == D3D11_RESOURCE_DIMENSION_BUFFER) {
+            D3D11_BUFFER_DESC desc = {};
+            ((ID3D11Buffer*)pDstResource)->GetDesc(&desc);
+
+            DXUpscalerManager& mgr = DXUpscalerManager::Get();
+            UINT dstByteOffset = pDstBox ? pDstBox->left : 0;
+            UINT dataSize = pDstBox ? (pDstBox->right - pDstBox->left) : desc.ByteWidth;
+
+            if (!mgr.GetKnownProjectionBuffer()) {
+                mgr.TryDetectProjectionMatrix((ID3D11Buffer*)pDstResource, (const float*)pSrcData, dataSize);
+            }
+
+            if (pDstResource == (ID3D11Resource*)mgr.GetKnownProjectionBuffer() && dataSize >= 64) {
+                UINT knownOffset = mgr.GetKnownProjectionOffset();
+                if (knownOffset >= dstByteOffset && knownOffset + 64 <= dstByteOffset + dataSize) {
+                    ScopedRecursionGuard guard;
+                    std::vector<uint8_t> tempData(dataSize);
+                    memcpy(tempData.data(), pSrcData, dataSize);
+
+                    UINT localOffsetFloats = (knownOffset - dstByteOffset) / sizeof(float);
+                    float* fData = (float*)tempData.data();
+                    mgr.InjectJitterIntoProjectionMatrix(&fData[localOffsetFloats], 16);
+
+                    if (originalFn) {
+                        originalFn(pCtx, pDstResource, DstSubresource, pDstBox, tempData.data(), SrcRowPitch, SrcDepthPitch);
+                    }
+                    return;
+                }
+            }
+        }
+    }
+
+    if (originalFn) {
+        originalFn(pCtx, pDstResource, DstSubresource, pDstBox, pSrcData, SrcRowPitch, SrcDepthPitch);
+    }
+}
+
+HRESULT STDMETHODCALLTYPE HookedMap(
+    ID3D11DeviceContext* pCtx, ID3D11Resource* pResource, UINT Subresource, D3D11_MAP MapType, UINT MapFlags,
+    D3D11_MAPPED_SUBRESOURCE* pMappedResource) {
+    PFN_Map originalFn = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_HookMtx);
+        if (pCtx) {
+            void** pVTable = *(void***)pCtx;
+            auto it = g_OriginalMapMap.find(pVTable);
+            if (it != g_OriginalMapMap.end()) {
+                originalFn = it->second;
+            }
+        }
+    }
+    if (!originalFn) {
+        originalFn = g_OriginalMap;
+    }
+
+    HRESULT hr = originalFn ? originalFn(pCtx, pResource, Subresource, MapType, MapFlags, pMappedResource) : E_FAIL;
+    if (SUCCEEDED(hr) && !g_InHook && pResource && pMappedResource && pMappedResource->pData &&
+        (MapType == D3D11_MAP_WRITE || MapType == D3D11_MAP_WRITE_DISCARD || MapType == D3D11_MAP_WRITE_NO_OVERWRITE ||
+            MapType == D3D11_MAP_READ_WRITE)) {
+        D3D11_RESOURCE_DIMENSION dim = D3D11_RESOURCE_DIMENSION_UNKNOWN;
+        pResource->GetType(&dim);
+        if (dim == D3D11_RESOURCE_DIMENSION_BUFFER) {
+            std::lock_guard<std::mutex> lock(g_HookMtx);
+            g_MappedResources[pResource] = pMappedResource->pData;
+        }
+    }
+    return hr;
+}
+
+void STDMETHODCALLTYPE HookedUnmap(ID3D11DeviceContext* pCtx, ID3D11Resource* pResource, UINT Subresource) {
+    PFN_Unmap originalFn = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_HookMtx);
+        if (pCtx) {
+            void** pVTable = *(void***)pCtx;
+            auto it = g_OriginalUnmapMap.find(pVTable);
+            if (it != g_OriginalUnmapMap.end()) {
+                originalFn = it->second;
+            }
+        }
+    }
+    if (!originalFn) {
+        originalFn = g_OriginalUnmap;
+    }
+
+    if (!g_InHook && pResource) {
+        void* mappedData = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(g_HookMtx);
+            auto it = g_MappedResources.find(pResource);
+            if (it != g_MappedResources.end()) {
+                mappedData = it->second;
+                g_MappedResources.erase(it);
+            }
+        }
+
+        if (mappedData) {
+            D3D11_RESOURCE_DIMENSION dim = D3D11_RESOURCE_DIMENSION_UNKNOWN;
+            pResource->GetType(&dim);
+            if (dim == D3D11_RESOURCE_DIMENSION_BUFFER) {
+                D3D11_BUFFER_DESC desc = {};
+                ((ID3D11Buffer*)pResource)->GetDesc(&desc);
+
+                DXUpscalerManager& mgr = DXUpscalerManager::Get();
+                float* fData = (float*)mappedData;
+                if (!mgr.GetKnownProjectionBuffer()) {
+                    mgr.TryDetectProjectionMatrix((ID3D11Buffer*)pResource, fData, desc.ByteWidth);
+                }
+
+                if (pResource == (ID3D11Resource*)mgr.GetKnownProjectionBuffer()) {
+                    UINT offsetFloats = mgr.GetKnownProjectionOffset() / sizeof(float);
+                    if ((offsetFloats + 16) * sizeof(float) <= desc.ByteWidth) {
+                        ScopedRecursionGuard guard;
+                        mgr.InjectJitterIntoProjectionMatrix(&fData[offsetFloats], 16);
+                    }
+                }
+            }
+        }
+    }
+
+    if (originalFn) {
+        originalFn(pCtx, pResource, Subresource);
+    }
+}
 
 void PatchDeviceContextVTable(ID3D11DeviceContext* context) {
     if (!context)
@@ -592,6 +742,15 @@ void PatchDeviceContextVTable(ID3D11DeviceContext* context) {
     }
     if (g_OriginalClearDepthStencilViewMap.count(pVTable) == 0) {
         g_OriginalClearDepthStencilViewMap[pVTable] = (PFN_ClearDepthStencilView)pVTable[53];
+    }
+    if (g_OriginalUpdateSubresourceMap.count(pVTable) == 0) {
+        g_OriginalUpdateSubresourceMap[pVTable] = (PFN_UpdateSubresource)pVTable[48];
+    }
+    if (g_OriginalMapMap.count(pVTable) == 0) {
+        g_OriginalMapMap[pVTable] = (PFN_Map)pVTable[14];
+    }
+    if (g_OriginalUnmapMap.count(pVTable) == 0) {
+        g_OriginalUnmapMap[pVTable] = (PFN_Unmap)pVTable[15];
     }
     if (g_OriginalContextQIMap.count(pVTable) == 0) {
         g_OriginalContextQIMap[pVTable] = (PFN_QueryInterface)pVTable[0];
@@ -619,6 +778,15 @@ void PatchDeviceContextVTable(ID3D11DeviceContext* context) {
     if (!g_OriginalClearDepthStencilView) {
         g_OriginalClearDepthStencilView = (PFN_ClearDepthStencilView)pVTable[53];
     }
+    if (!g_OriginalUpdateSubresource) {
+        g_OriginalUpdateSubresource = (PFN_UpdateSubresource)pVTable[48];
+    }
+    if (!g_OriginalMap) {
+        g_OriginalMap = (PFN_Map)pVTable[14];
+    }
+    if (!g_OriginalUnmap) {
+        g_OriginalUnmap = (PFN_Unmap)pVTable[15];
+    }
     if (!g_OriginalCopyResource) {
         g_OriginalCopyResource = (PFN_CopyResource)pVTable[47];
     }
@@ -632,11 +800,14 @@ void PatchDeviceContextVTable(ID3D11DeviceContext* context) {
     DWORD old;
     if (VirtualProtect(pVTable, 128 * sizeof(void*), PAGE_READWRITE, &old)) {
         pVTable[0] = (void*)HookedContextQueryInterface;
+        pVTable[14] = (void*)HookedMap;
+        pVTable[15] = (void*)HookedUnmap;
         pVTable[33] = (void*)HookedOMSetRenderTargets;
         pVTable[44] = (void*)HookedRSSetViewports;
         pVTable[45] = (void*)HookedRSSetScissorRects;
         pVTable[46] = (void*)HookedCopySubresourceRegion;
         pVTable[47] = (void*)HookedCopyResource;
+        pVTable[48] = (void*)HookedUpdateSubresource;
         pVTable[53] = (void*)HookedClearDepthStencilView;
         pVTable[57] = (void*)HookedResolveSubresource;
         VirtualProtect(pVTable, 128 * sizeof(void*), old, &old);

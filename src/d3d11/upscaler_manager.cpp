@@ -639,7 +639,7 @@ void DXUpscalerManager::RenderUI(float fps, uint32_t width, uint32_t height) {
                         GetModuleFileNameA(NULL, exePath, MAX_PATH);
                         std::string exeName = std::filesystem::path(exePath).filename().string();
                         std::transform(exeName.begin(), exeName.end(), exeName.begin(), ::tolower);
-                        isBatmanCached = (exeName.find("batman") != std::string::npos || exeName.find("fallout4") != std::string::npos);
+                        isBatmanCached = (exeName.find("batman") != std::string::npos );
                         checkedBatman = true;
                     }
                     isBatman = isBatmanCached;
@@ -871,7 +871,7 @@ void DXUpscalerManager::GetTargetResolution(uint32_t width, uint32_t height, uin
                         GetModuleFileNameA(NULL, exePath, MAX_PATH);
                         std::string exeName = std::filesystem::path(exePath).filename().string();
                         std::transform(exeName.begin(), exeName.end(), exeName.begin(), ::tolower);
-                        isBatmanCached = (exeName.find("batman") != std::string::npos || exeName.find("fallout4") != std::string::npos);
+                        isBatmanCached = (exeName.find("batman") != std::string::npos);
                         checkedBatman = true;
                     }
                     isBatman = isBatmanCached;
@@ -1007,11 +1007,17 @@ void DXUpscalerManager::RenderFrameDX11(
         return r;
     };
 
-    float jitterX = HaltonFn(m_jitterIndex, 2) - 0.5f;
-    float jitterY = HaltonFn(m_jitterIndex, 3) - 0.5f;
+    float haltonJitterX = HaltonFn(m_jitterIndex, 2) - 0.5f;
+    float haltonJitterY = HaltonFn(m_jitterIndex, 3) - 0.5f;
+    float jitterX = (m_renderWidth > 0) ? (haltonJitterX * 2.0f / (float)m_renderWidth) : 0.0f;
+    float jitterY = (m_renderHeight > 0) ? (haltonJitterY * 2.0f / (float)m_renderHeight) : 0.0f;
+    m_currentJitterX = jitterX;
+    m_currentJitterY = jitterY;
 
     if (shouldLog) {
-        Logger::info("DXUpscalerManager::RenderFrameDX11 [Jitter] x=" + std::to_string(jitterX) + " y=" + std::to_string(jitterY));
+        Logger::info("DXUpscalerManager::RenderFrameDX11 [JitterInject] x=" + std::to_string(jitterX) +
+                     " y=" + std::to_string(jitterY) + " raw=(" + std::to_string(haltonJitterX) + ", " +
+                     std::to_string(haltonJitterY) + ")");
     }
 
     // 1. Compile downsampling compute shader if not done
@@ -1216,7 +1222,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID) {
     }
 
     m_pInterface->OnRenderFrame((uintptr_t)context, (uint64_t)sourceSRV, (uint64_t)targetRTV, 0, width, height, m_renderWidth,
-        m_renderHeight, depthImage, depthFormatVal, mvImage, mvFormatVal, 0.0f, 0.0f, m_cameraNear, m_cameraFar, m_cameraFov,
+        m_renderHeight, depthImage, depthFormatVal, mvImage, mvFormatVal, jitterX, jitterY, m_cameraNear, m_cameraFar, m_cameraFov,
         m_viewSpaceToMetersFactor, m_detectedInvertedDepth, m_detectedHDR);
 
     // 5. Clean up local references
@@ -1376,6 +1382,12 @@ void DXUpscalerManager::ResetTracker() {
     m_mvWidth = 0;
     m_mvHeight = 0;
     m_mvFormat = DXGI_FORMAT_UNKNOWN;
+
+    if (m_knownProjBuffer) {
+        m_knownProjBuffer->Release();
+        m_knownProjBuffer = nullptr;
+    }
+    m_knownProjOffset = 0;
 }
 
 void DXUpscalerManager::ResetFrame() {
@@ -1632,6 +1644,67 @@ bool DXUpscalerManager::IsValidProjectionMatrix(const float* m, float& outFovY, 
         outNear = -B;
         outFar = 100000.0f;
         outInverted = false;
+        return true;
+    }
+
+    return false;
+}
+
+bool DXUpscalerManager::InjectJitterIntoProjectionMatrix(float* data, UINT numFloats) {
+    if (!data || numFloats < 16)
+        return false;
+
+    float fovY = 0.0f;
+    float nearP = 0.0f;
+    float farP = 0.0f;
+    bool inverted = false;
+    if (!IsValidProjectionMatrix(data, fovY, nearP, farP, inverted))
+        return false;
+
+    bool rowMajor = std::abs(data[11] - 1.0f) < 1e-3f || std::abs(data[11] + 1.0f) < 1e-3f;
+    if (rowMajor) {
+        data[2] += m_currentJitterX;
+        data[6] += m_currentJitterY;
+    } else {
+        data[2] += m_currentJitterX;
+        data[6] += m_currentJitterY;
+    }
+
+    static uint64_t s_injectLog = 0;
+    if (s_injectLog++ % 300 == 0) {
+        Logger::info("DXUpscalerManager: Injected projection jitter x=" + std::to_string(m_currentJitterX) +
+                     " y=" + std::to_string(m_currentJitterY) + " rowMajor=" + std::to_string(rowMajor));
+    }
+    return true;
+}
+
+bool DXUpscalerManager::TryDetectProjectionMatrix(ID3D11Buffer* buffer, const float* data, UINT dataSizeBytes) {
+    if (m_knownProjBuffer || !buffer || !data || dataSizeBytes < 64)
+        return false;
+
+    UINT numFloats = dataSizeBytes / sizeof(float);
+    for (UINT offset = 0; offset + 16 <= numFloats; offset += 4) {
+        float fovY = 0.0f;
+        float nearP = 0.0f;
+        float farP = 0.0f;
+        bool inverted = false;
+        if (!IsValidProjectionMatrix(&data[offset], fovY, nearP, farP, inverted))
+            continue;
+
+        float fovDegrees = fovY * (180.0f / 3.14159265f);
+        m_cameraNear = nearP;
+        m_cameraFar = farP;
+        m_cameraFov = fovDegrees;
+        RecordDepthClearValue(inverted);
+
+        buffer->AddRef();
+        m_knownProjBuffer = buffer;
+        m_knownProjOffset = offset * sizeof(float);
+
+        Logger::info("DXUpscalerManager: Detected projection matrix during constant-buffer update: offset=" +
+                     std::to_string(m_knownProjOffset) + ", Near=" + std::to_string(nearP) +
+                     ", Far=" + std::to_string(farP) + ", FOV=" + std::to_string(fovDegrees) +
+                     ", Inverted=" + std::to_string(inverted));
         return true;
     }
 

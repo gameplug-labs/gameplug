@@ -33,6 +33,13 @@ typedef void(STDMETHODCALLTYPE* PFN_OMSetRenderTargets)(ID3D11DeviceContext* pCt
     ID3D11RenderTargetView* const* ppRenderTargetViews, ID3D11DepthStencilView* pDepthStencilView);
 typedef void(STDMETHODCALLTYPE* PFN_ClearDepthStencilView)(
     ID3D11DeviceContext* pCtx, ID3D11DepthStencilView* pDepthStencilView, UINT ClearFlags, FLOAT Depth, UINT8 Stencil);
+typedef void(STDMETHODCALLTYPE* PFN_UpdateSubresource)(
+    ID3D11DeviceContext* pCtx, ID3D11Resource* pDstResource, UINT DstSubresource, const D3D11_BOX* pDstBox, const void* pSrcData,
+    UINT SrcRowPitch, UINT SrcDepthPitch);
+typedef HRESULT(STDMETHODCALLTYPE* PFN_Map)(
+    ID3D11DeviceContext* pCtx, ID3D11Resource* pResource, UINT Subresource, D3D11_MAP MapType, UINT MapFlags,
+    D3D11_MAPPED_SUBRESOURCE* pMappedResource);
+typedef void(STDMETHODCALLTYPE* PFN_Unmap)(ID3D11DeviceContext* pCtx, ID3D11Resource* pResource, UINT Subresource);
 typedef HRESULT(STDMETHODCALLTYPE* PFN_CreateDeferredContext)(
     ID3D11Device* pDevice, UINT ContextFlags, ID3D11DeviceContext** ppDeferredContext);
 typedef void(STDMETHODCALLTYPE* PFN_GetImmediateContext)(ID3D11Device* pDevice, ID3D11DeviceContext** ppImmediateContext);
@@ -71,6 +78,9 @@ extern PFN_RSSetViewports g_OriginalRSSetViewports;
 extern PFN_RSSetScissorRects g_OriginalRSSetScissorRects;
 extern PFN_OMSetRenderTargets g_OriginalOMSetRenderTargets;
 extern PFN_ClearDepthStencilView g_OriginalClearDepthStencilView;
+extern PFN_UpdateSubresource g_OriginalUpdateSubresource;
+extern PFN_Map g_OriginalMap;
+extern PFN_Unmap g_OriginalUnmap;
 extern PFN_CreateDeferredContext g_OriginalCreateDeferredContext;
 extern PFN_GetImmediateContext g_OriginalGetImmediateContext;
 extern PFN_CreateSwapChain g_OriginalCreateSwapChain;
@@ -141,5 +151,11 @@ void STDMETHODCALLTYPE HookedGetImmediateContext(ID3D11Device* pDevice, ID3D11De
 HRESULT STDMETHODCALLTYPE HookedContextQueryInterface(ID3D11DeviceContext* pCtx, REFIID riid, void** ppvObject);
 void STDMETHODCALLTYPE HookedClearDepthStencilView(
     ID3D11DeviceContext* pCtx, ID3D11DepthStencilView* pDepthStencilView, UINT ClearFlags, FLOAT Depth, UINT8 Stencil);
+void STDMETHODCALLTYPE HookedUpdateSubresource(ID3D11DeviceContext* pCtx, ID3D11Resource* pDstResource, UINT DstSubresource,
+    const D3D11_BOX* pDstBox, const void* pSrcData, UINT SrcRowPitch, UINT SrcDepthPitch);
+HRESULT STDMETHODCALLTYPE HookedMap(
+    ID3D11DeviceContext* pCtx, ID3D11Resource* pResource, UINT Subresource, D3D11_MAP MapType, UINT MapFlags,
+    D3D11_MAPPED_SUBRESOURCE* pMappedResource);
+void STDMETHODCALLTYPE HookedUnmap(ID3D11DeviceContext* pCtx, ID3D11Resource* pResource, UINT Subresource);
 
 } // namespace GamePlug

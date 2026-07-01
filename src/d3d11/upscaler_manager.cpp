@@ -2,7 +2,7 @@
 #include "config.h"
 #include "imgui.h"
 #include "logger.h"
-#include "downsample.h"
+#include "../../sub_projects/dxupscaler/src/shaders/downsample.h"
 #include <algorithm>
 #include <cmath>
 #include <filesystem>

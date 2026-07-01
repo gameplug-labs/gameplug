@@ -2,6 +2,7 @@
 #include "config.h"
 #include "imgui.h"
 #include "logger.h"
+#include "downsample.h"
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
@@ -834,37 +835,11 @@ void DXUpscalerManager::RenderFrameDX11(
         Logger::info("DXUpscalerManager::RenderFrameDX11 [Fake Jitter] x=" + std::to_string(jitterX) + " y=" + std::to_string(jitterY));
     }
 
-    // 1. Compile downsampling compute shader if not done
+    // 1. Create downsampling compute shader if not done
     if (!m_downsampleCS && m_pd3dDevice) {
-        const char* shaderSrc = R"(
-Texture2D<float4> InputTex : register(t0);
-RWTexture2D<float4> OutputTex : register(u0);
-
-[numthreads(8, 8, 1)]
-void main(uint3 dispatchThreadID : SV_DispatchThreadID) {
-    uint2 dstSize;
-    OutputTex.GetDimensions(dstSize.x, dstSize.y);
-    if (dispatchThreadID.x >= dstSize.x || dispatchThreadID.y >= dstSize.y) return;
-    
-    uint2 srcSize;
-    InputTex.GetDimensions(srcSize.x, srcSize.y);
-    
-    float2 uv = (float2(dispatchThreadID.xy) + 0.5f) / float2(dstSize);
-    uint2 srcPos = uint2(uv * float2(srcSize));
-    OutputTex[dispatchThreadID.xy] = InputTex[srcPos];
-}
-)";
-        ID3DBlob* csBlob = nullptr;
-        ID3DBlob* errorBlob = nullptr;
-        HRESULT hr = D3DCompile(shaderSrc, strlen(shaderSrc), nullptr, nullptr, nullptr, "main", "cs_5_0", 0, 0, &csBlob, &errorBlob);
-        if (SUCCEEDED(hr)) {
-            m_pd3dDevice->CreateComputeShader(csBlob->GetBufferPointer(), csBlob->GetBufferSize(), nullptr, &m_downsampleCS);
-            csBlob->Release();
-        } else {
-            if (errorBlob) {
-                Logger::error("DXUpscalerManager: Failed to compile downsample CS: " + std::string((char*)errorBlob->GetBufferPointer()));
-                errorBlob->Release();
-            }
+        HRESULT hr = m_pd3dDevice->CreateComputeShader(g_downsampleCS, sizeof(g_downsampleCS), nullptr, &m_downsampleCS);
+        if (FAILED(hr)) {
+            Logger::error("DXUpscalerManager: Failed to create downsample CS");
         }
     }
 

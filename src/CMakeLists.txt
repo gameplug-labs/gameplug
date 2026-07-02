@@ -31,6 +31,7 @@ target_include_directories(framework_vk PUBLIC
     ${PROJECT_SOURCE_DIR}/include
     ${PROJECT_SOURCE_DIR}/src/vk
     ${PROJECT_SOURCE_DIR}/src/shared
+    ${PROJECT_SOURCE_DIR}/sub_projects/upscaler-manager/vk
     ${PROJECT_SOURCE_DIR}/external/volk
     ${PROJECT_SOURCE_DIR}/external/spdlog/include
     ${PROJECT_SOURCE_DIR}/external/imgui
@@ -55,7 +56,7 @@ add_library(framework_d3d11 STATIC
     d3d11/hooks.cpp
     d3d11/hooks_d3d11.cpp
     d3d11/hooks_dxgi.cpp
-    d3d11/upscaler_manager.cpp
+    ${PROJECT_SOURCE_DIR}/sub_projects/upscaler-manager/d3d11/upscaler_manager.cpp
     ${PROJECT_SOURCE_DIR}/external/imgui/backends/imgui_impl_dx11.cpp
 )
 
@@ -66,6 +67,7 @@ target_include_directories(framework_d3d11 PUBLIC
     ${PROJECT_SOURCE_DIR}/include
     ${PROJECT_SOURCE_DIR}/src/d3d11
     ${PROJECT_SOURCE_DIR}/src/shared
+    ${PROJECT_SOURCE_DIR}/sub_projects/upscaler-manager/d3d11
     ${PROJECT_SOURCE_DIR}/external/spdlog/include
     ${PROJECT_SOURCE_DIR}/external/imgui
     ${PROJECT_SOURCE_DIR}/external/imgui/backends
@@ -109,6 +111,7 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 8)
         ${PROJECT_SOURCE_DIR}/include
         ${PROJECT_SOURCE_DIR}/src/d3d12
         ${PROJECT_SOURCE_DIR}/src/shared
+        ${PROJECT_SOURCE_DIR}/sub_projects/upscaler-manager/d3d12
         ${PROJECT_SOURCE_DIR}/external/spdlog/include
         ${PROJECT_SOURCE_DIR}/external/imgui
         ${PROJECT_SOURCE_DIR}/external/imgui/backends
@@ -200,7 +203,7 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 4)
         d3d9/d3d9_proxy_texture.cpp
         d3d9/texture_replacer.cpp
         d3d9/dx_overlay.cpp
-        d3d9/upscaler_manager.cpp
+        ${PROJECT_SOURCE_DIR}/sub_projects/upscaler-manager/d3d9/upscaler_manager.cpp
         ${PROJECT_SOURCE_DIR}/external/imgui/backends/imgui_impl_dx9.cpp
     )
 
@@ -215,6 +218,7 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 4)
         ${PROJECT_SOURCE_DIR}/include
         ${PROJECT_SOURCE_DIR}/src/d3d9
         ${PROJECT_SOURCE_DIR}/src/shared
+        ${PROJECT_SOURCE_DIR}/sub_projects/upscaler-manager/d3d9
         ${PROJECT_SOURCE_DIR}/external/spdlog/include
         ${PROJECT_SOURCE_DIR}/external/imgui
         ${PROJECT_SOURCE_DIR}/external/imgui/backends
@@ -246,7 +250,7 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 4)
         d3d9/d3d9_proxy_texture.cpp
         d3d9/texture_replacer.cpp
         d3d9/dx_overlay.cpp
-        d3d9/upscaler_manager.cpp
+        ${PROJECT_SOURCE_DIR}/sub_projects/upscaler-manager/d3d9/upscaler_manager.cpp
         ${PROJECT_SOURCE_DIR}/external/imgui/backends/imgui_impl_dx9.cpp
     )
 
@@ -260,6 +264,7 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 4)
         ${PROJECT_SOURCE_DIR}/include
         ${PROJECT_SOURCE_DIR}/src/d3d9
         ${PROJECT_SOURCE_DIR}/src/shared
+        ${PROJECT_SOURCE_DIR}/sub_projects/upscaler-manager/d3d9
         ${PROJECT_SOURCE_DIR}/external/spdlog/include
         ${PROJECT_SOURCE_DIR}/external/imgui
         ${PROJECT_SOURCE_DIR}/external/imgui/backends

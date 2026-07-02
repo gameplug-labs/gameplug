@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.6] - 2026-07-02
+
+### Added
+- Added `Ctrl + End` as an alternative shortcut to toggle overlay visibility.
+
 ## [1.0.5] - 2026-07-01
 
 ### Added

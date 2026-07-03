@@ -60,6 +60,9 @@ struct GamePlugUpscalerInterface {
 
     // Returns the number of fields and a pointer to an array of descriptors.
     int(__cdecl* GetFields)(FieldDescriptor** outFields);
+
+    // Present callback
+    bool(__cdecl* OnPresent)(uintptr_t swapChain, uint32_t syncInterval, uint32_t flags);
 };
 
 #define GamePlug_UPSCALER_INTERFACE_VERSION 1

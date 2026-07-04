@@ -45,7 +45,7 @@ struct FrameContext {
 ID3D12Device* g_pd3d12Device = nullptr;
 static ID3D12DescriptorHeap* g_pd3dRtvDescHeap = nullptr;
 static ID3D12DescriptorHeap* g_pd3dSrvDescHeap = nullptr;
-static std::mutex g_QueueMtx;
+std::mutex g_QueueMtx;
 ID3D12CommandQueue* g_pd3dCommandQueue = nullptr;
 static ID3D12GraphicsCommandList* g_pd3dCommandList = nullptr;
 static ID3D12Resource* g_backBuffers[8] = {};
@@ -467,10 +467,12 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
 
     g_frameCounter++;
 
-    // Toggle Visibility with Ctrl + HOME key
+    // Toggle Visibility with Ctrl + HOME key, Ctrl + END key, or ` key (VK_OEM_3)
     bool ctrlPressed = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
     bool homePressed = (GetAsyncKeyState(VK_HOME) & 0x8000) != 0;
-    bool keyCurrentlyPressed = ctrlPressed && homePressed;
+    bool endPressed = (GetAsyncKeyState(VK_END) & 0x8000) != 0;
+    bool backtickPressed = (GetAsyncKeyState(VK_OEM_3) & 0x8000) != 0;
+    bool keyCurrentlyPressed = (ctrlPressed && homePressed) || (ctrlPressed && endPressed) || backtickPressed;
 
     if (keyCurrentlyPressed && !g_ShowKeyWasPressed) {
         g_Visible = !g_Visible;

@@ -587,23 +587,9 @@ STDMETHODIMP ProxyDirect3DDevice9::Reset(D3DPRESENT_PARAMETERS* pPP) {
         pPP->BackBufferWidth = scaledW;
         pPP->BackBufferHeight = scaledH;
         if (m_isUpscaling) {
-<<<<<<< HEAD
-            if (m_pFakeBackBufferTex) {
-                m_pFakeBackBufferTex->Release();
-                m_pFakeBackBufferTex = nullptr;
-            }
-            SetCreatingFakeBackBuffer(true);
-            HRESULT hrCreate = m_pReal->CreateTexture(
-                m_renderW, m_renderH, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &m_pFakeBackBufferTex, nullptr);
-            SetCreatingFakeBackBuffer(false);
-            if (SUCCEEDED(hrCreate)) {
-                IDirect3DSurface9* pRealSurf = nullptr;
-                m_pFakeBackBufferTex->GetSurfaceLevel(0, &pRealSurf);
-=======
             UpscalerManager::Get().CreateFakeBackBuffer(m_pReal, m_displayW, m_displayH, D3DFMT_A8R8G8B8);
             IDirect3DSurface9* pRealSurf = UpscalerManager::Get().GetFakeBackBufferSurface();
             if (pRealSurf) {
->>>>>>> f8172cb52196fcee110c80a320a9af9b573275df
                 if (!m_pFakeBackBuffer) {
                     m_pFakeBackBuffer = new ProxySurface9(pRealSurf, this, m_displayW, m_displayH);
                 } else {

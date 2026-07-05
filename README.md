@@ -1,5 +1,9 @@
 # 🚀 GamePlug: The Universal Plugin Layer
 
+<p align="center">
+  <img src="gameplug.png" alt="GamePlug Logo" width="600" />
+</p>
+
 GamePlug is a powerful, multi-API interception framework designed for modders. It provides a unified plugin system to inject custom ImGui UIs and game logic across **Vulkan**, **DirectX 9**, **DirectX 10**, **DirectX 11**, and **DirectX 12**.
 
 ## ✨ Key Features

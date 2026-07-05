@@ -2,11 +2,11 @@ name: Test Build
 
 on:
   push:
-    branches: [ main, upscaler ]
+    branches: [ main ]
     paths:
       - 'src/**'
   pull_request:
-    branches: [ main, upscaler ]
+    branches: [ main ]
     paths:
       - 'src/**'
 

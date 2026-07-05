@@ -176,11 +176,12 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
     }
     lastTime = currentTime;
 
-    // Toggle Visibility with Ctrl + HOME key or ` key (VK_OEM_3)
+    // Toggle Visibility with Ctrl + HOME key, Ctrl + END key, or ` key (VK_OEM_3)
     bool ctrlPressed = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
     bool homePressed = (GetAsyncKeyState(VK_HOME) & 0x8000) != 0;
+    bool endPressed = (GetAsyncKeyState(VK_END) & 0x8000) != 0;
     bool backtickPressed = (GetAsyncKeyState(VK_OEM_3) & 0x8000) != 0;
-    bool keyCurrentlyPressed = (ctrlPressed && homePressed) || backtickPressed;
+    bool keyCurrentlyPressed = (ctrlPressed && homePressed) || (ctrlPressed && endPressed) || backtickPressed;
 
     if (keyCurrentlyPressed && !g_ShowKeyWasPressed) {
         g_Visible = !g_Visible;

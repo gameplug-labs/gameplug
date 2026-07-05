@@ -14,7 +14,6 @@ class ProxyDirect3DDevice9 : public IDirect3DDevice9Ex {
     IDirect3D9* m_pParent;
     HWND m_hFocusWindow;
     ProxySurface9* m_pFakeBackBuffer;
-    IDirect3DTexture9* m_pFakeBackBufferTex;
     uint32_t m_renderW, m_renderH;
     uint32_t m_displayW, m_displayH;
     bool m_isUpscaling;

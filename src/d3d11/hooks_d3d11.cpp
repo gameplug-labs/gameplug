@@ -1093,11 +1093,11 @@ void STDMETHODCALLTYPE HookedOMSetRenderTargets(ID3D11DeviceContext* pCtx, UINT 
 
     for (UINT i = 0; i < count; ++i) {
         localRTVs[i] = ppRenderTargetViews[i];
-        if (ppRenderTargetViews[i] && realBB) {
+        if (ppRenderTargetViews[i]) {
             ID3D11Resource* res = nullptr;
             ppRenderTargetViews[i]->GetResource(&res);
             if (res) {
-                if (IsSameResource(res, (ID3D11Resource*)realBB)) {
+                if (realBB && IsSameResource(res, (ID3D11Resource*)realBB)) {
                     ID3D11Texture2D* fakeBB = DXUpscalerManager::Get().GetFakeBackBuffer();
                     if (fakeBB) {
                         ID3D11Resource* cachedRes = nullptr;
@@ -1118,6 +1118,15 @@ void STDMETHODCALLTYPE HookedOMSetRenderTargets(ID3D11DeviceContext* pCtx, UINT 
                             modified = true;
                         }
                     }
+                }
+
+                // Track the render target texture to discover motion vectors
+                ID3D11Texture2D* tex = nullptr;
+                if (SUCCEEDED(res->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&tex))) {
+                    D3D11_TEXTURE2D_DESC desc;
+                    tex->GetDesc(&desc);
+                    DXUpscalerManager::Get().TrackTexture(tex, &desc);
+                    tex->Release();
                 }
                 res->Release();
             }

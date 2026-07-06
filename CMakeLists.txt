@@ -53,7 +53,7 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 8)
 endif()
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/sub_projects/dxupscaler/CMakeLists.txt")
-    add_subdirectory(sub_projects/dxupscaler)
+    # add_subdirectory(sub_projects/dxupscaler)
 endif()
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/sub_projects/vkupscaler/CMakeLists.txt")

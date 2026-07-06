@@ -1199,6 +1199,21 @@ void STDMETHODCALLTYPE HookedClearDepthStencilView(
         Logger::info("DXUpscalerManager: Check depth detect " + std::string(isInverted ? "true" : "false") +
                      " Depth: " + std::to_string(Depth) + " Stencil: " + std::to_string(Stencil));
         DXUpscalerManager::Get().RecordDepthClearValue(isInverted);
+
+        if (pDepthStencilView) {
+            ID3D11Resource* res = nullptr;
+            pDepthStencilView->GetResource(&res);
+            if (res) {
+                ID3D11Texture2D* tex = nullptr;
+                if (SUCCEEDED(res->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&tex))) {
+                    D3D11_TEXTURE2D_DESC desc;
+                    tex->GetDesc(&desc);
+                    DXUpscalerManager::Get().TrackTexture(tex, &desc, true);
+                    tex->Release();
+                }
+                res->Release();
+            }
+        }
     }
 
     if (originalFn) {

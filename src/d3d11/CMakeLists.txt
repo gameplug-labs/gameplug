@@ -30,7 +30,7 @@ if(MSVC)
         PREFIX ""
         SUFFIX ".dll"
         OUTPUT_NAME "dinput8"
-        LINK_FLAGS "/DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3dcompiler_47.dll"
+        LINK_FLAGS "/DEF:\"${CMAKE_CURRENT_SOURCE_DIR}/dinput.def\" /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3dcompiler_47.dll"
     )
 else()
     set_target_properties(dinput8_d3d11 PROPERTIES
@@ -79,7 +79,7 @@ if(MSVC)
         PREFIX ""
         SUFFIX ".dll"
         OUTPUT_NAME "version"
-        LINK_FLAGS "/DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3dcompiler_47.dll"
+        LINK_FLAGS "/DEF:\"${CMAKE_CURRENT_SOURCE_DIR}/version.def\" /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3dcompiler_47.dll"
     )
 else()
     set_target_properties(version_d3d11 PROPERTIES
@@ -129,7 +129,7 @@ if(MSVC)
         PREFIX ""
         SUFFIX ".dll"
         OUTPUT_NAME "version"
-        LINK_FLAGS "/DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3dcompiler_47.dll"
+        LINK_FLAGS "/DEF:\"${CMAKE_CURRENT_SOURCE_DIR}/version_fallout4.def\" /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3dcompiler_47.dll"
     )
 else()
     set_target_properties(version_d3d11_fallout4 PROPERTIES

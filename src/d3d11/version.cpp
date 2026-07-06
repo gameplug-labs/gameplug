@@ -132,3 +132,13 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
     }
     return TRUE;
 }
+
+#ifdef FALLOUT4
+#include "fallout4_bridge_api.h"
+// Volatile pointer reference to force linker to preserve the unreferenced exports from framework_d3d11_fallout4.lib
+extern "C" __declspec(dllexport) void* g_forceKeepFallout4Exports[] = {
+    (void*)&GamePlug_SetFallout4Data,
+    (void*)&GamePlug_GetFallout4ResolutionOverride,
+    (void*)&GamePlug_IsFallout4OverlayVisible
+};
+#endif

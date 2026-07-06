@@ -381,7 +381,7 @@ void OverlayRenderer::EndFrame() {
 }
 
 void OverlayRenderer::Render(VkCommandBuffer cmd, VkImage source, VkImage target, uint32_t width, uint32_t height) {
-    if (!m_initialized || !m_visible || m_uiRendered)
+    if (!m_initialized || m_uiRendered)
         return;
 
     if (!m_frameStarted) {
@@ -402,6 +402,10 @@ void OverlayRenderer::Render(VkCommandBuffer cmd, VkImage source, VkImage target
     // 1. Perform Upscaling (Source -> Target) if images are valid
     if (source != VK_NULL_HANDLE && target != VK_NULL_HANDLE) {
         UpscalerManager::Get().RenderFrame((uintptr_t)cmd, (uint64_t)source, (uint64_t)target, width, height);
+    }
+
+    if (!m_visible) {
+        return;
     }
 
     // 2. Draw GamePlug ImGui UI

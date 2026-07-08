@@ -121,6 +121,30 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateSwapchainKHR(
         spoofInfo.imageExtent = {nativeW, nativeH};
     }
 
+    // Unlock FPS / disable VSync by using MAILBOX or IMMEDIATE present mode if supported
+    auto* inst_entry_fps = GamePlug::DispatchManager::Get().GetInstance(g_Instance);
+    if (inst_entry_fps) {
+        uint32_t presentModeCount = 0;
+        inst_entry_fps->table.vkGetPhysicalDeviceSurfacePresentModesKHR(g_PhysDevice, pCreateInfo->surface, &presentModeCount, nullptr);
+        if (presentModeCount > 0) {
+            std::vector<VkPresentModeKHR> modes(presentModeCount);
+            inst_entry_fps->table.vkGetPhysicalDeviceSurfacePresentModesKHR(g_PhysDevice, pCreateInfo->surface, &presentModeCount, modes.data());
+            bool hasMailbox = false;
+            bool hasImmediate = false;
+            for (auto mode : modes) {
+                if (mode == VK_PRESENT_MODE_MAILBOX_KHR) hasMailbox = true;
+                if (mode == VK_PRESENT_MODE_IMMEDIATE_KHR) hasImmediate = true;
+            }
+            if (hasMailbox) {
+                spoofInfo.presentMode = VK_PRESENT_MODE_MAILBOX_KHR;
+                GamePlug::Logger::info("GamePlug_CreateSwapchainKHR: VSync unlocked using MAILBOX present mode");
+            } else if (hasImmediate) {
+                spoofInfo.presentMode = VK_PRESENT_MODE_IMMEDIATE_KHR;
+                GamePlug::Logger::info("GamePlug_CreateSwapchainKHR: VSync unlocked using IMMEDIATE present mode");
+            }
+        }
+    }
+
     VkResult result = dev_entry->table.vkCreateSwapchainKHR(device, &spoofInfo, pAllocator, pSwapchain);
     GamePlug::Logger::info("vkCreateSwapchainKHR: Trace 10.2 (Result=" + std::to_string(result) + ")");
 
@@ -157,12 +181,12 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateSwapchainKHR(
 
         GamePlug::Logger::info("vkCreateSwapchainKHR: Trace 10.5 (SetupDevice)");
         GamePlug::ImageTracker::Get().ResetScores();
-        GamePlug::ImageTracker::Get().SetScreenDimensions(pCreateInfo->imageExtent.width, pCreateInfo->imageExtent.height);
+        GamePlug::ImageTracker::Get().SetScreenDimensions(spoofInfo.imageExtent.width, spoofInfo.imageExtent.height);
         GamePlug::OverlayRenderer::Get().SetupDevice(g_Instance, g_PhysDevice, device, 0, queue);
 
         GamePlug::Logger::info("vkCreateSwapchainKHR: Trace 10.6 (SetupSwapchain)");
         GamePlug::OverlayRenderer::Get().SetupSwapchain(
-            *pSwapchain, pCreateInfo->imageFormat, pCreateInfo->imageExtent, imageCount, images);
+            *pSwapchain, spoofInfo.imageFormat, spoofInfo.imageExtent, imageCount, images);
         GamePlug::Logger::info("vkCreateSwapchainKHR: Trace 10.7 (Done)");
     }
 

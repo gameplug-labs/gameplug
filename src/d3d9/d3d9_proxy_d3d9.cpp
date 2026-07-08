@@ -161,6 +161,8 @@ STDMETHODIMP ProxyDirect3D9::CreateDevice(UINT A, D3DDEVTYPE DT, HWND hFW, DWORD
     D3DPRESENT_PARAMETERS realPP = *pPP;
     realPP.BackBufferWidth = nativeW;
     realPP.BackBufferHeight = nativeH;
+    // Unlock FPS: disable VSync at the D3D9 level
+    realPP.PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
 
     Logger::info("CreateDevice: Game requested {}x{}, Proxy creating device at {}x{}, Game will see {}x{}", requestedW, requestedH, nativeW,
         nativeH, scaledW, scaledH);
@@ -258,6 +260,8 @@ STDMETHODIMP ProxyDirect3D9::CreateDeviceEx(
     D3DPRESENT_PARAMETERS realPP = *pPP;
     realPP.BackBufferWidth = nativeW;
     realPP.BackBufferHeight = nativeH;
+    // Unlock FPS: disable VSync at the D3D9 level
+    realPP.PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
 
     if (!m_pRealEx)
         return E_NOTIMPL;

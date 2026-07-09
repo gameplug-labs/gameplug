@@ -100,6 +100,8 @@ void OverlayRenderer::OnPostReset() {
 void OverlayRenderer::NewFrame() {
     if (!m_initialized)
         return;
+    if (Config::Get().GetBool("VKUpscaler", true))
+        return;
     m_uiRendered = false;
 
     auto currentTime = std::chrono::steady_clock::now();
@@ -191,6 +193,10 @@ void OverlayRenderer::Render(IDirect3DDevice9* device, uint32_t width, uint32_t 
 
 LRESULT CALLBACK OverlayRenderer::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     auto& renderer = OverlayRenderer::Get();
+
+    if (Config::Get().GetBool("VKUpscaler", true)) {
+        return CallWindowProc(renderer.m_originalWndProc, hWnd, msg, wParam, lParam);
+    }
 
     if (renderer.m_visible) {
         if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))

@@ -107,27 +107,11 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdBeginRenderPass(
     if (!dev_entry)
         return;
 
-    GamePlug::OverlayRenderer::Get().NewFrame();
-
     if (pRenderPassBegin) {
         g_ActiveFBs[commandBuffer] = pRenderPassBegin->framebuffer;
-        GamePlug::ImageTracker::Get().OnBindFramebuffer(pRenderPassBegin->framebuffer);
-
-        static uint32_t logCount = 0;
-        if (logCount++ % 500 == 0) {
-            GamePlug::Logger::debug("CmdBeginRenderPass: FB=" + std::to_string((uintptr_t)pRenderPassBegin->framebuffer) +
-                                    " Area=" + std::to_string(pRenderPassBegin->renderArea.extent.width) + "x" +
-                                    std::to_string(pRenderPassBegin->renderArea.extent.height));
-        }
-
-        if (GamePlug::ImageTracker::Get().IsSwapchainFramebuffer(pRenderPassBegin->framebuffer)) {
-            VkImage source = GamePlug::ImageTracker::Get().GetLastSceneImage();
-            VkImage target = GamePlug::ImageTracker::Get().GetSwapchainImageFromFramebuffer(pRenderPassBegin->framebuffer);
-
-            uint32_t sw = GamePlug::ImageTracker::Get().GetScreenWidth();
-            uint32_t sh = GamePlug::ImageTracker::Get().GetScreenHeight();
-        }
     }
+
+    GamePlug::UpscalerManager::Get().OnCmdBeginRenderPass(commandBuffer, pRenderPassBegin);
 
     dev_entry->table.vkCmdBeginRenderPass(commandBuffer, pRenderPassBegin, contents);
 }
@@ -141,40 +125,7 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdEndRenderPass(VkCommandBuffer comman
 
     dev_entry->table.vkCmdEndRenderPass(commandBuffer);
 
-    if (fb != VK_NULL_HANDLE) {
-        uint32_t sw = GamePlug::ImageTracker::Get().GetScreenWidth();
-        uint32_t sh = GamePlug::ImageTracker::Get().GetScreenHeight();
-        uint32_t rw = GamePlug::UpscalerManager::Get().GetRenderWidth();
-        uint32_t rh = GamePlug::UpscalerManager::Get().GetRenderHeight();
-
-        if (GamePlug::ImageTracker::Get().IsSceneFramebuffer(fb, rw, rh)) {
-            VkImage sceneImg = GamePlug::ImageTracker::Get().GetColorAttachment(fb, rw, rh);
-            if (sceneImg != VK_NULL_HANDLE) {
-                GamePlug::ImageTracker::Get().SaveSceneImage(sceneImg);
-            }
-        }
-
-        if (GamePlug::ImageTracker::Get().IsSwapchainFramebuffer(fb) && !GamePlug::UpscalerManager::Get().WasUpscaledThisFrame()) {
-            static auto g_startupTime = std::chrono::steady_clock::now();
-            auto now = std::chrono::steady_clock::now();
-            auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - g_startupTime).count();
-
-            VkImage source = VK_NULL_HANDLE;
-            if (elapsed >= 2) {
-                source = GamePlug::ImageTracker::Get().GetFakeBackBufferImage();
-            }
-            if (source == VK_NULL_HANDLE) {
-                source = GamePlug::ImageTracker::Get().GetLastSceneImage();
-            }
-            VkImage target = GamePlug::ImageTracker::Get().GetSwapchainImageFromFramebuffer(fb);
-
-            if (source != VK_NULL_HANDLE && target != VK_NULL_HANDLE) {
-                GamePlug::OverlayRenderer::Get().Render(commandBuffer, source, target, sw, sh);
-            } else {
-                GamePlug::OverlayRenderer::Get().Render(commandBuffer, target, target, sw, sh);
-            }
-        }
-    }
+    GamePlug::UpscalerManager::Get().OnCmdEndRenderPass(commandBuffer, fb);
 
     g_ActiveFBs.erase(commandBuffer);
 }

@@ -11,8 +11,23 @@ extern "C" {
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateInstance(
     const VkInstanceCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkInstance* pInstance) {
 
+    if (g_InsideCreateInstance) {
+        if (Original_vkCreateInstance) {
+            return Original_vkCreateInstance(pCreateInfo, pAllocator, pInstance);
+        }
+        return VK_ERROR_INITIALIZATION_FAILED;
+    }
+
+    struct Guard {
+        Guard() { g_InsideCreateInstance = true; }
+        ~Guard() { g_InsideCreateInstance = false; }
+    } guard;
+
     GamePlug::Logger::info("vkCreateInstance intercepted");
     GamePlug::Init();
+
+    PFN_vkGetInstanceProcAddr nextGIPA = nullptr;
+    PFN_vkCreateInstance nextCreateInstance = nullptr;
 
     VkLayerInstanceCreateInfo* layer_info = (VkLayerInstanceCreateInfo*)pCreateInfo->pNext;
     while (
@@ -20,13 +35,17 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateInstance(
         layer_info = (VkLayerInstanceCreateInfo*)layer_info->pNext;
     }
 
-    if (!layer_info)
+    if (layer_info) {
+        nextGIPA = layer_info->u.pLayerInfo->pfnNextGetInstanceProcAddr;
+        nextCreateInstance = (PFN_vkCreateInstance)nextGIPA(NULL, "vkCreateInstance");
+        layer_info->u.pLayerInfo = layer_info->u.pLayerInfo->pNext;
+    } else {
+        nextGIPA = Original_vkGetInstanceProcAddr;
+        nextCreateInstance = Original_vkCreateInstance;
+    }
+
+    if (!nextCreateInstance)
         return VK_ERROR_INITIALIZATION_FAILED;
-
-    PFN_vkGetInstanceProcAddr nextGIPA = layer_info->u.pLayerInfo->pfnNextGetInstanceProcAddr;
-    PFN_vkCreateInstance nextCreateInstance = (PFN_vkCreateInstance)nextGIPA(NULL, "vkCreateInstance");
-
-    layer_info->u.pLayerInfo = layer_info->u.pLayerInfo->pNext;
 
     VkResult result = nextCreateInstance(pCreateInfo, pAllocator, pInstance);
     if (result == VK_SUCCESS) {
@@ -40,26 +59,54 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateInstance(
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateDevice(
     VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDevice* pDevice) {
 
+    if (g_InsideCreateDevice) {
+        if (Original_vkCreateDevice) {
+            return Original_vkCreateDevice(physicalDevice, pCreateInfo, pAllocator, pDevice);
+        }
+        return VK_ERROR_INITIALIZATION_FAILED;
+    }
+
+    struct Guard {
+        Guard() { g_InsideCreateDevice = true; }
+        ~Guard() { g_InsideCreateDevice = false; }
+    } guard;
+
     GamePlug::Logger::info("vkCreateDevice intercepted");
     g_PhysDevice = physicalDevice;
+
+    PFN_vkGetInstanceProcAddr nextGIPA = nullptr;
+    PFN_vkGetDeviceProcAddr nextGDPA = nullptr;
+    PFN_vkCreateDevice nextCreateDevice = nullptr;
 
     VkLayerDeviceCreateInfo* layer_info = (VkLayerDeviceCreateInfo*)pCreateInfo->pNext;
     while (layer_info && (layer_info->sType != VK_STRUCTURE_TYPE_LOADER_DEVICE_CREATE_INFO || layer_info->function != VK_LAYER_LINK_INFO)) {
         layer_info = (VkLayerDeviceCreateInfo*)layer_info->pNext;
     }
 
-    if (!layer_info)
+    if (layer_info) {
+        nextGIPA = layer_info->u.pLayerInfo->pfnNextGetInstanceProcAddr;
+        nextGDPA = layer_info->u.pLayerInfo->pfnNextGetDeviceProcAddr;
+        nextCreateDevice = (PFN_vkCreateDevice)nextGIPA(NULL, "vkCreateDevice");
+        layer_info->u.pLayerInfo = layer_info->u.pLayerInfo->pNext;
+    } else {
+        nextGIPA = Original_vkGetInstanceProcAddr;
+        nextGDPA = Original_vkGetDeviceProcAddr;
+        nextCreateDevice = Original_vkCreateDevice;
+    }
+
+    if (!nextCreateDevice) {
+        GamePlug::Logger::error("vkCreateDevice: nextCreateDevice is null!");
         return VK_ERROR_INITIALIZATION_FAILED;
+    }
 
-    PFN_vkGetInstanceProcAddr nextGIPA = layer_info->u.pLayerInfo->pfnNextGetInstanceProcAddr;
-    PFN_vkGetDeviceProcAddr nextGDPA = layer_info->u.pLayerInfo->pfnNextGetDeviceProcAddr;
-    PFN_vkCreateDevice nextCreateDevice = (PFN_vkCreateDevice)nextGIPA(NULL, "vkCreateDevice");
-
-    layer_info->u.pLayerInfo = layer_info->u.pLayerInfo->pNext;
-
+    GamePlug::Logger::info("vkCreateDevice: calling nextCreateDevice (ptr={})", (void*)nextCreateDevice);
     VkResult result = nextCreateDevice(physicalDevice, pCreateInfo, pAllocator, pDevice);
+    GamePlug::Logger::info("vkCreateDevice: nextCreateDevice returned {}", (int)result);
+
     if (result == VK_SUCCESS) {
+        GamePlug::Logger::info("vkCreateDevice: calling AddDevice...");
         GamePlug::DispatchManager::Get().AddDevice(*pDevice, nextGDPA);
+        GamePlug::Logger::info("vkCreateDevice: AddDevice complete");
     }
 
     return result;

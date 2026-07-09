@@ -23,19 +23,18 @@
 #pragma comment(linker, "/export:VerQueryValueA=C:\\Windows\\System32\\version.VerQueryValueA")
 #pragma comment(linker, "/export:VerQueryValueW=C:\\Windows\\System32\\version.VerQueryValueW")
 
+extern "C" void StartVulkanHookSetup();
+
 EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 
 namespace GamePlug {
-    static void SetupVulkanLayers() {
+    static void SetupVulkanHooks() {
         wchar_t buffer[MAX_PATH];
         GetModuleFileNameW((HINSTANCE)&__ImageBase, buffer, MAX_PATH);
         PathRemoveFileSpecW(buffer);
         std::wstring selfDir(buffer);
 
-        // 1. Set VK_LAYER_PATH to the loader's directory
-        SetEnvironmentVariableW(L"VK_LAYER_PATH", selfDir.c_str());
-
-        // 2. Add our directory to PATH so vklayer.dll can find framework.dll/dependencies
+        // Add our directory to PATH so dependencies can be loaded
         wchar_t oldPath[4096];
         DWORD pathLen = GetEnvironmentVariableW(L"PATH", oldPath, 4096);
         if (pathLen > 0 && pathLen < 4096) {
@@ -45,8 +44,7 @@ namespace GamePlug {
             SetEnvironmentVariableW(L"PATH", selfDir.c_str());
         }
 
-        // 3. Enable the layer
-        SetEnvironmentVariableW(L"VK_INSTANCE_LAYERS", L"VK_LAYER_GAMEPLUG");
+        StartVulkanHookSetup();
     }
 }
 
@@ -54,7 +52,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
     switch (ul_reason_for_call) {
         case DLL_PROCESS_ATTACH:
             DisableThreadLibraryCalls(hModule);
-            GamePlug::SetupVulkanLayers();
+            GamePlug::SetupVulkanHooks();
             break;
         case DLL_THREAD_ATTACH:
         case DLL_THREAD_DETACH:

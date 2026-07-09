@@ -10,6 +10,8 @@
 extern "C" {
 
 static std::map<VkCommandBuffer, VkFramebuffer> g_ActiveFBs;
+static std::map<VkCommandBuffer, std::vector<VkImageView>> g_ActiveRenderingViews;
+
 
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateGraphicsPipelines(VkDevice device, VkPipelineCache pipelineCache,
     uint32_t createInfoCount, const VkGraphicsPipelineCreateInfo* pCreateInfos, const VkAllocationCallbacks* pAllocator,
@@ -128,6 +130,82 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdEndRenderPass(VkCommandBuffer comman
     GamePlug::UpscalerManager::Get().OnCmdEndRenderPass(commandBuffer, fb);
 
     g_ActiveFBs.erase(commandBuffer);
+}
+
+VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdBeginRendering(
+    VkCommandBuffer commandBuffer, const VkRenderingInfo* pRenderingInfo) {
+    auto* dev_entry = GamePlug::DispatchManager::Get().GetDeviceByCommandBuffer(commandBuffer);
+    if (!dev_entry)
+        return;
+    GamePlug::Logger::info("vkCmdBeginRendering called");
+
+    std::vector<VkImageView> views;
+    if (pRenderingInfo) {
+        for (uint32_t i = 0; i < pRenderingInfo->colorAttachmentCount; ++i) {
+            if (pRenderingInfo->pColorAttachments[i].imageView != VK_NULL_HANDLE) {
+                views.push_back(pRenderingInfo->pColorAttachments[i].imageView);
+            }
+        }
+    }
+    g_ActiveRenderingViews[commandBuffer] = views;
+
+    GamePlug::UpscalerManager::Get().OnCmdBeginRendering(commandBuffer, pRenderingInfo);
+
+    if (dev_entry->table.vkCmdBeginRendering)
+        dev_entry->table.vkCmdBeginRendering(commandBuffer, pRenderingInfo);
+}
+
+VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdEndRendering(VkCommandBuffer commandBuffer) {
+    auto* dev_entry = GamePlug::DispatchManager::Get().GetDeviceByCommandBuffer(commandBuffer);
+    if (!dev_entry)
+        return;
+    GamePlug::Logger::info("vkCmdEndRendering called");
+
+    std::vector<VkImageView> views = g_ActiveRenderingViews[commandBuffer];
+
+    if (dev_entry->table.vkCmdEndRendering)
+        dev_entry->table.vkCmdEndRendering(commandBuffer);
+
+    GamePlug::UpscalerManager::Get().OnCmdEndRendering(commandBuffer, views);
+    g_ActiveRenderingViews.erase(commandBuffer);
+}
+
+VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdBeginRenderingKHR(
+    VkCommandBuffer commandBuffer, const VkRenderingInfo* pRenderingInfo) {
+    auto* dev_entry = GamePlug::DispatchManager::Get().GetDeviceByCommandBuffer(commandBuffer);
+    if (!dev_entry)
+        return;
+    GamePlug::Logger::info("vkCmdBeginRenderingKHR called");
+
+    std::vector<VkImageView> views;
+    if (pRenderingInfo) {
+        for (uint32_t i = 0; i < pRenderingInfo->colorAttachmentCount; ++i) {
+            if (pRenderingInfo->pColorAttachments[i].imageView != VK_NULL_HANDLE) {
+                views.push_back(pRenderingInfo->pColorAttachments[i].imageView);
+            }
+        }
+    }
+    g_ActiveRenderingViews[commandBuffer] = views;
+
+    GamePlug::UpscalerManager::Get().OnCmdBeginRendering(commandBuffer, pRenderingInfo);
+
+    if (dev_entry->table.vkCmdBeginRenderingKHR)
+        dev_entry->table.vkCmdBeginRenderingKHR(commandBuffer, pRenderingInfo);
+}
+
+VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdEndRenderingKHR(VkCommandBuffer commandBuffer) {
+    auto* dev_entry = GamePlug::DispatchManager::Get().GetDeviceByCommandBuffer(commandBuffer);
+    if (!dev_entry)
+        return;
+    GamePlug::Logger::info("vkCmdEndRenderingKHR called");
+
+    std::vector<VkImageView> views = g_ActiveRenderingViews[commandBuffer];
+
+    if (dev_entry->table.vkCmdEndRenderingKHR)
+        dev_entry->table.vkCmdEndRenderingKHR(commandBuffer);
+
+    GamePlug::UpscalerManager::Get().OnCmdEndRendering(commandBuffer, views);
+    g_ActiveRenderingViews.erase(commandBuffer);
 }
 
 } // extern "C"

@@ -185,6 +185,14 @@ public:
         return VK_NULL_HANDLE;
     }
 
+    VkImage GetImageFromView(VkImageView view) {
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
+        if (m_views.find(view) != m_views.end()) {
+            return m_views[view];
+        }
+        return VK_NULL_HANDLE;
+    }
+
     // Resolves all images associated with a framebuffer
     std::vector<VkImage> GetFramebufferAttachments(VkFramebuffer fb) {
         std::lock_guard<std::recursive_mutex> lock(m_mutex);
@@ -196,6 +204,12 @@ public:
 
     bool IsSceneFramebuffer(VkFramebuffer fb, uint32_t renderW, uint32_t renderH);
     bool IsSwapchainFramebuffer(VkFramebuffer fb);
+    
+    bool IsSwapchainImage(VkImage image) {
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
+        return m_swapchainImages.find(image) != m_swapchainImages.end();
+    }
+    
     VkImage GetSwapchainImageFromFramebuffer(VkFramebuffer fb);
     VkImage GetBestSceneSourceFromFramebuffer(VkFramebuffer fb, uint32_t renderW, uint32_t renderH);
     VkImage GetColorAttachment(VkFramebuffer fb, uint32_t renderW, uint32_t renderH);

@@ -642,52 +642,18 @@ STDMETHODIMP ProxyDirect3DDevice9::SetViewport(CONST D3DVIEWPORT9* pV) {
 
     IDirect3DSurface9* pRT = nullptr;
     m_pReal->GetRenderTarget(0, &pRT);
-    D3DSURFACE_DESC rtDesc = {};
-    if (pRT)
-        pRT->GetDesc(&rtDesc);
 
-    bool isFakeBB =
-        (pRT && (pRT == (IDirect3DSurface9*)m_pFakeBackBuffer || (m_pFakeBackBuffer && pRT == m_pFakeBackBuffer->GetInternalSurface())));
-    bool isFullScreenRT = (rtDesc.Width == m_displayW && rtDesc.Height == m_displayH);
+    D3DVIEWPORT9 scaledVp;
+    IDirect3DSurface9* fakeSurf = m_pFakeBackBuffer ? m_pFakeBackBuffer->GetInternalSurface() : nullptr;
+    bool modified = GamePlug::UpscalerManager::Get().ProcessSetViewport(pV, pRT, fakeSurf, g_InUpscalerPass, scaledVp);
+
     if (pRT)
         pRT->Release();
 
-    bool shouldScale = isFakeBB;
-
-    static int logCount = 0;
-    if (logCount++ % 100 == 0) {
-        Logger::info(
-            "SetViewport: pV={}x{}, RT={}x{}, isFakeBB={}, isFullScreenRT={}, g_InUpscalerPass={}, shouldScale={}, BB={}x{}, Disp={}x{}",
-            pV->Width, pV->Height, rtDesc.Width, rtDesc.Height, isFakeBB, isFullScreenRT, g_InUpscalerPass, shouldScale, m_renderW,
-            m_renderH, m_displayW, m_displayH);
+    if (modified) {
+        return m_pReal->SetViewport(&scaledVp);
     }
-
-    if (g_InUpscalerPass || !shouldScale)
-        return m_pReal->SetViewport(pV);
-
-    if (pV->Width == m_renderW && pV->Height == m_renderH) {
-        return m_pReal->SetViewport(pV);
-    }
-
-    D3DVIEWPORT9 scaledVp = *pV;
-    if (m_displayW > 0 && m_displayH > 0) {
-        scaledVp.X = (pV->X * m_renderW + m_displayW / 2) / m_displayW;
-        scaledVp.Y = (pV->Y * m_renderH + m_displayH / 2) / m_displayH;
-        scaledVp.Width = (pV->Width * m_renderW + m_displayW / 2) / m_displayW;
-        scaledVp.Height = (pV->Height * m_renderH + m_displayH / 2) / m_displayH;
-
-        if (pV->Width > 0 && scaledVp.Width == 0)
-            scaledVp.Width = 1;
-        if (pV->Height > 0 && scaledVp.Height == 0)
-            scaledVp.Height = 1;
-    }
-
-    static int viewportlogCount = 0;
-    if (viewportlogCount++ % 100 == 0) {
-        Logger::info("SetViewport [Scaled]: Game {}x{} -> Scaled {}x{}", pV->Width, pV->Height, scaledVp.Width, scaledVp.Height);
-    }
-
-    return m_pReal->SetViewport(&scaledVp);
+    return m_pReal->SetViewport(pV);
 }
 
 STDMETHODIMP ProxyDirect3DDevice9::GetViewport(D3DVIEWPORT9* pV) {

@@ -77,6 +77,12 @@ struct GamePlugUpscalerInterface {
 
     // Returns the number of fields and a pointer to an array of descriptors.
     int(__cdecl* GetFields)(FieldDescriptor** outFields);
+
+    // Present hook (optional, used by DX/VK plugins)
+    bool(__cdecl* OnPresent)(uintptr_t swapChainOrQueue, uintptr_t syncIntervalOrPresentInfo, uint32_t flags);
+
+    // Returns the resolved interpolated frame image (optional, used by VK plugin)
+    uint64_t(__cdecl* GetInterpolatedFrameImage)();
 };
 
 #define GamePlug_UPSCALER_INTERFACE_VERSION 1

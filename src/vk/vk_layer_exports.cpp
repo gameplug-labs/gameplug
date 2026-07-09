@@ -22,6 +22,8 @@ VK_LAYER_EXPORT PFN_vkVoidFunction VKAPI_CALL GamePlug_GetDeviceProcAddr(VkDevic
         return (PFN_vkVoidFunction)GamePlug_QueuePresentKHR;
     if (std::string(pName) == "vkAcquireNextImageKHR")
         return (PFN_vkVoidFunction)GamePlug_AcquireNextImageKHR;
+    if (std::string(pName) == "vkGetSwapchainImagesKHR")
+        return (PFN_vkVoidFunction)GamePlug_GetSwapchainImagesKHR;
     if (std::string(pName) == "vkCreateImage")
         return (PFN_vkVoidFunction)GamePlug_CreateImage;
     if (std::string(pName) == "vkDestroyImage")
@@ -98,6 +100,8 @@ VK_LAYER_EXPORT PFN_vkVoidFunction VKAPI_CALL GamePlug_GetInstanceProcAddr(VkIns
         return (PFN_vkVoidFunction)GamePlug_QueuePresentKHR;
     if (std::string(pName) == "vkAcquireNextImageKHR")
         return (PFN_vkVoidFunction)GamePlug_AcquireNextImageKHR;
+    if (std::string(pName) == "vkGetSwapchainImagesKHR")
+        return (PFN_vkVoidFunction)GamePlug_GetSwapchainImagesKHR;
     if (std::string(pName) == "vkCreateImage")
         return (PFN_vkVoidFunction)GamePlug_CreateImage;
     if (std::string(pName) == "vkDestroyImage")

@@ -63,6 +63,8 @@ public:
     bool IsInitialized() const { return m_initialized; }
     bool IsVisible() const { return m_visible; }
     HWND GetWindow() const { return m_hWnd; }
+    VkDevice GetDevice() const { return m_device; }
+    VkCommandPool GetCommandPool() const { return m_commandPool; }
 
     static bool IsRenderingOverlay();
     static void SetIsRenderingOverlay(bool val);

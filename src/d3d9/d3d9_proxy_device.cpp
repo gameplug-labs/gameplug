@@ -618,43 +618,10 @@ STDMETHODIMP ProxyDirect3DDevice9::Clear(DWORD C, CONST D3DRECT* pR, DWORD F, D3
 }
 
 STDMETHODIMP ProxyDirect3DDevice9::SetTransform(D3DTRANSFORMSTATETYPE S, CONST D3DMATRIX* pM) {
-    // Only capture the Projection matrix from the fixed-function pipeline.
-    // The View matrix from SetTransform is unreliable for shader-based games
-    // (Skyrim sets D3DTS_VIEW for fixed-function passes like water/reflections,
-    //  not for the main game camera).  The real ViewProj is captured from
-    //  vertex shader constants in SetVertexShaderConstantF below.
     if (S == D3DTS_PROJECTION && pM) {
-        float fovY = 0.0f, nearP = 0.0f, farP = 0.0f;
-        bool inverted = false;
-        if (GamePlug::UpscalerManager::IsValidProjectionMatrix((const float*)pM, fovY, nearP, farP, inverted)) {
-            float fovDegrees = fovY * (180.0f / 3.14159265f);
-
-            auto& mgr = GamePlug::UpscalerManager::Get();
-            auto& sharedData = mgr.GetSharedFrameData();
-
-            // Scene-change detection: if near/far/fov changed significantly,
-            // signal that FSR2 history should be reset (fixes menu-to-game transitions).
-            float dNear = std::abs(nearP - mgr.GetPrevNear());
-            float dFar  = std::abs(farP  - mgr.GetPrevFar());
-            float dFov  = std::abs(fovDegrees - mgr.GetPrevFov());
-            if ((dNear > 1.0f || dFar > 100.0f || dFov > 5.0f) &&
-                (mgr.GetPrevNear() > 0.0f || mgr.GetPrevFar() > 0.0f)) {
-                // Mark for history reset; the upscaler checks this flag each frame.
-                sharedData.matrixFlags |= 2u;  // bit 1 = scene changed
-                // Also invalidate prev so next frame starts fresh.
-                sharedData.matrixFlags &= ~1u;
-                mgr.GetMatrixFrameIndex() = 0;
-            }
-            mgr.GetPrevNear() = nearP;
-            mgr.GetPrevFar()  = farP;
-            mgr.GetPrevFov()  = fovDegrees;
-
-            sharedData.cameraNear    = nearP;
-            sharedData.cameraFar     = farP;
-            sharedData.cameraFov     = fovDegrees;
-            sharedData.invertedDepth = inverted;
-            mgr.UpdateSharedViewProjMatrix((const float*)pM);
-            Logger::info("SetTransform (D3DTS_PROJECTION): Near={}, Far={}, FOV={}", nearP, farP, fovDegrees);
+        D3DMATRIX modifiedM;
+        if (GamePlug::UpscalerManager::Get().ProcessSetTransform(S, pM, modifiedM)) {
+            return m_pReal->SetTransform(S, &modifiedM);
         }
     }
     return m_pReal->SetTransform(S, pM);
@@ -1003,76 +970,9 @@ STDMETHODIMP ProxyDirect3DDevice9::GetVertexShader(IDirect3DVertexShader9** ppS)
 
 STDMETHODIMP ProxyDirect3DDevice9::SetVertexShaderConstantF(UINT SR, CONST float* pCD, UINT V4C) {
     if (pCD && V4C >= 4) {
-        auto& mgr = GamePlug::UpscalerManager::Get();
-        auto& sharedData = mgr.GetSharedFrameData();
-        bool capturedClipMatrix = false;
-        for (UINT i = 0; i <= V4C - 4; ++i) {
-            const float* matrix = &pCD[i * 4];
-            if (GamePlug::UpscalerManager::IsLikelyClipSpaceMatrix(matrix)) {
-                mgr.UpdateSharedViewProjMatrix(matrix);
-                capturedClipMatrix = true;
-                static int clipLogCount = 0;
-                if (clipLogCount++ % 300 == 0) {
-                    Logger::info("SetVertexShaderConstantF: Captured clip-space matrix at SR={}, offset={}, frame={}",
-                        SR, i, sharedData.frameIndex);
-                }
-                break;
-            }
-        }
-
-        for (UINT i = 0; i <= V4C - 4; ++i) {
-            float fovY = 0.0f, nearP = 0.0f, farP = 0.0f;
-            bool inverted = false;
-            const float* matrix = &pCD[i * 4];
-            if (GamePlug::UpscalerManager::IsValidProjectionMatrix(matrix, fovY, nearP, farP, inverted)) {
-                // FIX: Only check for scene changes ONCE per frame!
-                static uint32_t s_lastExtractedFrame = 0xFFFFFFFF;
-                if (s_lastExtractedFrame != sharedData.frameIndex) {
-                    s_lastExtractedFrame = sharedData.frameIndex;
-                    
-                    float fovDegrees = fovY * (180.0f / 3.14159265f);
-                    float dNear = std::abs(nearP - mgr.GetPrevNear());
-                    float dFar  = std::abs(farP  - mgr.GetPrevFar());
-                    float dFov  = std::abs(fovDegrees - mgr.GetPrevFov());
-                    
-                    // FIX: Massively increase the tolerance for dynamic camera adjustments.
-                    // Far plane must change by at least 4000 units, Near by 5, FOV by 10 degrees.
-                    if ((dNear > 5.0f || dFar > 4000.0f || dFov > 10.0f) &&
-                        (mgr.GetPrevNear() > 0.0f || mgr.GetPrevFar() > 0.0f)) {
-                        sharedData.matrixFlags |= 2u;  // Trigger history reset
-                        sharedData.matrixFlags &= ~1u; // Invalidate previous matrix
-                    }
-                    
-                    mgr.GetPrevNear() = nearP;
-                    mgr.GetPrevFar()  = farP;
-                    mgr.GetPrevFov()  = fovDegrees;
-
-                    sharedData.cameraNear = nearP;
-                    sharedData.cameraFar = farP;
-                    sharedData.cameraFov = fovDegrees;
-                    sharedData.invertedDepth = inverted;
-                    
-                    if (!capturedClipMatrix) {
-                        mgr.UpdateSharedViewProjMatrix(matrix);
-                    }
-                }
-
-                if (m_isUpscaling && !Config::Get().GetBool("VKUpscaler", true)) {
-                    float projJitterX = (sharedData.jitterX * 2.0f) / m_renderW;
-                    float projJitterY = (sharedData.jitterY * 2.0f) / m_renderH;
-
-                    std::vector<float> modifiedCD(pCD, pCD + V4C * 4);
-                    modifiedCD[i * 4 + 2] += projJitterX;
-                    modifiedCD[i * 4 + 6] += projJitterY;
-                    if (!capturedClipMatrix)
-                        mgr.UpdateSharedViewProjMatrix(&modifiedCD[i * 4]);
-
-                    return m_pReal->SetVertexShaderConstantF(SR, modifiedCD.data(), V4C);
-                }
-                if (!capturedClipMatrix)
-                    mgr.UpdateSharedViewProjMatrix(matrix);
-                break;
-            }
+        std::vector<float> modifiedCD;
+        if (GamePlug::UpscalerManager::Get().ProcessSetVertexShaderConstantF(SR, pCD, V4C, modifiedCD)) {
+            return m_pReal->SetVertexShaderConstantF(SR, modifiedCD.data(), V4C);
         }
     }
     return m_pReal->SetVertexShaderConstantF(SR, pCD, V4C);

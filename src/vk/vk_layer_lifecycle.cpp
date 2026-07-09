@@ -4,6 +4,7 @@
 #include "logger.h"
 #include "overlay.h"
 #include "vk_layer_exports.h"
+#include "upscaler_manager.h"
 
 extern "C" {
 
@@ -226,6 +227,15 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_AcquireNextImageKHR(
     return result;
 }
 
+VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_GetSwapchainImagesKHR(
+    VkDevice device, VkSwapchainKHR swapchain, uint32_t* pSwapchainImageCount, VkImage* pSwapchainImages) {
+    auto* dev_entry = GamePlug::DispatchManager::Get().GetDevice(device);
+    if (!dev_entry)
+        return VK_ERROR_INITIALIZATION_FAILED;
+
+    return dev_entry->table.vkGetSwapchainImagesKHR(device, swapchain, pSwapchainImageCount, pSwapchainImages);
+}
+
 VK_LAYER_EXPORT void VKAPI_CALL GamePlug_DestroySwapchainKHR(
     VkDevice device, VkSwapchainKHR swapchain, const VkAllocationCallbacks* pAllocator) {
     GamePlug::Logger::debug("Hook: vkDestroySwapchainKHR Entry");
@@ -289,6 +299,11 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_QueuePresentKHR(VkQueue queue, cons
             } else if (shouldLog) {
                 GamePlug::Logger::warn("QueuePresentKHR: Standalone fallback skipped - No target image");
             }
+        }
+
+        VkResult fgRes = VK_SUCCESS;
+        if (GamePlug::UpscalerManager::Get().PresentFrame(queue, pPresentInfo, fgRes)) {
+            return fgRes;
         }
 
         VkResult result = queue_dispatch->table.vkQueuePresentKHR(queue, pPresentInfo);

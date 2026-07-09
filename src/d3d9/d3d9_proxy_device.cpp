@@ -801,63 +801,25 @@ STDMETHODIMP ProxyDirect3DDevice9::GetCurrentTexturePalette(UINT* PN) {
 }
 
 STDMETHODIMP ProxyDirect3DDevice9::SetScissorRect(CONST RECT* pR) {
+    Logger::info("ProxyDirect3DDevice9 SetScissorRect");
     if (!pR)
         return D3DERR_INVALIDCALL;
     UpdateScaledResolution();
 
     IDirect3DSurface9* pRT = nullptr;
     m_pReal->GetRenderTarget(0, &pRT);
-    D3DSURFACE_DESC rtDesc = {};
-    if (pRT)
-        pRT->GetDesc(&rtDesc);
 
-    bool isFakeBB =
-        (pRT && (pRT == (IDirect3DSurface9*)m_pFakeBackBuffer || (m_pFakeBackBuffer && pRT == m_pFakeBackBuffer->GetInternalSurface())));
-    bool isFullScreenRT = (rtDesc.Width == m_displayW && rtDesc.Height == m_displayH);
+    RECT scaledR;
+    IDirect3DSurface9* fakeSurf = m_pFakeBackBuffer ? m_pFakeBackBuffer->GetInternalSurface() : nullptr;
+    bool modified = GamePlug::UpscalerManager::Get().ProcessSetScissorRect(pR, pRT, fakeSurf, g_InUpscalerPass, scaledR);
+
     if (pRT)
         pRT->Release();
 
-    bool shouldScale = isFakeBB;
-
-    static int logCountScissor = 0;
-    if (logCountScissor++ % 100 == 0) {
-        Logger::info("SetScissorRect: pR={}x{}, RT={}x{}, isFakeBB={}, isFullScreenRT={}, g_InUpscalerPass={}, shouldScale={}",
-            pR->right - pR->left, pR->bottom - pR->top, rtDesc.Width, rtDesc.Height, isFakeBB, isFullScreenRT, g_InUpscalerPass,
-            shouldScale);
+    if (modified) {
+        return m_pReal->SetScissorRect(&scaledR);
     }
-
-    if (g_InUpscalerPass || !shouldScale)
-        return m_pReal->SetScissorRect(pR);
-
-    UINT scW = pR->right - pR->left;
-    UINT scH = pR->bottom - pR->top;
-
-    if (scW == m_renderW && scH == m_renderH) {
-        return m_pReal->SetScissorRect(pR);
-    }
-
-    RECT scaledR;
-    if (m_displayW > 0 && m_displayH > 0) {
-        scaledR.left = (pR->left * m_renderW + m_displayW / 2) / m_displayW;
-        scaledR.top = (pR->top * m_renderH + m_displayH / 2) / m_displayH;
-        scaledR.right = (pR->right * m_renderW + m_displayW / 2) / m_displayW;
-        scaledR.bottom = (pR->bottom * m_renderH + m_displayH / 2) / m_displayH;
-
-        if (pR->right > pR->left && scaledR.right <= scaledR.left)
-            scaledR.right = scaledR.left + 1;
-        if (pR->bottom > pR->top && scaledR.bottom <= scaledR.top)
-            scaledR.bottom = scaledR.top + 1;
-    } else {
-        scaledR = *pR;
-    }
-
-    static int logCount = 0;
-    if (logCount++ % 100 == 0) {
-        Logger::info("SetScissorRect [Scaled]: Game {}x{} -> Scaled {}x{}", pR->right - pR->left, pR->bottom - pR->top,
-            scaledR.right - scaledR.left, scaledR.bottom - scaledR.top);
-    }
-
-    return m_pReal->SetScissorRect(&scaledR);
+    return m_pReal->SetScissorRect(pR);
 }
 
 STDMETHODIMP ProxyDirect3DDevice9::GetScissorRect(RECT* pR) {

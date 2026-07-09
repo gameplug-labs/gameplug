@@ -851,11 +851,41 @@ STDMETHODIMP ProxyDirect3DDevice9::DrawIndexedPrimitive(D3DPRIMITIVETYPE PT, INT
 }
 
 STDMETHODIMP ProxyDirect3DDevice9::DrawPrimitiveUP(D3DPRIMITIVETYPE PT, UINT PC, CONST void* pV, UINT VS) {
+    if (!pV)
+        return m_pReal->DrawPrimitiveUP(PT, PC, pV, VS);
+
+    IDirect3DSurface9* pRT = nullptr;
+    m_pReal->GetRenderTarget(0, &pRT);
+
+    std::vector<uint8_t> scaledV;
+    bool modified = GamePlug::UpscalerManager::Get().ProcessDrawPrimitiveUP(PT, PC, pV, VS, pRT, scaledV);
+
+    if (pRT)
+        pRT->Release();
+
+    if (modified) {
+        return m_pReal->DrawPrimitiveUP(PT, PC, scaledV.data(), VS);
+    }
     return m_pReal->DrawPrimitiveUP(PT, PC, pV, VS);
 }
 
 STDMETHODIMP ProxyDirect3DDevice9::DrawIndexedPrimitiveUP(
     D3DPRIMITIVETYPE PT, UINT MVI, UINT NV, UINT PC, CONST void* pI, D3DFORMAT IF, CONST void* pV, UINT VS) {
+    if (!pV)
+        return m_pReal->DrawIndexedPrimitiveUP(PT, MVI, NV, PC, pI, IF, pV, VS);
+
+    IDirect3DSurface9* pRT = nullptr;
+    m_pReal->GetRenderTarget(0, &pRT);
+
+    std::vector<uint8_t> scaledV;
+    bool modified = GamePlug::UpscalerManager::Get().ProcessDrawIndexedPrimitiveUP(PT, MVI, NV, PC, pV, VS, pRT, scaledV);
+
+    if (pRT)
+        pRT->Release();
+
+    if (modified) {
+        return m_pReal->DrawIndexedPrimitiveUP(PT, MVI, NV, PC, pI, IF, scaledV.data(), VS);
+    }
     return m_pReal->DrawIndexedPrimitiveUP(PT, MVI, NV, PC, pI, IF, pV, VS);
 }
 

@@ -3,32 +3,14 @@
 #include "logger.h"
 #include "upscaler_manager.h"
 #include "vk_layer_exports.h"
-static thread_local bool t_creatingFakeBackBuffer = false;
-
 extern "C" {
 
 VK_LAYER_EXPORT void GamePlug_SetCreatingFakeBackBuffer(bool active) {
-    t_creatingFakeBackBuffer = active;
+    GamePlug::UpscalerManager::Get().SetCreatingFakeBackBuffer(active);
 }
 
 VK_LAYER_EXPORT bool GamePlug_IsCreatingFakeBackBuffer() {
-    static bool (*pfnIsCreatingFakeBackBuffer)() = nullptr;
-    static bool resolved = false;
-    if (!resolved) {
-        const char* dlls[] = { "dinput8.dll", "version.dll" };
-        for (const char* dll : dlls) {
-            HMODULE hMod = GetModuleHandleA(dll);
-            if (hMod) {
-                pfnIsCreatingFakeBackBuffer = (bool (*)())GetProcAddress(hMod, "GamePlug_IsCreatingFakeBackBuffer");
-                if (pfnIsCreatingFakeBackBuffer) break;
-            }
-        }
-        resolved = true;
-    }
-    if (pfnIsCreatingFakeBackBuffer) {
-        return pfnIsCreatingFakeBackBuffer();
-    }
-    return t_creatingFakeBackBuffer;
+    return GamePlug::UpscalerManager::Get().IsCreatingFakeBackBuffer();
 }
 
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateImage(
@@ -40,14 +22,7 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateImage(
     VkResult result = dev_entry->table.vkCreateImage(device, pCreateInfo, pAllocator, pImage);
     if (result == VK_SUCCESS) {
         GamePlug::ImageTracker::Get().TrackImage(*pImage, pCreateInfo);
-
-        bool isFakeBackBuffer = GamePlug_IsCreatingFakeBackBuffer();
-
-        if (isFakeBackBuffer) {
-            GamePlug::Logger::info("GamePlug_CreateImage: Tracked fake backbuffer image {:p}, Size: {}x{}x{}, Format: {}", (void*)*pImage,
-                pCreateInfo->extent.width, pCreateInfo->extent.height, pCreateInfo->extent.depth, (int)pCreateInfo->format);
-            GamePlug::ImageTracker::Get().SetFakeBackBufferImage(*pImage);
-        }
+        GamePlug::UpscalerManager::Get().OnCreateImage(*pImage, pCreateInfo);
     }
     return result;
 }

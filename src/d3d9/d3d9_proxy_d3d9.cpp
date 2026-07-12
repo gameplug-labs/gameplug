@@ -134,6 +134,8 @@ STDMETHODIMP ProxyDirect3D9::CreateDevice(UINT A, D3DDEVTYPE DT, HWND hFW, DWORD
     // Load the upscaler plugin early so GetScaledResolution can check its status correctly
     if (!Config::Get().GetBool("VKUpscaler", true)) {
         UpscalerManager::Get().LoadUpscaler();
+    }else{
+        UpscalerManager::Get().UpdateFallbackConfig();
     }
 
     int requestedW = pPP->BackBufferWidth;
@@ -232,6 +234,8 @@ STDMETHODIMP ProxyDirect3D9::CreateDeviceEx(
     // Load the upscaler plugin early so GetScaledResolution can check its status correctly
     if (!Config::Get().GetBool("VKUpscaler", true)) {
         UpscalerManager::Get().LoadUpscaler();
+    }else{
+        UpscalerManager::Get().UpdateFallbackConfig();
     }
 
     int requestedW = pPP->BackBufferWidth;

@@ -352,10 +352,10 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_QueuePresentKHR(VkQueue queue, cons
                 GamePlug::Logger::warn("QueuePresentKHR: Standalone fallback skipped - No target image");
             }
         }
-        LogSync("calling PresentFrame");
+        GamePlug::Logger::info("calling PresentFrame");
         VkResult fgRes = VK_SUCCESS;
         if (GamePlug::UpscalerManager::Get().PresentFrame(queue, pPresentInfo, fgRes)) {
-            LogSync("PresentFrame success");
+            GamePlug::Logger::info("PresentFrame success");
             return fgRes;
         }
         VkResult result = queue_dispatch->table.vkQueuePresentKHR(queue, pPresentInfo);

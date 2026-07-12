@@ -5,6 +5,9 @@
 #include "overlay.h"
 #include "vk_layer_exports.h"
 #include "upscaler_manager.h"
+#include <vector>
+#include <algorithm>
+
 
 extern "C" {
 
@@ -168,6 +171,7 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateSwapchainKHR(
             "vkCreateSwapchainKHR: OVERRIDING 720p backbuffer to " + std::to_string(nativeW) + "x" + std::to_string(nativeH));
         spoofInfo.imageExtent = {nativeW, nativeH};
     }
+    GamePlug::Logger::info("presentmode: " + spoofInfo.presentMode);
 
     // Unlock FPS / disable VSync by using MAILBOX or IMMEDIATE present mode if supported
     auto* inst_entry_fps = GamePlug::DispatchManager::Get().GetInstance(g_Instance);
@@ -321,6 +325,7 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_DeviceWaitIdle(VkDevice device) {
     return result;
 }
 
+
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_QueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPresentInfo) {
     auto* queue_dispatch = GamePlug::DispatchManager::Get().GetQueueDispatch(queue);
 
@@ -347,13 +352,15 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_QueuePresentKHR(VkQueue queue, cons
                 GamePlug::Logger::warn("QueuePresentKHR: Standalone fallback skipped - No target image");
             }
         }
-
+        LogSync("calling PresentFrame");
         VkResult fgRes = VK_SUCCESS;
         if (GamePlug::UpscalerManager::Get().PresentFrame(queue, pPresentInfo, fgRes)) {
+            LogSync("PresentFrame success");
             return fgRes;
         }
-
+        LogSync("calling vkQueuePresentKHR");
         VkResult result = queue_dispatch->table.vkQueuePresentKHR(queue, pPresentInfo);
+        LogSync("vkQueuePresentKHR after");
 
         GamePlug::OverlayRenderer::Get().EndFrame();
 

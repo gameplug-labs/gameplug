@@ -137,7 +137,6 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdBeginRendering(
     auto* dev_entry = GamePlug::DispatchManager::Get().GetDeviceByCommandBuffer(commandBuffer);
     if (!dev_entry)
         return;
-    GamePlug::Logger::info("vkCmdBeginRendering called");
 
     std::vector<VkImageView> views;
     if (pRenderingInfo) {
@@ -159,7 +158,6 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdEndRendering(VkCommandBuffer command
     auto* dev_entry = GamePlug::DispatchManager::Get().GetDeviceByCommandBuffer(commandBuffer);
     if (!dev_entry)
         return;
-    GamePlug::Logger::info("vkCmdEndRendering called");
 
     std::vector<VkImageView> views = g_ActiveRenderingViews[commandBuffer];
 
@@ -175,7 +173,6 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdBeginRenderingKHR(
     auto* dev_entry = GamePlug::DispatchManager::Get().GetDeviceByCommandBuffer(commandBuffer);
     if (!dev_entry)
         return;
-    GamePlug::Logger::info("vkCmdBeginRenderingKHR called");
 
     std::vector<VkImageView> views;
     if (pRenderingInfo) {
@@ -197,7 +194,6 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdEndRenderingKHR(VkCommandBuffer comm
     auto* dev_entry = GamePlug::DispatchManager::Get().GetDeviceByCommandBuffer(commandBuffer);
     if (!dev_entry)
         return;
-    GamePlug::Logger::info("vkCmdEndRenderingKHR called");
 
     std::vector<VkImageView> views = g_ActiveRenderingViews[commandBuffer];
 

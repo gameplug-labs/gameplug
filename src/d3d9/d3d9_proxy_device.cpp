@@ -429,6 +429,29 @@ STDMETHODIMP ProxyDirect3DDevice9::Present(CONST RECT* pSR, CONST RECT* pDR, HWN
         OverlayRenderer::Get().Render(m_pReal, m_displayW, m_displayH);
     }
     m_jitterReadyForFrame = false;
+
+    auto& sharedData = GamePlug::UpscalerManager::Get().GetSharedFrameData();
+    if (sharedData.fgRequestDoublePresent) {
+        // Present 1: Interpolated frame
+        sharedData.fgPresentPhase = 1;
+        sharedData.fgVulkanPresentDone = 0;
+        m_pReal->Present(NULL, NULL, hW, pR);
+
+        // Spin-wait for Vulkan presentation thread to consume and complete Present 1
+        uint32_t spinCount = 0;
+        while (!sharedData.fgVulkanPresentDone && spinCount < 50000) {
+            YieldProcessor();
+            spinCount++;
+        }
+
+        // Present 2: Real frame
+        sharedData.fgPresentPhase = 2;
+        HRESULT hr = m_pReal->Present(NULL, NULL, hW, pR);
+
+        sharedData.fgPresentPhase = 0;
+        return hr;
+    }
+
     return m_pReal->Present(NULL, NULL, hW, pR);
 }
 
@@ -1091,6 +1114,29 @@ STDMETHODIMP ProxyDirect3DDevice9::PresentEx(CONST RECT* pSR, CONST RECT* pDR, H
         return E_NOTIMPL;
     }
     m_jitterReadyForFrame = false;
+
+    auto& sharedData = GamePlug::UpscalerManager::Get().GetSharedFrameData();
+    if (sharedData.fgRequestDoublePresent) {
+        // Present 1: Interpolated frame
+        sharedData.fgPresentPhase = 1;
+        sharedData.fgVulkanPresentDone = 0;
+        m_pRealEx->PresentEx(NULL, NULL, hW, pR, F);
+
+        // Spin-wait for Vulkan presentation thread to consume and complete Present 1
+        uint32_t spinCount = 0;
+        while (!sharedData.fgVulkanPresentDone && spinCount < 50000) {
+            YieldProcessor();
+            spinCount++;
+        }
+
+        // Present 2: Real frame
+        sharedData.fgPresentPhase = 2;
+        HRESULT hr = m_pRealEx->PresentEx(NULL, NULL, hW, pR, F);
+
+        sharedData.fgPresentPhase = 0;
+        return hr;
+    }
+
     return m_pRealEx->PresentEx(NULL, NULL, hW, pR, F);
 }
 

@@ -33,6 +33,9 @@ struct GamePlugSharedFrameData {
     float currViewProj[16];
     float prevViewProj[16];
     float invCurrViewProj[16];
+    uint32_t fgRequestDoublePresent;
+    uint32_t fgPresentPhase;
+    uint32_t fgVulkanPresentDone;
 };
 
 struct GamePlugUpscalerInterface {
@@ -83,6 +86,16 @@ struct GamePlugUpscalerInterface {
 
     // Returns the resolved interpolated frame image (optional, used by VK plugin)
     uint64_t(__cdecl* GetInterpolatedFrameImage)();
+
+    // [v2] Called when a Vulkan swapchain is created so the plugin can wire up the SDK FGSC.
+    // Parameters: swapchain, gameQueue, gameQueueFamily, surface, pCreateInfo (all as uintptr_t / opaque pointers)
+    void(__cdecl* OnSwapchainCreated)(uintptr_t swapchain, uintptr_t gameQueue,
+                                      uint32_t gameQueueFamily, uintptr_t surface,
+                                      const void* pCreateInfo);
+
+    // [v2] Returns the SDK's vkQueuePresentKHR replacement function pointer (or nullptr).
+    uintptr_t(__cdecl* GetSdkPresentFunction)();
+
 };
 
 #define GamePlug_UPSCALER_INTERFACE_VERSION 1

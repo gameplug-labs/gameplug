@@ -358,9 +358,7 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_QueuePresentKHR(VkQueue queue, cons
             LogSync("PresentFrame success");
             return fgRes;
         }
-        LogSync("calling vkQueuePresentKHR");
         VkResult result = queue_dispatch->table.vkQueuePresentKHR(queue, pPresentInfo);
-        LogSync("vkQueuePresentKHR after");
 
         GamePlug::OverlayRenderer::Get().EndFrame();
 

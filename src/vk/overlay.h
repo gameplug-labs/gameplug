@@ -126,6 +126,7 @@ private:
 
 public:
     bool IsUIRendered() const { return m_uiRendered; }
+    void ResetUIRendered() { m_uiRendered = false; }
 
     mutable std::mutex m_renderMtx;
     void CreateRenderPass(VkFormat format);

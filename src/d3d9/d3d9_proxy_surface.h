@@ -2,26 +2,20 @@
 
 #include "d3d9_proxy.h"
 
-class ProxyTexture9;
-
 // --- Proxy Surface ---
 class ProxySurface9 : public IDirect3DSurface9 {
     IDirect3DSurface9* m_pReal;
     IDirect3DDevice9* m_pDevice;
-    ProxyTexture9* m_pParentTexture;
-    UINT m_level;
     uint32_t m_virtualW;
     uint32_t m_virtualH;
     ULONG m_refCount;
 
 public:
-    ProxySurface9(IDirect3DSurface9* pReal, IDirect3DDevice9* pDev, uint32_t vw, uint32_t vh, ProxyTexture9* pParentTexture = nullptr,
-        UINT level = 0);
+    ProxySurface9(IDirect3DSurface9* pReal, IDirect3DDevice9* pDev, uint32_t vw, uint32_t vh);
     virtual ~ProxySurface9();
 
     void SetInternalSurface(IDirect3DSurface9* pNew);
     IDirect3DSurface9* GetInternalSurface();
-    ProxyTexture9* GetParentTexture() const { return m_pParentTexture; }
 
     // IUnknown
     STDMETHOD(QueryInterface)(REFIID riid, void** ppvObj) override;
@@ -46,3 +40,7 @@ public:
     STDMETHOD(GetDC)(HDC* p) override;
     STDMETHOD(ReleaseDC)(HDC p) override;
 };
+
+bool IsProxySurfacePtr(IDirect3DSurface9* pSurf);
+ProxySurface9* FindProxySurfaceByRealPtr(IDirect3DSurface9* pReal);
+

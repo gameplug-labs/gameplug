@@ -2,7 +2,6 @@
 #include "d3d9_proxy_device.h"
 #include "d3d9_proxy_surface.h"
 #include "logger.h"
-#include "texture_replacer.h"
 #include <cstdio>
 
 static uint32_t CalculateCRC32(const uint8_t* data, size_t size, uint32_t initial = 0xFFFFFFFF) {
@@ -40,11 +39,11 @@ ProxyTexture9::ProxyTexture9(
 
     m_locks.resize(m_levels);
 
-    TextureReplacer::Get().OnTextureCreated(this);
+    // TextureReplacer::Get().OnTextureCreated(this);
 }
 
 ProxyTexture9::~ProxyTexture9() {
-    TextureReplacer::Get().OnTextureDestroyed(this);
+    // TextureReplacer::Get().OnTextureDestroyed(this);
 
     FreeReplacedTexture();
 
@@ -59,7 +58,7 @@ void ProxyTexture9::PropagateFrom(ProxyTexture9* pSrc) {
         return;
 
     {
-        std::lock_guard<std::recursive_mutex> lock(TextureReplacer::Get().GetMutex());
+        // std::lock_guard<std::recursive_mutex> lock(TextureReplacer::Get().GetMutex());
         m_hash = pSrc->m_hash;
         m_hashComputed = pSrc->m_hashComputed;
 
@@ -72,9 +71,11 @@ void ProxyTexture9::PropagateFrom(ProxyTexture9* pSrc) {
     }
 
     if (m_hashComputed) {
+        /*
         if (TextureReplacer::Get().IsAutoDumpEnabled()) {
             TextureReplacer::Get().AutoDumpTexture(this);
         }
+        */
         if (!m_replacementChecked) {
             CheckAndApplyReplacement();
         }
@@ -84,7 +85,7 @@ void ProxyTexture9::PropagateFrom(ProxyTexture9* pSrc) {
 void ProxyTexture9::FreeReplacedTexture() {
     IDirect3DTexture9* pOld = nullptr;
     {
-        std::lock_guard<std::recursive_mutex> lock(TextureReplacer::Get().GetMutex());
+        // std::lock_guard<std::recursive_mutex> lock(TextureReplacer::Get().GetMutex());
         if (m_pReplaced) {
             pOld = m_pReplaced;
             m_pReplaced = nullptr;
@@ -97,6 +98,7 @@ void ProxyTexture9::FreeReplacedTexture() {
 }
 
 void ProxyTexture9::CheckAndApplyReplacement() {
+    /*
     if (!TextureReplacer::Get().IsReplacementEnabled()) {
         return;
     }
@@ -143,6 +145,7 @@ void ProxyTexture9::CheckAndApplyReplacement() {
             pOld->Release();
         }
     }
+    */
 }
 
 void ProxyTexture9::RecordLock(UINT level, D3DLOCKED_RECT lockedRect, DWORD flags, const RECT* pRect) {
@@ -164,15 +167,10 @@ void ProxyTexture9::OnLevelUnlocked(UINT level) {
     }
 
     m_locks[0].locked = false;
+    return; // Early exit, do not compute hashes or replace textures
+}
 
-    if (!TextureReplacer::Get().IsReplacementEnabled() && !TextureReplacer::Get().IsDumperEnabled()) {
-        return;
-    }
-
-    if (!m_locks[0].lockedRect.pBits) {
-        return;
-    }
-
+/*
     UINT lockedW = m_locks[0].rect.right - m_locks[0].rect.left;
     UINT lockedH = m_locks[0].rect.bottom - m_locks[0].rect.top;
     if (lockedW == 0 || lockedH == 0) {
@@ -241,6 +239,7 @@ void ProxyTexture9::OnLevelUnlocked(UINT level) {
     // Check replacement
     CheckAndApplyReplacement();
 }
+*/
 
 // IUnknown methods
 STDMETHODIMP ProxyTexture9::QueryInterface(REFIID riid, void** ppvObj) {
@@ -341,8 +340,7 @@ STDMETHODIMP ProxyTexture9::GetSurfaceLevel(UINT Level, IDirect3DSurface9** ppSu
         D3DSURFACE_DESC desc;
         pRealSurf->GetDesc(&desc);
 
-        // Pass parent pointer and level to wrap it
-        *ppSurfaceLevel = new ProxySurface9(pRealSurf, m_pProxyDevice, desc.Width, desc.Height, this, Level);
+        *ppSurfaceLevel = new ProxySurface9(pRealSurf, m_pProxyDevice, desc.Width, desc.Height);
         pRealSurf->Release(); // Wrapper adds a reference, so release the extra real ref
     } else {
         *ppSurfaceLevel = nullptr;

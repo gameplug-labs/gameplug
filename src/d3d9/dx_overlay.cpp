@@ -6,7 +6,6 @@
 #include "imgui_overlay_shared.h"
 #include "logger.h"
 #include "plugin_manager.h"
-#include "texture_replacer.h"
 #include "upscaler_manager.h"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -61,7 +60,7 @@ void OverlayRenderer::Init(IDirect3DDevice9* device) {
     m_initialized = true;
     Logger::info("OverlayRenderer: Initialized Successfully. Loading plugins...");
 
-    TextureReplacer::Get().Init();
+    // TextureReplacer::Get().Init();
     PluginManager::Get().LoadPlugins();
 }
 
@@ -177,7 +176,7 @@ void OverlayRenderer::Render(IDirect3DDevice9* device, uint32_t width, uint32_t 
     if (m_visible) {
         g_isRenderingOverlay = true;
         ImGuiOverlayShared::DrawUI(width, height, [width, height, device]() {
-            TextureReplacer::Get().RenderUI(device);
+            // TextureReplacer::Get().RenderUI(device);
             ImGuiIO& io = ImGui::GetIO();
             UpscalerManager::Get().RenderUI(io.Framerate, width, height);
         });

@@ -2,8 +2,6 @@
 #include "config.h"
 #include "d3d9_proxy_surface.h"
 #include "d3d9_proxy_swapchain.h"
-#include "d3d9_proxy_texture.h"
-#include "texture_replacer.h"
 #include "upscaler_interface.h"
 #include "upscaler_manager.h"
 #include <algorithm>
@@ -16,67 +14,18 @@
 
 
 static IDirect3DBaseTexture9* GetRealTexture(IDirect3DBaseTexture9* pTex) {
-    if (!pTex)
-        return nullptr;
-    if (GamePlug::TextureReplacer::Get().IsProxyTexture(pTex)) {
-        return ((ProxyTexture9*)pTex)->GetReplacedReal();
-    }
     return pTex;
 }
 
 static IDirect3DSurface9* GetRealSurface(IDirect3DSurface9* pSurf) {
-    if (pSurf && GamePlug::TextureReplacer::Get().IsProxySurface(pSurf)) {
+    if (pSurf && IsProxySurfacePtr(pSurf)) {
         return ((ProxySurface9*)pSurf)->GetInternalSurface();
     }
     return pSurf;
 }
 
 static void LogActiveDefaultPoolResources() {
-    auto& replacer = GamePlug::TextureReplacer::Get();
-    std::lock_guard<std::recursive_mutex> lock(replacer.GetMutex());
-
-    Logger::info("--- Active Default/Managed Pool Resources (Before Reset) ---");
-
-    const auto& activeTextures = replacer.GetActiveTextures();
-    for (auto* pTex : activeTextures) {
-        if (pTex->GetPool() == D3DPOOL_DEFAULT) {
-            IDirect3DTexture9* pReal = pTex->GetRealTexture();
-            ULONG realRef = 0;
-            if (pReal) {
-                pReal->AddRef();
-                realRef = pReal->Release();
-            }
-            ULONG wrapRef = pTex->AddRef();
-            pTex->Release();
-
-            Logger::info("Active Texture: {:p} (Real: {:p}), Size: {}x{}, Format: {}, WrapperRef: {}, RealRef: {}", (void*)pTex,
-                (void*)pReal, pTex->GetWidth(), pTex->GetHeight(), (int)pTex->GetFormat(), wrapRef, realRef);
-        }
-    }
-
-    const auto& activeSurfaces = replacer.GetActiveSurfaces();
-    for (auto* pSurf : activeSurfaces) {
-        IDirect3DSurface9* pReal = pSurf->GetInternalSurface();
-        D3DSURFACE_DESC desc = {};
-        D3DPOOL pool = (D3DPOOL)-1;
-        if (pReal) {
-            pReal->GetDesc(&desc);
-            pool = desc.Pool;
-        }
-        if (pool == D3DPOOL_DEFAULT) {
-            ULONG realRef = 0;
-            if (pReal) {
-                pReal->AddRef();
-                realRef = pReal->Release();
-            }
-            ULONG wrapRef = pSurf->AddRef();
-            pSurf->Release();
-
-            Logger::info("Active Surface: {:p} (Real: {:p}), Size: {}x{}, Format: {}, WrapperRef: {}, RealRef: {}", (void*)pSurf,
-                (void*)pReal, desc.Width, desc.Height, (int)desc.Format, wrapRef, realRef);
-        }
-    }
-    Logger::info("------------------------------------------------------------");
+    // Disabled - TextureReplacer and ProxyTexture9 functionality is disabled
 }
 
 void ProxyDirect3DDevice9::UpdateScaledResolution() {
@@ -491,9 +440,8 @@ STDMETHODIMP ProxyDirect3DDevice9::CreateTexture(
         GamePlug::UpscalerManager::Get().UpdateSharedHDR(GamePlug::UpscalerManager::IsHDRFormat(F));
     }
     if (SUCCEEDED(hr) && pRealTex) {
-        UINT actualLevels = pRealTex->GetLevelCount();
-        *ppT = new ProxyTexture9(pRealTex, this, W, H, actualLevels, U, F, P);
-        pRealTex->Release();
+        // Return the real texture pointer directly (no ProxyTexture9 wrapping)
+        *ppT = pRealTex;
     } else {
         *ppT = nullptr;
     }
@@ -535,6 +483,7 @@ STDMETHODIMP ProxyDirect3DDevice9::CreateDepthStencilSurface(
 STDMETHODIMP ProxyDirect3DDevice9::UpdateSurface(IDirect3DSurface9* pSS, CONST RECT* pSR, IDirect3DSurface9* pDS, CONST POINT* pDP) {
     HRESULT hr = m_pReal->UpdateSurface(GetRealSurface(pSS), pSR, GetRealSurface(pDS), pDP);
     if (SUCCEEDED(hr) && pSS && pDS) {
+        /*
         if (GamePlug::TextureReplacer::Get().IsProxySurface(pSS) && GamePlug::TextureReplacer::Get().IsProxySurface(pDS)) {
             ProxySurface9* pProxySrc = (ProxySurface9*)pSS;
             ProxySurface9* pProxyDst = (ProxySurface9*)pDS;
@@ -544,26 +493,13 @@ STDMETHODIMP ProxyDirect3DDevice9::UpdateSurface(IDirect3DSurface9* pSS, CONST R
                 pDstTex->PropagateFrom(pSrcTex);
             }
         }
+        */
     }
     return hr;
 }
 
 STDMETHODIMP ProxyDirect3DDevice9::UpdateTexture(IDirect3DBaseTexture9* pST, IDirect3DBaseTexture9* pDT) {
-    if (!pST || !pDT)
-        return m_pReal->UpdateTexture(pST, pDT);
-
-    ProxyTexture9* pProxySrc = GamePlug::TextureReplacer::Get().IsProxyTexture(pST) ? (ProxyTexture9*)pST : nullptr;
-    ProxyTexture9* pProxyDst = GamePlug::TextureReplacer::Get().IsProxyTexture(pDT) ? (ProxyTexture9*)pDT : nullptr;
-
-    IDirect3DBaseTexture9* pRealSrc = pProxySrc ? pProxySrc->GetRealTexture() : pST;
-    IDirect3DBaseTexture9* pRealDst = pProxyDst ? pProxyDst->GetRealTexture() : pDT;
-
-    HRESULT hr = m_pReal->UpdateTexture(pRealSrc, pRealDst);
-
-    if (SUCCEEDED(hr) && pProxySrc && pProxyDst) {
-        pProxyDst->PropagateFrom(pProxySrc);
-    }
-    return hr;
+    return m_pReal->UpdateTexture(pST, pDT);
 }
 
 STDMETHODIMP ProxyDirect3DDevice9::GetRenderTargetData(IDirect3DSurface9* pRT, IDirect3DSurface9* pDS) {
@@ -597,7 +533,7 @@ STDMETHODIMP ProxyDirect3DDevice9::GetRenderTarget(DWORD RTI, IDirect3DSurface9*
         return D3DERR_INVALIDCALL;
     HRESULT hr = m_pReal->GetRenderTarget(RTI, ppRT);
     if (SUCCEEDED(hr) && *ppRT) {
-        ProxySurface9* pProxy = GamePlug::TextureReplacer::Get().FindProxySurfaceByReal(*ppRT);
+        ProxySurface9* pProxy = FindProxySurfaceByRealPtr(*ppRT);
         if (pProxy) {
             (*ppRT)->Release();
             *ppRT = pProxy;
@@ -615,7 +551,7 @@ STDMETHODIMP ProxyDirect3DDevice9::GetDepthStencilSurface(IDirect3DSurface9** pp
         return D3DERR_INVALIDCALL;
     HRESULT hr = m_pReal->GetDepthStencilSurface(ppZSS);
     if (SUCCEEDED(hr) && *ppZSS) {
-        ProxySurface9* pProxy = GamePlug::TextureReplacer::Get().FindProxySurfaceByReal(*ppZSS);
+        ProxySurface9* pProxy = FindProxySurfaceByRealPtr(*ppZSS);
         if (pProxy) {
             (*ppZSS)->Release();
             *ppZSS = pProxy;
@@ -746,44 +682,10 @@ STDMETHODIMP ProxyDirect3DDevice9::GetClipStatus(D3DCLIPSTATUS9* pCS) {
 STDMETHODIMP ProxyDirect3DDevice9::GetTexture(DWORD S, IDirect3DBaseTexture9** ppT) {
     if (!ppT)
         return D3DERR_INVALIDCALL;
-    IDirect3DBaseTexture9* pRealTex = nullptr;
-    HRESULT hr = m_pReal->GetTexture(S, &pRealTex);
-    if (SUCCEEDED(hr) && pRealTex) {
-        ProxyTexture9* pProxy = TextureReplacer::Get().FindProxyByReal(pRealTex);
-        if (pProxy) {
-            *ppT = pProxy;
-            // FindProxyByReal already incremented the reference count under the lock!
-            pRealTex->Release();
-        } else {
-            *ppT = pRealTex;
-        }
-    } else {
-        *ppT = nullptr;
-    }
-    return hr;
+    return m_pReal->GetTexture(S, ppT);
 }
 
 STDMETHODIMP ProxyDirect3DDevice9::SetTexture(DWORD S, IDirect3DBaseTexture9* pT) {
-    if (pT && GamePlug::TextureReplacer::Get().IsProxyTexture(pT)) {
-        ProxyTexture9* pProxyTex = (ProxyTexture9*)pT;
-        TextureReplacer::Get().OnTextureBound(pProxyTex);
-
-        IDirect3DTexture9* pRealTex = nullptr;
-        {
-            std::lock_guard<std::recursive_mutex> lock(TextureReplacer::Get().GetMutex());
-            pRealTex = pProxyTex->GetReplacedReal();
-            if (pRealTex) {
-                pRealTex->AddRef();
-            }
-        }
-
-        HRESULT hr = m_pReal->SetTexture(S, pRealTex);
-
-        if (pRealTex) {
-            pRealTex->Release();
-        }
-        return hr;
-    }
     return m_pReal->SetTexture(S, pT);
 }
 

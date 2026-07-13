@@ -1,23 +1,47 @@
 #include "d3d9_proxy_surface.h"
-#include "d3d9_proxy_texture.h"
-#include "texture_replacer.h"
+#include <unordered_set>
+#include <mutex>
+
+static std::unordered_set<ProxySurface9*> g_activeSurfaces;
+static std::mutex g_surfacesMutex;
+
+bool IsProxySurfacePtr(IDirect3DSurface9* pSurf) {
+    if (!pSurf)
+        return false;
+    std::lock_guard<std::mutex> lock(g_surfacesMutex);
+    return g_activeSurfaces.count((ProxySurface9*)pSurf) > 0;
+}
+
+ProxySurface9* FindProxySurfaceByRealPtr(IDirect3DSurface9* pReal) {
+    if (!pReal)
+        return nullptr;
+    std::lock_guard<std::mutex> lock(g_surfacesMutex);
+    for (auto* pProxy : g_activeSurfaces) {
+        if (pProxy->GetInternalSurface() == pReal) {
+            pProxy->AddRef();
+            return pProxy;
+        }
+    }
+    return nullptr;
+}
 
 ProxySurface9::ProxySurface9(
-    IDirect3DSurface9* pReal, IDirect3DDevice9* pDev, uint32_t vw, uint32_t vh, ProxyTexture9* pParentTexture, UINT level)
+    IDirect3DSurface9* pReal, IDirect3DDevice9* pDev, uint32_t vw, uint32_t vh)
     : m_pReal(pReal)
     , m_pDevice(pDev)
-    , m_pParentTexture(pParentTexture)
-    , m_level(level)
     , m_virtualW(vw)
     , m_virtualH(vh)
     , m_refCount(1) {
     if (m_pReal)
         m_pReal->AddRef();
-    GamePlug::TextureReplacer::Get().OnSurfaceCreated(this);
+
+    std::lock_guard<std::mutex> lock(g_surfacesMutex);
+    g_activeSurfaces.insert(this);
 }
 
 ProxySurface9::~ProxySurface9() {
-    GamePlug::TextureReplacer::Get().OnSurfaceDestroyed(this);
+    std::lock_guard<std::mutex> lock(g_surfacesMutex);
+    g_activeSurfaces.erase(this);
 }
 
 void ProxySurface9::SetInternalSurface(IDirect3DSurface9* pNew) {
@@ -93,12 +117,6 @@ STDMETHODIMP_(D3DRESOURCETYPE) ProxySurface9::GetType() {
 
 // IDirect3DSurface9
 STDMETHODIMP ProxySurface9::GetContainer(REFIID r, void** ppC) {
-    if (m_pParentTexture &&
-        (r == IID_IDirect3DTexture9 || r == IID_IDirect3DBaseTexture9 || r == IID_IUnknown || r == IID_IDirect3DResource9)) {
-        *ppC = m_pParentTexture;
-        m_pParentTexture->AddRef();
-        return S_OK;
-    }
     return m_pReal->GetContainer(r, ppC);
 }
 
@@ -112,17 +130,10 @@ STDMETHODIMP ProxySurface9::GetDesc(D3DSURFACE_DESC* pD) {
 }
 
 STDMETHODIMP ProxySurface9::LockRect(D3DLOCKED_RECT* pL, const RECT* pR, DWORD f) {
-    HRESULT hr = m_pReal->LockRect(pL, pR, f);
-    if (SUCCEEDED(hr) && pL && m_pParentTexture) {
-        m_pParentTexture->RecordLock(m_level, *pL, f, pR);
-    }
-    return hr;
+    return m_pReal->LockRect(pL, pR, f);
 }
 
 STDMETHODIMP ProxySurface9::UnlockRect() {
-    if (m_pParentTexture && m_level == 0) {
-        m_pParentTexture->OnLevelUnlocked(0);
-    }
     return m_pReal->UnlockRect();
 }
 

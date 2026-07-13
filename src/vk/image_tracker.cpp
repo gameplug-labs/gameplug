@@ -80,6 +80,15 @@ void ImageTracker::UntrackImage(VkImage image) {
         m_currentMVBuffer = VK_NULL_HANDLE;
         m_bestMVScore = -1.0f;
     }
+    if (m_currentExposureBuffer == image) {
+        m_currentExposureBuffer = VK_NULL_HANDLE;
+    }
+    if (m_currentReactiveBuffer == image) {
+        m_currentReactiveBuffer = VK_NULL_HANDLE;
+    }
+    if (m_currentTransparencyBuffer == image) {
+        m_currentTransparencyBuffer = VK_NULL_HANDLE;
+    }
     if (m_fakeBackBufferImage == image) {
         m_fakeBackBufferImage = VK_NULL_HANDLE;
     }

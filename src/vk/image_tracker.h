@@ -146,6 +146,56 @@ public:
         return bestImg;
     }
 
+    void SetCurrentExposureBuffer(VkImage image) {
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
+        m_currentExposureBuffer = image;
+    }
+
+    VkImage GetCurrentExposureBuffer() const {
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
+        if (m_currentExposureBuffer != VK_NULL_HANDLE)
+            return m_currentExposureBuffer;
+        for (auto const& [img, info] : m_images) {
+            if (info.extent.width == 1 && info.extent.height == 1) {
+                return img;
+            }
+        }
+        return VK_NULL_HANDLE;
+    }
+
+    void SetCurrentReactiveBuffer(VkImage image) {
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
+        m_currentReactiveBuffer = image;
+    }
+
+    VkImage GetCurrentReactiveBuffer(uint32_t w = 0, uint32_t h = 0) const {
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
+        if (m_currentReactiveBuffer != VK_NULL_HANDLE)
+            return m_currentReactiveBuffer;
+        uint32_t targetW = (w > 0) ? w : m_screenWidth;
+        uint32_t targetH = (h > 0) ? h : m_screenHeight;
+        for (auto const& [img, info] : m_images) {
+            if (info.extent.width == targetW && info.extent.height == targetH) {
+                if (info.format == VK_FORMAT_R8_UNORM || info.format == VK_FORMAT_R16_SFLOAT) {
+                    return img;
+                }
+            }
+        }
+        return VK_NULL_HANDLE;
+    }
+
+    void SetCurrentTransparencyBuffer(VkImage image) {
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
+        m_currentTransparencyBuffer = image;
+    }
+
+    VkImage GetCurrentTransparencyBuffer(uint32_t w = 0, uint32_t h = 0) const {
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
+        if (m_currentTransparencyBuffer != VK_NULL_HANDLE)
+            return m_currentTransparencyBuffer;
+        return VK_NULL_HANDLE;
+    }
+
     ImageInfo GetCurrentDepthInfo(uint32_t w = 0, uint32_t h = 0) {
         std::lock_guard<std::recursive_mutex> lock(m_mutex);
         VkImage img = GetCurrentDepthBuffer(w, h);
@@ -254,6 +304,9 @@ private:
 
     VkImage m_currentDepthBuffer = VK_NULL_HANDLE;
     VkImage m_currentMVBuffer = VK_NULL_HANDLE;
+    VkImage m_currentExposureBuffer = VK_NULL_HANDLE;
+    VkImage m_currentReactiveBuffer = VK_NULL_HANDLE;
+    VkImage m_currentTransparencyBuffer = VK_NULL_HANDLE;
     VkImage m_lastSceneSource = VK_NULL_HANDLE;
     VkImage m_fakeBackBufferImage = VK_NULL_HANDLE;
     float m_bestDepthScore = -1.0f;

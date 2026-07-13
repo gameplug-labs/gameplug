@@ -5,12 +5,15 @@
 #include "upscaler_manager.h"
 #include "vk_layer_exports.h"
 #include <chrono>
-#include <map>
+#include <unordered_map>
+#include <mutex>
+#include <vector>
 
 extern "C" {
 
-static std::map<VkCommandBuffer, VkFramebuffer> g_ActiveFBs;
-static std::map<VkCommandBuffer, std::vector<VkImageView>> g_ActiveRenderingViews;
+static std::unordered_map<VkCommandBuffer, VkFramebuffer> g_ActiveFBs;
+static std::unordered_map<VkCommandBuffer, std::vector<VkImageView>> g_ActiveRenderingViews;
+static std::mutex g_ActiveMapsMutex;
 
 
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateGraphicsPipelines(VkDevice device, VkPipelineCache pipelineCache,
@@ -40,34 +43,6 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateGraphicsPipelines(VkDevice de
     }
 
     return dev_entry->table.vkCreateGraphicsPipelines(device, pipelineCache, createInfoCount, pCreateInfos, pAllocator, pPipelines);
-}
-
-VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdSetViewport(
-    VkCommandBuffer commandBuffer, uint32_t firstViewport, uint32_t viewportCount, const VkViewport* pViewports) {
-    auto* dev_entry = GamePlug::DispatchManager::Get().GetDeviceByCommandBuffer(commandBuffer);
-    if (!dev_entry)
-        return;
-
-    if (GamePlug::OverlayRenderer::IsRenderingOverlay()) {
-        dev_entry->table.vkCmdSetViewport(commandBuffer, firstViewport, viewportCount, pViewports);
-        return;
-    }
-
-    dev_entry->table.vkCmdSetViewport(commandBuffer, firstViewport, viewportCount, pViewports);
-}
-
-VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdSetScissor(
-    VkCommandBuffer commandBuffer, uint32_t firstScissor, uint32_t scissorCount, const VkRect2D* pScissors) {
-    auto* dev_entry = GamePlug::DispatchManager::Get().GetDeviceByCommandBuffer(commandBuffer);
-    if (!dev_entry)
-        return;
-
-    if (GamePlug::OverlayRenderer::IsRenderingOverlay()) {
-        dev_entry->table.vkCmdSetScissor(commandBuffer, firstScissor, scissorCount, pScissors);
-        return;
-    }
-
-    dev_entry->table.vkCmdSetScissor(commandBuffer, firstScissor, scissorCount, pScissors);
 }
 
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_AllocateCommandBuffers(
@@ -110,6 +85,7 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdBeginRenderPass(
         return;
 
     if (pRenderPassBegin) {
+        std::lock_guard<std::mutex> lock(g_ActiveMapsMutex);
         g_ActiveFBs[commandBuffer] = pRenderPassBegin->framebuffer;
     }
 
@@ -123,13 +99,19 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdEndRenderPass(VkCommandBuffer comman
     if (!dev_entry)
         return;
 
-    VkFramebuffer fb = g_ActiveFBs[commandBuffer];
+    VkFramebuffer fb = VK_NULL_HANDLE;
+    {
+        std::lock_guard<std::mutex> lock(g_ActiveMapsMutex);
+        auto it = g_ActiveFBs.find(commandBuffer);
+        if (it != g_ActiveFBs.end()) {
+            fb = it->second;
+            g_ActiveFBs.erase(it);
+        }
+    }
 
     dev_entry->table.vkCmdEndRenderPass(commandBuffer);
 
     GamePlug::UpscalerManager::Get().OnCmdEndRenderPass(commandBuffer, fb);
-
-    g_ActiveFBs.erase(commandBuffer);
 }
 
 VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdBeginRendering(
@@ -146,7 +128,10 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdBeginRendering(
             }
         }
     }
-    g_ActiveRenderingViews[commandBuffer] = views;
+    {
+        std::lock_guard<std::mutex> lock(g_ActiveMapsMutex);
+        g_ActiveRenderingViews[commandBuffer] = views;
+    }
 
     GamePlug::UpscalerManager::Get().OnCmdBeginRendering(commandBuffer, pRenderingInfo);
 
@@ -159,13 +144,20 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdEndRendering(VkCommandBuffer command
     if (!dev_entry)
         return;
 
-    std::vector<VkImageView> views = g_ActiveRenderingViews[commandBuffer];
+    std::vector<VkImageView> views;
+    {
+        std::lock_guard<std::mutex> lock(g_ActiveMapsMutex);
+        auto it = g_ActiveRenderingViews.find(commandBuffer);
+        if (it != g_ActiveRenderingViews.end()) {
+            views = std::move(it->second);
+            g_ActiveRenderingViews.erase(it);
+        }
+    }
 
     if (dev_entry->table.vkCmdEndRendering)
         dev_entry->table.vkCmdEndRendering(commandBuffer);
 
     GamePlug::UpscalerManager::Get().OnCmdEndRendering(commandBuffer, views);
-    g_ActiveRenderingViews.erase(commandBuffer);
 }
 
 VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdBeginRenderingKHR(
@@ -182,7 +174,10 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdBeginRenderingKHR(
             }
         }
     }
-    g_ActiveRenderingViews[commandBuffer] = views;
+    {
+        std::lock_guard<std::mutex> lock(g_ActiveMapsMutex);
+        g_ActiveRenderingViews[commandBuffer] = views;
+    }
 
     GamePlug::UpscalerManager::Get().OnCmdBeginRendering(commandBuffer, pRenderingInfo);
 
@@ -195,13 +190,20 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdEndRenderingKHR(VkCommandBuffer comm
     if (!dev_entry)
         return;
 
-    std::vector<VkImageView> views = g_ActiveRenderingViews[commandBuffer];
+    std::vector<VkImageView> views;
+    {
+        std::lock_guard<std::mutex> lock(g_ActiveMapsMutex);
+        auto it = g_ActiveRenderingViews.find(commandBuffer);
+        if (it != g_ActiveRenderingViews.end()) {
+            views = std::move(it->second);
+            g_ActiveRenderingViews.erase(it);
+        }
+    }
 
     if (dev_entry->table.vkCmdEndRenderingKHR)
         dev_entry->table.vkCmdEndRenderingKHR(commandBuffer);
 
     GamePlug::UpscalerManager::Get().OnCmdEndRendering(commandBuffer, views);
-    g_ActiveRenderingViews.erase(commandBuffer);
 }
 
 } // extern "C"

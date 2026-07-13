@@ -3,6 +3,7 @@
 #include "logger.h"
 #include "minhook.h"
 #include <windows.h>
+#include <string_view>
 
 extern "C" {
 
@@ -22,83 +23,84 @@ thread_local int g_GDPA_RecursionDepth = 0;
 thread_local int g_GIPA_RecursionDepth = 0;
 
 VK_LAYER_EXPORT PFN_vkVoidFunction VKAPI_CALL GamePlug_GetDeviceProcAddr(VkDevice device, const char* pName) {
+    if (!pName)
+        return nullptr;
     if (g_GDPA_RecursionDepth > 10) {
-        GamePlug::Logger::error("GamePlug_GetDeviceProcAddr: Recursion detected for {}!", pName ? pName : "NULL");
+        // GamePlug::Logger::error("GamePlug_GetDeviceProcAddr: Recursion detected for {}!", pName);
         return nullptr;
     }
     struct DepthGuard {
         DepthGuard() { g_GDPA_RecursionDepth++; }
         ~DepthGuard() { g_GDPA_RecursionDepth--; }
     } guard;
-    if (std::string(pName) == "vkGetDeviceProcAddr")
+
+    std::string_view name(pName);
+
+    if (name == "vkGetDeviceProcAddr")
         return (PFN_vkVoidFunction)GamePlug_GetDeviceProcAddr;
-    if (std::string(pName) == "vkCreateDevice")
+    if (name == "vkCreateDevice")
         return (PFN_vkVoidFunction)GamePlug_CreateDevice;
-    if (std::string(pName) == "vkGetDeviceQueue")
+    if (name == "vkGetDeviceQueue")
         return (PFN_vkVoidFunction)GamePlug_GetDeviceQueue;
-    if (std::string(pName) == "vkGetDeviceQueue2")
+    if (name == "vkGetDeviceQueue2")
         return (PFN_vkVoidFunction)GamePlug_GetDeviceQueue2;
-    if (std::string(pName) == "vkCreateSwapchainKHR")
+    if (name == "vkCreateSwapchainKHR")
         return (PFN_vkVoidFunction)GamePlug_CreateSwapchainKHR;
-    if (std::string(pName) == "vkQueuePresentKHR")
+    if (name == "vkQueuePresentKHR")
         return (PFN_vkVoidFunction)GamePlug_QueuePresentKHR;
-    if (std::string(pName) == "vkAcquireNextImageKHR")
+    if (name == "vkAcquireNextImageKHR")
         return (PFN_vkVoidFunction)GamePlug_AcquireNextImageKHR;
-    if (std::string(pName) == "vkGetSwapchainImagesKHR")
+    if (name == "vkGetSwapchainImagesKHR")
         return (PFN_vkVoidFunction)GamePlug_GetSwapchainImagesKHR;
-    if (std::string(pName) == "vkCreateImage")
+    if (name == "vkCreateImage")
         return (PFN_vkVoidFunction)GamePlug_CreateImage;
-    if (std::string(pName) == "vkDestroyImage")
+    if (name == "vkDestroyImage")
         return (PFN_vkVoidFunction)GamePlug_DestroyImage;
-    if (std::string(pName) == "vkCreateImageView")
+    if (name == "vkCreateImageView")
         return (PFN_vkVoidFunction)GamePlug_CreateImageView;
-    if (std::string(pName) == "vkDestroyImageView")
+    if (name == "vkDestroyImageView")
         return (PFN_vkVoidFunction)GamePlug_DestroyImageView;
-    if (std::string(pName) == "vkCreateFramebuffer")
+    if (name == "vkCreateFramebuffer")
         return (PFN_vkVoidFunction)GamePlug_CreateFramebuffer;
-    if (std::string(pName) == "vkDestroyFramebuffer")
+    if (name == "vkDestroyFramebuffer")
         return (PFN_vkVoidFunction)GamePlug_DestroyFramebuffer;
-    if (std::string(pName) == "vkAllocateMemory")
+    if (name == "vkAllocateMemory")
         return (PFN_vkVoidFunction)GamePlug_AllocateMemory;
-    if (std::string(pName) == "vkBindImageMemory")
+    if (name == "vkBindImageMemory")
         return (PFN_vkVoidFunction)GamePlug_BindImageMemory;
-    if (std::string(pName) == "vkCreateRenderPass")
+    if (name == "vkCreateRenderPass")
         return (PFN_vkVoidFunction)GamePlug_CreateRenderPass;
-    if (std::string(pName) == "vkCreateGraphicsPipelines")
+    if (name == "vkCreateGraphicsPipelines")
         return (PFN_vkVoidFunction)GamePlug_CreateGraphicsPipelines;
-    if (std::string(pName) == "vkAllocateCommandBuffers")
+    if (name == "vkAllocateCommandBuffers")
         return (PFN_vkVoidFunction)GamePlug_AllocateCommandBuffers;
-    if (std::string(pName) == "vkBeginCommandBuffer")
+    if (name == "vkBeginCommandBuffer")
         return (PFN_vkVoidFunction)GamePlug_BeginCommandBuffer;
-    if (std::string(pName) == "vkEndCommandBuffer")
+    if (name == "vkEndCommandBuffer")
         return (PFN_vkVoidFunction)GamePlug_EndCommandBuffer;
-    if (std::string(pName) == "vkDestroySwapchainKHR")
+    if (name == "vkDestroySwapchainKHR")
         return (PFN_vkVoidFunction)GamePlug_DestroySwapchainKHR;
-    if (std::string(pName) == "vkDestroyDevice")
+    if (name == "vkDestroyDevice")
         return (PFN_vkVoidFunction)GamePlug_DestroyDevice;
-    if (std::string(pName) == "vkDestroyInstance")
+    if (name == "vkDestroyInstance")
         return (PFN_vkVoidFunction)GamePlug_DestroyInstance;
-    if (std::string(pName) == "vkDeviceWaitIdle")
+    if (name == "vkDeviceWaitIdle")
         return (PFN_vkVoidFunction)GamePlug_DeviceWaitIdle;
-    if (std::string(pName) == "vkGetPhysicalDeviceSurfaceCapabilitiesKHR")
+    if (name == "vkGetPhysicalDeviceSurfaceCapabilitiesKHR")
         return (PFN_vkVoidFunction)GamePlug_GetPhysicalDeviceSurfaceCapabilitiesKHR;
-    if (std::string(pName) == "vkGetPhysicalDeviceSurfaceCapabilities2KHR")
+    if (name == "vkGetPhysicalDeviceSurfaceCapabilities2KHR")
         return (PFN_vkVoidFunction)GamePlug_GetPhysicalDeviceSurfaceCapabilities2KHR;
-    if (std::string(pName) == "vkCmdSetViewport")
-        return (PFN_vkVoidFunction)GamePlug_CmdSetViewport;
-    if (std::string(pName) == "vkCmdSetScissor")
-        return (PFN_vkVoidFunction)GamePlug_CmdSetScissor;
-    if (std::string(pName) == "vkCmdBeginRenderPass")
+    if (name == "vkCmdBeginRenderPass")
         return (PFN_vkVoidFunction)GamePlug_CmdBeginRenderPass;
-    if (std::string(pName) == "vkCmdEndRenderPass")
+    if (name == "vkCmdEndRenderPass")
         return (PFN_vkVoidFunction)GamePlug_CmdEndRenderPass;
-    if (std::string(pName) == "vkCmdBeginRendering")
+    if (name == "vkCmdBeginRendering")
         return (PFN_vkVoidFunction)GamePlug_CmdBeginRendering;
-    if (std::string(pName) == "vkCmdEndRendering")
+    if (name == "vkCmdEndRendering")
         return (PFN_vkVoidFunction)GamePlug_CmdEndRendering;
-    if (std::string(pName) == "vkCmdBeginRenderingKHR")
+    if (name == "vkCmdBeginRenderingKHR")
         return (PFN_vkVoidFunction)GamePlug_CmdBeginRenderingKHR;
-    if (std::string(pName) == "vkCmdEndRenderingKHR")
+    if (name == "vkCmdEndRenderingKHR")
         return (PFN_vkVoidFunction)GamePlug_CmdEndRenderingKHR;
 
     auto* dev_entry = GamePlug::DispatchManager::Get().GetDevice(device);
@@ -110,8 +112,10 @@ VK_LAYER_EXPORT PFN_vkVoidFunction VKAPI_CALL GamePlug_GetDeviceProcAddr(VkDevic
 }
 
 VK_LAYER_EXPORT PFN_vkVoidFunction VKAPI_CALL GamePlug_GetInstanceProcAddr(VkInstance instance, const char* pName) {
+    if (!pName)
+        return nullptr;
     if (g_GIPA_RecursionDepth > 10) {
-        GamePlug::Logger::error("GamePlug_GetInstanceProcAddr: Recursion detected for {}!", pName ? pName : "NULL");
+        // GamePlug::Logger::error("GamePlug_GetInstanceProcAddr: Recursion detected for {}!", pName);
         return nullptr;
     }
     struct DepthGuard {
@@ -119,91 +123,89 @@ VK_LAYER_EXPORT PFN_vkVoidFunction VKAPI_CALL GamePlug_GetInstanceProcAddr(VkIns
         ~DepthGuard() { g_GIPA_RecursionDepth--; }
     } guard;
 
-    if (std::string(pName) == "vkGetInstanceProcAddr")
+    std::string_view name(pName);
+
+    if (name == "vkGetInstanceProcAddr")
         return (PFN_vkVoidFunction)GamePlug_GetInstanceProcAddr;
-    if (std::string(pName) == "vkGetDeviceProcAddr")
+    if (name == "vkGetDeviceProcAddr")
         return (PFN_vkVoidFunction)GamePlug_GetDeviceProcAddr;
-    if (std::string(pName) == "vk_layerGetPhysicalDeviceProcAddr")
+    if (name == "vk_layerGetPhysicalDeviceProcAddr")
         return (PFN_vkVoidFunction)GamePlug_GetPhysicalDeviceProcAddr;
-    if (std::string(pName) == "vkCreateInstance") {
+    if (name == "vkCreateInstance") {
         if (g_InsideCreateInstance && Original_vkCreateInstance) {
             return (PFN_vkVoidFunction)Original_vkCreateInstance;
         }
         return (PFN_vkVoidFunction)GamePlug_CreateInstance;
     }
-    if (std::string(pName) == "vkCreateDevice") {
+    if (name == "vkCreateDevice") {
         if (g_InsideCreateDevice && Original_vkCreateDevice) {
             return (PFN_vkVoidFunction)Original_vkCreateDevice;
         }
         return (PFN_vkVoidFunction)GamePlug_CreateDevice;
     }
-    if (std::string(pName) == "vkCreateWin32SurfaceKHR")
+    if (name == "vkCreateWin32SurfaceKHR")
         return (PFN_vkVoidFunction)GamePlug_CreateWin32SurfaceKHR;
-    if (std::string(pName) == "vkGetDeviceQueue")
+    if (name == "vkGetDeviceQueue")
         return (PFN_vkVoidFunction)GamePlug_GetDeviceQueue;
-    if (std::string(pName) == "vkGetDeviceQueue2")
+    if (name == "vkGetDeviceQueue2")
         return (PFN_vkVoidFunction)GamePlug_GetDeviceQueue2;
-    if (std::string(pName) == "vkCreateSwapchainKHR")
+    if (name == "vkCreateSwapchainKHR")
         return (PFN_vkVoidFunction)GamePlug_CreateSwapchainKHR;
-    if (std::string(pName) == "vkQueuePresentKHR")
+    if (name == "vkQueuePresentKHR")
         return (PFN_vkVoidFunction)GamePlug_QueuePresentKHR;
-    if (std::string(pName) == "vkAcquireNextImageKHR")
+    if (name == "vkAcquireNextImageKHR")
         return (PFN_vkVoidFunction)GamePlug_AcquireNextImageKHR;
-    if (std::string(pName) == "vkGetSwapchainImagesKHR")
+    if (name == "vkGetSwapchainImagesKHR")
         return (PFN_vkVoidFunction)GamePlug_GetSwapchainImagesKHR;
-    if (std::string(pName) == "vkCreateImage")
+    if (name == "vkCreateImage")
         return (PFN_vkVoidFunction)GamePlug_CreateImage;
-    if (std::string(pName) == "vkDestroyImage")
+    if (name == "vkDestroyImage")
         return (PFN_vkVoidFunction)GamePlug_DestroyImage;
-    if (std::string(pName) == "vkCreateImageView")
+    if (name == "vkCreateImageView")
         return (PFN_vkVoidFunction)GamePlug_CreateImageView;
-    if (std::string(pName) == "vkDestroyImageView")
+    if (name == "vkDestroyImageView")
         return (PFN_vkVoidFunction)GamePlug_DestroyImageView;
-    if (std::string(pName) == "vkCreateFramebuffer")
+    if (name == "vkCreateFramebuffer")
         return (PFN_vkVoidFunction)GamePlug_CreateFramebuffer;
-    if (std::string(pName) == "vkDestroyFramebuffer")
+    if (name == "vkDestroyFramebuffer")
         return (PFN_vkVoidFunction)GamePlug_DestroyFramebuffer;
-    if (std::string(pName) == "vkAllocateMemory")
+    if (name == "vkAllocateMemory")
         return (PFN_vkVoidFunction)GamePlug_AllocateMemory;
-    if (std::string(pName) == "vkBindImageMemory")
+    if (name == "vkBindImageMemory")
         return (PFN_vkVoidFunction)GamePlug_BindImageMemory;
-    if (std::string(pName) == "vkCreateRenderPass")
+    if (name == "vkCreateRenderPass")
         return (PFN_vkVoidFunction)GamePlug_CreateRenderPass;
-    if (std::string(pName) == "vkCreateGraphicsPipelines")
+    if (name == "vkCreateGraphicsPipelines")
         return (PFN_vkVoidFunction)GamePlug_CreateGraphicsPipelines;
-    if (std::string(pName) == "vkAllocateCommandBuffers")
+    if (name == "vkAllocateCommandBuffers")
         return (PFN_vkVoidFunction)GamePlug_AllocateCommandBuffers;
-    if (std::string(pName) == "vkBeginCommandBuffer")
+    if (name == "vkBeginCommandBuffer")
         return (PFN_vkVoidFunction)GamePlug_BeginCommandBuffer;
-    if (std::string(pName) == "vkEndCommandBuffer")
+    if (name == "vkEndCommandBuffer")
         return (PFN_vkVoidFunction)GamePlug_EndCommandBuffer;
-    if (std::string(pName) == "vkDestroySwapchainKHR")
+    if (name == "vkDestroySwapchainKHR")
         return (PFN_vkVoidFunction)GamePlug_DestroySwapchainKHR;
-    if (std::string(pName) == "vkDestroyDevice")
+    if (name == "vkDestroyDevice")
         return (PFN_vkVoidFunction)GamePlug_DestroyDevice;
-    if (std::string(pName) == "vkDestroyInstance")
+    if (name == "vkDestroyInstance")
         return (PFN_vkVoidFunction)GamePlug_DestroyInstance;
-    if (std::string(pName) == "vkDeviceWaitIdle")
+    if (name == "vkDeviceWaitIdle")
         return (PFN_vkVoidFunction)GamePlug_DeviceWaitIdle;
-    if (std::string(pName) == "vkGetPhysicalDeviceSurfaceCapabilitiesKHR")
+    if (name == "vkGetPhysicalDeviceSurfaceCapabilitiesKHR")
         return (PFN_vkVoidFunction)GamePlug_GetPhysicalDeviceSurfaceCapabilitiesKHR;
-    if (std::string(pName) == "vkGetPhysicalDeviceSurfaceCapabilities2KHR")
+    if (name == "vkGetPhysicalDeviceSurfaceCapabilities2KHR")
         return (PFN_vkVoidFunction)GamePlug_GetPhysicalDeviceSurfaceCapabilities2KHR;
-    if (std::string(pName) == "vkCmdSetViewport")
-        return (PFN_vkVoidFunction)GamePlug_CmdSetViewport;
-    if (std::string(pName) == "vkCmdSetScissor")
-        return (PFN_vkVoidFunction)GamePlug_CmdSetScissor;
-    if (std::string(pName) == "vkCmdBeginRenderPass")
+    if (name == "vkCmdBeginRenderPass")
         return (PFN_vkVoidFunction)GamePlug_CmdBeginRenderPass;
-    if (std::string(pName) == "vkCmdEndRenderPass")
+    if (name == "vkCmdEndRenderPass")
         return (PFN_vkVoidFunction)GamePlug_CmdEndRenderPass;
-    if (std::string(pName) == "vkCmdBeginRendering")
+    if (name == "vkCmdBeginRendering")
         return (PFN_vkVoidFunction)GamePlug_CmdBeginRendering;
-    if (std::string(pName) == "vkCmdEndRendering")
+    if (name == "vkCmdEndRendering")
         return (PFN_vkVoidFunction)GamePlug_CmdEndRendering;
-    if (std::string(pName) == "vkCmdBeginRenderingKHR")
+    if (name == "vkCmdBeginRenderingKHR")
         return (PFN_vkVoidFunction)GamePlug_CmdBeginRenderingKHR;
-    if (std::string(pName) == "vkCmdEndRenderingKHR")
+    if (name == "vkCmdEndRenderingKHR")
         return (PFN_vkVoidFunction)GamePlug_CmdEndRenderingKHR;
 
     auto* inst_entry = GamePlug::DispatchManager::Get().GetInstance(instance);

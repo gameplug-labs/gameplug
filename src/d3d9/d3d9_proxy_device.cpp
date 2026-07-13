@@ -92,6 +92,7 @@ ProxyDirect3DDevice9::ProxyDirect3DDevice9(
             }
         } else {
             upscalerReady = true;
+            UpscalerManager::Get().UpdateFallbackConfig();
         }
 
         if (upscalerReady) {

@@ -2,6 +2,9 @@
 
 #include "d3d9_proxy.h"
 
+// {7A301D38-8B4E-4C0F-87E7-F43F24D3D9E9}
+static const GUID IID_IProxySurface9 = { 0x7a301d38, 0x8b4e, 0x4c0f, { 0x87, 0xe7, 0xf4, 0x3f, 0x24, 0xd3, 0xd9, 0xe9 } };
+
 // --- Proxy Surface ---
 class ProxySurface9 : public IDirect3DSurface9 {
     IDirect3DSurface9* m_pReal;

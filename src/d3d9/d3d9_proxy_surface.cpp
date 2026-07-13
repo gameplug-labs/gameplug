@@ -8,8 +8,12 @@ static std::mutex g_surfacesMutex;
 bool IsProxySurfacePtr(IDirect3DSurface9* pSurf) {
     if (!pSurf)
         return false;
-    std::lock_guard<std::mutex> lock(g_surfacesMutex);
-    return g_activeSurfaces.count((ProxySurface9*)pSurf) > 0;
+    IDirect3DSurface9* pTemp = nullptr;
+    if (SUCCEEDED(pSurf->QueryInterface(IID_IProxySurface9, (void**)&pTemp))) {
+        pTemp->Release();
+        return true;
+    }
+    return false;
 }
 
 ProxySurface9* FindProxySurfaceByRealPtr(IDirect3DSurface9* pReal) {
@@ -58,6 +62,11 @@ IDirect3DSurface9* ProxySurface9::GetInternalSurface() {
 
 // IUnknown
 STDMETHODIMP ProxySurface9::QueryInterface(REFIID riid, void** ppvObj) {
+    if (riid == IID_IProxySurface9) {
+        *ppvObj = this;
+        AddRef();
+        return S_OK;
+    }
     if (riid == IID_IDirect3DSurface9 || riid == IID_IDirect3DResource9 || riid == IID_IUnknown) {
         *ppvObj = (IDirect3DSurface9*)this;
         AddRef();

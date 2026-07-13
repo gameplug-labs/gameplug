@@ -66,7 +66,8 @@ struct GamePlugUpscalerInterface {
     void(__cdecl* OnRenderFrame)(uintptr_t commandBuffer, uint64_t source, uint64_t target, uint32_t targetFormat, uint32_t width,
         uint32_t height, uint32_t renderWidth, uint32_t renderHeight, uint64_t depth, uint32_t depthFormat, uint64_t motionVectors,
         uint32_t motionVectorFormat, float jitterX, float jitterY, float cameraNear, float cameraFar, float cameraFov,
-        float viewSpaceToMetersFactor, bool invertedDepth, bool hdr);
+        float viewSpaceToMetersFactor, bool invertedDepth, bool hdr,
+        uint32_t matrixFlags, const float* currViewProj, const float* prevViewProj, const float* invCurrViewProj);
 
     // Metadata for configuration fields
     struct FieldDescriptor {

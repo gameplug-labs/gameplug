@@ -76,6 +76,7 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_DestroyFramebuffer(
     }
 }
 
+/*
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_AllocateMemory(
     VkDevice device, const VkMemoryAllocateInfo* pAllocateInfo, const VkAllocationCallbacks* pAllocator, VkDeviceMemory* pMemory) {
     auto* dev_entry = GamePlug::DispatchManager::Get().GetDevice(device);
@@ -102,5 +103,6 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateRenderPass(
     VkResult result = dev_entry->table.vkCreateRenderPass(device, pCreateInfo, pAllocator, pRenderPass);
     return result;
 }
+*/
 
 } // extern "C"

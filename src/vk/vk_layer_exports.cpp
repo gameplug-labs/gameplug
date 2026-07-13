@@ -50,8 +50,8 @@ VK_LAYER_EXPORT PFN_vkVoidFunction VKAPI_CALL GamePlug_GetDeviceProcAddr(VkDevic
         return (PFN_vkVoidFunction)GamePlug_QueuePresentKHR;
     if (name == "vkAcquireNextImageKHR")
         return (PFN_vkVoidFunction)GamePlug_AcquireNextImageKHR;
-    if (name == "vkGetSwapchainImagesKHR")
-        return (PFN_vkVoidFunction)GamePlug_GetSwapchainImagesKHR;
+    // if (name == "vkGetSwapchainImagesKHR")
+    //     return (PFN_vkVoidFunction)GamePlug_GetSwapchainImagesKHR;
     if (name == "vkCreateImage")
         return (PFN_vkVoidFunction)GamePlug_CreateImage;
     if (name == "vkDestroyImage")
@@ -64,32 +64,36 @@ VK_LAYER_EXPORT PFN_vkVoidFunction VKAPI_CALL GamePlug_GetDeviceProcAddr(VkDevic
         return (PFN_vkVoidFunction)GamePlug_CreateFramebuffer;
     if (name == "vkDestroyFramebuffer")
         return (PFN_vkVoidFunction)GamePlug_DestroyFramebuffer;
-    if (name == "vkAllocateMemory")
-        return (PFN_vkVoidFunction)GamePlug_AllocateMemory;
-    if (name == "vkBindImageMemory")
-        return (PFN_vkVoidFunction)GamePlug_BindImageMemory;
-    if (name == "vkCreateRenderPass")
-        return (PFN_vkVoidFunction)GamePlug_CreateRenderPass;
-    if (name == "vkCreateGraphicsPipelines")
-        return (PFN_vkVoidFunction)GamePlug_CreateGraphicsPipelines;
+    // if (name == "vkAllocateMemory")
+    //     return (PFN_vkVoidFunction)GamePlug_AllocateMemory;
+    // if (name == "vkBindImageMemory")
+    //     return (PFN_vkVoidFunction)GamePlug_BindImageMemory;
+    // if (name == "vkCreateRenderPass")
+    //     return (PFN_vkVoidFunction)GamePlug_CreateRenderPass;
+    // if (name == "vkCreateGraphicsPipelines")
+    //     return (PFN_vkVoidFunction)GamePlug_CreateGraphicsPipelines;
     if (name == "vkAllocateCommandBuffers")
         return (PFN_vkVoidFunction)GamePlug_AllocateCommandBuffers;
     if (name == "vkBeginCommandBuffer")
         return (PFN_vkVoidFunction)GamePlug_BeginCommandBuffer;
-    if (name == "vkEndCommandBuffer")
-        return (PFN_vkVoidFunction)GamePlug_EndCommandBuffer;
-    if (name == "vkDestroySwapchainKHR")
-        return (PFN_vkVoidFunction)GamePlug_DestroySwapchainKHR;
+    // if (name == "vkEndCommandBuffer")
+    //     return (PFN_vkVoidFunction)GamePlug_EndCommandBuffer;
+    // if (name == "vkDestroySwapchainKHR")
+    //     return (PFN_vkVoidFunction)GamePlug_DestroySwapchainKHR;
     if (name == "vkDestroyDevice")
         return (PFN_vkVoidFunction)GamePlug_DestroyDevice;
-    if (name == "vkDestroyInstance")
-        return (PFN_vkVoidFunction)GamePlug_DestroyInstance;
-    if (name == "vkDeviceWaitIdle")
-        return (PFN_vkVoidFunction)GamePlug_DeviceWaitIdle;
-    if (name == "vkGetPhysicalDeviceSurfaceCapabilitiesKHR")
-        return (PFN_vkVoidFunction)GamePlug_GetPhysicalDeviceSurfaceCapabilitiesKHR;
-    if (name == "vkGetPhysicalDeviceSurfaceCapabilities2KHR")
-        return (PFN_vkVoidFunction)GamePlug_GetPhysicalDeviceSurfaceCapabilities2KHR;
+    // if (name == "vkDestroyInstance")
+    //     return (PFN_vkVoidFunction)GamePlug_DestroyInstance;
+    // if (name == "vkDeviceWaitIdle")
+    //     return (PFN_vkVoidFunction)GamePlug_DeviceWaitIdle;
+    // if (name == "vkGetPhysicalDeviceSurfaceCapabilitiesKHR")
+    //     return (PFN_vkVoidFunction)GamePlug_GetPhysicalDeviceSurfaceCapabilitiesKHR;
+    // if (name == "vkGetPhysicalDeviceSurfaceCapabilities2KHR")
+    //     return (PFN_vkVoidFunction)GamePlug_GetPhysicalDeviceSurfaceCapabilities2KHR;
+    // if (name == "vkCmdSetViewport")
+    //     return (PFN_vkVoidFunction)GamePlug_CmdSetViewport;
+    // if (name == "vkCmdSetScissor")
+    //     return (PFN_vkVoidFunction)GamePlug_CmdSetScissor;
     if (name == "vkCmdBeginRenderPass")
         return (PFN_vkVoidFunction)GamePlug_CmdBeginRenderPass;
     if (name == "vkCmdEndRenderPass")
@@ -155,8 +159,8 @@ VK_LAYER_EXPORT PFN_vkVoidFunction VKAPI_CALL GamePlug_GetInstanceProcAddr(VkIns
         return (PFN_vkVoidFunction)GamePlug_QueuePresentKHR;
     if (name == "vkAcquireNextImageKHR")
         return (PFN_vkVoidFunction)GamePlug_AcquireNextImageKHR;
-    if (name == "vkGetSwapchainImagesKHR")
-        return (PFN_vkVoidFunction)GamePlug_GetSwapchainImagesKHR;
+    // if (name == "vkGetSwapchainImagesKHR")
+    //     return (PFN_vkVoidFunction)GamePlug_GetSwapchainImagesKHR;
     if (name == "vkCreateImage")
         return (PFN_vkVoidFunction)GamePlug_CreateImage;
     if (name == "vkDestroyImage")
@@ -169,32 +173,36 @@ VK_LAYER_EXPORT PFN_vkVoidFunction VKAPI_CALL GamePlug_GetInstanceProcAddr(VkIns
         return (PFN_vkVoidFunction)GamePlug_CreateFramebuffer;
     if (name == "vkDestroyFramebuffer")
         return (PFN_vkVoidFunction)GamePlug_DestroyFramebuffer;
-    if (name == "vkAllocateMemory")
-        return (PFN_vkVoidFunction)GamePlug_AllocateMemory;
-    if (name == "vkBindImageMemory")
-        return (PFN_vkVoidFunction)GamePlug_BindImageMemory;
-    if (name == "vkCreateRenderPass")
-        return (PFN_vkVoidFunction)GamePlug_CreateRenderPass;
-    if (name == "vkCreateGraphicsPipelines")
-        return (PFN_vkVoidFunction)GamePlug_CreateGraphicsPipelines;
+    // if (name == "vkAllocateMemory")
+    //     return (PFN_vkVoidFunction)GamePlug_AllocateMemory;
+    // if (name == "vkBindImageMemory")
+    //     return (PFN_vkVoidFunction)GamePlug_BindImageMemory;
+    // if (name == "vkCreateRenderPass")
+    //     return (PFN_vkVoidFunction)GamePlug_CreateRenderPass;
+    // if (name == "vkCreateGraphicsPipelines")
+    //     return (PFN_vkVoidFunction)GamePlug_CreateGraphicsPipelines;
     if (name == "vkAllocateCommandBuffers")
         return (PFN_vkVoidFunction)GamePlug_AllocateCommandBuffers;
     if (name == "vkBeginCommandBuffer")
         return (PFN_vkVoidFunction)GamePlug_BeginCommandBuffer;
-    if (name == "vkEndCommandBuffer")
-        return (PFN_vkVoidFunction)GamePlug_EndCommandBuffer;
-    if (name == "vkDestroySwapchainKHR")
-        return (PFN_vkVoidFunction)GamePlug_DestroySwapchainKHR;
+    // if (name == "vkEndCommandBuffer")
+    //     return (PFN_vkVoidFunction)GamePlug_EndCommandBuffer;
+    // if (name == "vkDestroySwapchainKHR")
+    //     return (PFN_vkVoidFunction)GamePlug_DestroySwapchainKHR;
     if (name == "vkDestroyDevice")
         return (PFN_vkVoidFunction)GamePlug_DestroyDevice;
-    if (name == "vkDestroyInstance")
-        return (PFN_vkVoidFunction)GamePlug_DestroyInstance;
-    if (name == "vkDeviceWaitIdle")
-        return (PFN_vkVoidFunction)GamePlug_DeviceWaitIdle;
-    if (name == "vkGetPhysicalDeviceSurfaceCapabilitiesKHR")
-        return (PFN_vkVoidFunction)GamePlug_GetPhysicalDeviceSurfaceCapabilitiesKHR;
-    if (name == "vkGetPhysicalDeviceSurfaceCapabilities2KHR")
-        return (PFN_vkVoidFunction)GamePlug_GetPhysicalDeviceSurfaceCapabilities2KHR;
+    // if (name == "vkDestroyInstance")
+    //     return (PFN_vkVoidFunction)GamePlug_DestroyInstance;
+    // if (name == "vkDeviceWaitIdle")
+    //     return (PFN_vkVoidFunction)GamePlug_DeviceWaitIdle;
+    // if (name == "vkGetPhysicalDeviceSurfaceCapabilitiesKHR")
+    //     return (PFN_vkVoidFunction)GamePlug_GetPhysicalDeviceSurfaceCapabilitiesKHR;
+    // if (name == "vkGetPhysicalDeviceSurfaceCapabilities2KHR")
+    //     return (PFN_vkVoidFunction)GamePlug_GetPhysicalDeviceSurfaceCapabilities2KHR;
+    // if (name == "vkCmdSetViewport")
+    //     return (PFN_vkVoidFunction)GamePlug_CmdSetViewport;
+    // if (name == "vkCmdSetScissor")
+    //     return (PFN_vkVoidFunction)GamePlug_CmdSetScissor;
     if (name == "vkCmdBeginRenderPass")
         return (PFN_vkVoidFunction)GamePlug_CmdBeginRenderPass;
     if (name == "vkCmdEndRenderPass")

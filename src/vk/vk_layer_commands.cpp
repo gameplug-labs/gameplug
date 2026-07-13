@@ -16,6 +16,7 @@ static std::unordered_map<VkCommandBuffer, std::vector<VkImageView>> g_ActiveRen
 static std::mutex g_ActiveMapsMutex;
 
 
+/*
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateGraphicsPipelines(VkDevice device, VkPipelineCache pipelineCache,
     uint32_t createInfoCount, const VkGraphicsPipelineCreateInfo* pCreateInfos, const VkAllocationCallbacks* pAllocator,
     VkPipeline* pPipelines) {
@@ -44,6 +45,37 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateGraphicsPipelines(VkDevice de
 
     return dev_entry->table.vkCreateGraphicsPipelines(device, pipelineCache, createInfoCount, pCreateInfos, pAllocator, pPipelines);
 }
+*/
+
+/*
+VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdSetViewport(
+    VkCommandBuffer commandBuffer, uint32_t firstViewport, uint32_t viewportCount, const VkViewport* pViewports) {
+    auto* dev_entry = GamePlug::DispatchManager::Get().GetDeviceByCommandBuffer(commandBuffer);
+    if (!dev_entry)
+        return;
+
+    if (GamePlug::OverlayRenderer::IsRenderingOverlay()) {
+        dev_entry->table.vkCmdSetViewport(commandBuffer, firstViewport, viewportCount, pViewports);
+        return;
+    }
+
+    dev_entry->table.vkCmdSetViewport(commandBuffer, firstViewport, viewportCount, pViewports);
+}
+
+VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdSetScissor(
+    VkCommandBuffer commandBuffer, uint32_t firstScissor, uint32_t scissorCount, const VkRect2D* pScissors) {
+    auto* dev_entry = GamePlug::DispatchManager::Get().GetDeviceByCommandBuffer(commandBuffer);
+    if (!dev_entry)
+        return;
+
+    if (GamePlug::OverlayRenderer::IsRenderingOverlay()) {
+        dev_entry->table.vkCmdSetScissor(commandBuffer, firstScissor, scissorCount, pScissors);
+        return;
+    }
+
+    dev_entry->table.vkCmdSetScissor(commandBuffer, firstScissor, scissorCount, pScissors);
+}
+*/
 
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_AllocateCommandBuffers(
     VkDevice device, const VkCommandBufferAllocateInfo* pAllocateInfo, VkCommandBuffer* pCommandBuffers) {
@@ -70,6 +102,7 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_BeginCommandBuffer(VkCommandBuffer 
     return result;
 }
 
+/*
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_EndCommandBuffer(VkCommandBuffer commandBuffer) {
     auto* dev_entry = GamePlug::DispatchManager::Get().GetDeviceByCommandBuffer(commandBuffer);
     if (!dev_entry)
@@ -77,6 +110,7 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_EndCommandBuffer(VkCommandBuffer co
     VkResult result = dev_entry->table.vkEndCommandBuffer(commandBuffer);
     return result;
 }
+*/
 
 VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdBeginRenderPass(
     VkCommandBuffer commandBuffer, const VkRenderPassBeginInfo* pRenderPassBegin, VkSubpassContents contents) {

@@ -308,7 +308,7 @@ add_custom_command(TARGET version POST_BUILD
     COMMENT "Copying version proxy to bin folder"
 )
 
-add_library(dinput8 SHARED vk/dinput8.cpp ${VK_LAYER_SOURCES})
+add_library(dinput8 SHARED shared/dinput8.cpp ${VK_LAYER_SOURCES})
 target_include_directories(dinput8 PRIVATE
     ${PROJECT_SOURCE_DIR}/include
     ${PROJECT_SOURCE_DIR}/src/vk

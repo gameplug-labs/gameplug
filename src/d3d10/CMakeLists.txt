@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 add_library(dinput8_d3d10 SHARED
-    dinput.cpp
+    ../shared/dinput8.cpp
     dinput.def
 )
 

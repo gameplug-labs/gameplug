@@ -288,7 +288,7 @@ set(VK_LAYER_SOURCES
     vk/vk_layer_commands.cpp
 )
 
-add_library(version SHARED vk/version.cpp ${VK_LAYER_SOURCES})
+add_library(version SHARED shared/version.cpp ${VK_LAYER_SOURCES})
 target_include_directories(version PRIVATE
     ${PROJECT_SOURCE_DIR}/include
     ${PROJECT_SOURCE_DIR}/src/vk

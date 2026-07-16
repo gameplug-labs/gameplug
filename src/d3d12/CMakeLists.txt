@@ -56,8 +56,7 @@ add_custom_command(TARGET dinput8_d3d12 POST_BUILD
 
 # Version DLL target
 add_library(version_d3d12 SHARED
-    version.cpp
-    version.def
+    ../shared/version.cpp
 )
 
 target_include_directories(version_d3d12 PRIVATE
@@ -72,7 +71,7 @@ target_include_directories(version_d3d12 PRIVATE
 )
 
 target_compile_definitions(version_d3d12 PRIVATE 
-    RE4 REENGINE_PACKED REENGINE_AT
+    RE4 REENGINE_PACKED REENGINE_AT GAMEPLUG_DELAY_FRAMEWORK_START
 )
 
 target_link_libraries(version_d3d12 PRIVATE

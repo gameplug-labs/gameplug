@@ -123,8 +123,7 @@ endif()
 
 # --- D3D9 Version Target ---
 add_library(version_d3d9 SHARED
-    version.cpp
-    version.def
+    ../shared/version.cpp
 )
 
 target_include_directories(version_d3d9 PRIVATE
@@ -166,8 +165,7 @@ endif()
 
 # --- Skyrim Specific Version Target ---
 add_library(version_skyrim SHARED
-    version.cpp
-    version.def
+    ../shared/version.cpp
 )
 
 target_include_directories(version_skyrim PRIVATE

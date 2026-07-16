@@ -51,8 +51,7 @@ add_custom_command(TARGET dinput8_d3d10 POST_BUILD
 
 # Version DLL target
 add_library(version_d3d10 SHARED
-    version.cpp
-    version.def
+    ../shared/version.cpp
 )
 
 target_include_directories(version_d3d10 PRIVATE

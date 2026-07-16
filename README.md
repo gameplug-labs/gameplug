@@ -4,6 +4,8 @@
   <img src="gameplug.png" alt="GamePlug Logo" width="600" />
 </p>
 
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/rohitdev)
+
 GamePlug is a powerful, multi-API interception framework designed for modders. It provides a unified plugin system to inject custom ImGui UIs and game logic across **Vulkan**, **DirectX 9**, **DirectX 10**, **DirectX 11**, and **DirectX 12**.
 
 ## ✨ Key Features
@@ -74,6 +76,13 @@ DirectX integration is simpler and uses a proxy DLL in the game's executable dir
 If a game is incompatible with `dinput8.dll` or fails to load it:
 1. Copy the appropriate `version.dll` from the corresponding backend build folder (`d3d9`, `d3d10`, `d3d11`, or `d3d12`) into the game's executable directory.
 2. Launch the game normally.
+
+### ⌨️ Toggle Overlay
+
+Once the game is launched with GamePlug, you can toggle the visibility of the ImGui overlay using any of the following shortcut keys:
+- `Ctrl + Home`
+- `Ctrl + End`
+- `` ` `` (Backtick / tilde key)
 
 ## 🤝 Contributing
 

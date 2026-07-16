@@ -91,10 +91,10 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_BeginCommandBuffer(VkCommandBuffer 
 
 // VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_EndCommandBuffer(VkCommandBuffer commandBuffer);
 
-VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdBeginRenderPass(
-    VkCommandBuffer commandBuffer, const VkRenderPassBeginInfo* pRenderPassBegin, VkSubpassContents contents);
+// VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdBeginRenderPass(
+//     VkCommandBuffer commandBuffer, const VkRenderPassBeginInfo* pRenderPassBegin, VkSubpassContents contents);
 
-VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdEndRenderPass(VkCommandBuffer commandBuffer);
+// VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdEndRenderPass(VkCommandBuffer commandBuffer);
 
 VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdBeginRendering(
     VkCommandBuffer commandBuffer, const VkRenderingInfo* pRenderingInfo);

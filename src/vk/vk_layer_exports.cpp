@@ -94,10 +94,10 @@ VK_LAYER_EXPORT PFN_vkVoidFunction VKAPI_CALL GamePlug_GetDeviceProcAddr(VkDevic
     //     return (PFN_vkVoidFunction)GamePlug_CmdSetViewport;
     // if (name == "vkCmdSetScissor")
     //     return (PFN_vkVoidFunction)GamePlug_CmdSetScissor;
-    if (name == "vkCmdBeginRenderPass")
-        return (PFN_vkVoidFunction)GamePlug_CmdBeginRenderPass;
-    if (name == "vkCmdEndRenderPass")
-        return (PFN_vkVoidFunction)GamePlug_CmdEndRenderPass;
+    // if (name == "vkCmdBeginRenderPass")
+    //     return (PFN_vkVoidFunction)GamePlug_CmdBeginRenderPass;
+    // if (name == "vkCmdEndRenderPass")
+    //     return (PFN_vkVoidFunction)GamePlug_CmdEndRenderPass;
     if (name == "vkCmdBeginRendering")
         return (PFN_vkVoidFunction)GamePlug_CmdBeginRendering;
     if (name == "vkCmdEndRendering")
@@ -203,10 +203,10 @@ VK_LAYER_EXPORT PFN_vkVoidFunction VKAPI_CALL GamePlug_GetInstanceProcAddr(VkIns
     //     return (PFN_vkVoidFunction)GamePlug_CmdSetViewport;
     // if (name == "vkCmdSetScissor")
     //     return (PFN_vkVoidFunction)GamePlug_CmdSetScissor;
-    if (name == "vkCmdBeginRenderPass")
-        return (PFN_vkVoidFunction)GamePlug_CmdBeginRenderPass;
-    if (name == "vkCmdEndRenderPass")
-        return (PFN_vkVoidFunction)GamePlug_CmdEndRenderPass;
+    // if (name == "vkCmdBeginRenderPass")
+    //     return (PFN_vkVoidFunction)GamePlug_CmdBeginRenderPass;
+    // if (name == "vkCmdEndRenderPass")
+    //     return (PFN_vkVoidFunction)GamePlug_CmdEndRenderPass;
     if (name == "vkCmdBeginRendering")
         return (PFN_vkVoidFunction)GamePlug_CmdBeginRendering;
     if (name == "vkCmdEndRendering")

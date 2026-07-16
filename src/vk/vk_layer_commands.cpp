@@ -112,6 +112,7 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_EndCommandBuffer(VkCommandBuffer co
 }
 */
 
+/*
 VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdBeginRenderPass(
     VkCommandBuffer commandBuffer, const VkRenderPassBeginInfo* pRenderPassBegin, VkSubpassContents contents) {
     auto* dev_entry = GamePlug::DispatchManager::Get().GetDeviceByCommandBuffer(commandBuffer);
@@ -147,6 +148,7 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdEndRenderPass(VkCommandBuffer comman
 
     GamePlug::UpscalerManager::Get().OnCmdEndRenderPass(commandBuffer, fb);
 }
+*/
 
 VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdBeginRendering(
     VkCommandBuffer commandBuffer, const VkRenderingInfo* pRenderingInfo) {

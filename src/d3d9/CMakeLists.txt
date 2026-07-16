@@ -58,7 +58,7 @@ endif()
 # --- Skyrim Specific Target ---
 add_library(dinput8_skyrim SHARED
     d3d9.cpp
-    d3d9.def
+    skyrim.def
 )
 
 target_include_directories(dinput8_skyrim PRIVATE

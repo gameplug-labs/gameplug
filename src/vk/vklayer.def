@@ -1,6 +1,0 @@
-LIBRARY vklayer
-EXPORTS
-    vkGetInstanceProcAddr = GamePlug_GetInstanceProcAddr
-    vkGetDeviceProcAddr = GamePlug_GetDeviceProcAddr
-    vk_layerGetPhysicalDeviceProcAddr = GamePlug_GetPhysicalDeviceProcAddr
-    vkNegotiateLoaderLayerInterfaceVersion = GamePlug_NegotiateLoaderLayerInterfaceVersion

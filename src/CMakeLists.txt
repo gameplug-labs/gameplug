@@ -281,8 +281,25 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 4)
 endif()
 
 # --- Vulkan Loader Proxies ---
-add_library(version SHARED vk/version.cpp)
-target_link_libraries(version PRIVATE shlwapi.lib)
+set(VK_LAYER_SOURCES
+    vk/vk_layer_exports.cpp
+    vk/vk_layer_lifecycle.cpp
+    vk/vk_layer_resources.cpp
+    vk/vk_layer_commands.cpp
+)
+
+add_library(version SHARED vk/version.cpp ${VK_LAYER_SOURCES})
+target_include_directories(version PRIVATE
+    ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/src/vk
+    ${PROJECT_SOURCE_DIR}/src/shared
+    ${PROJECT_SOURCE_DIR}/external/volk
+)
+target_compile_definitions(version PRIVATE 
+    GAMEPLUG_VULKAN
+    FRAMEWORK_EXPORTS
+)
+target_link_libraries(version PRIVATE framework_vk volk)
 set_target_properties(version PROPERTIES PREFIX "")
 add_custom_command(TARGET version POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -291,10 +308,18 @@ add_custom_command(TARGET version POST_BUILD
     COMMENT "Copying version proxy to bin folder"
 )
 
-add_library(dinput8 SHARED vk/dinput8.cpp)
-target_link_libraries(dinput8 PRIVATE shlwapi.lib)
-set_target_properties(dinput8 PROPERTIES PREFIX "")
-
+add_library(dinput8 SHARED vk/dinput8.cpp ${VK_LAYER_SOURCES})
+target_include_directories(dinput8 PRIVATE
+    ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/src/vk
+    ${PROJECT_SOURCE_DIR}/src/shared
+    ${PROJECT_SOURCE_DIR}/external/volk
+)
+target_compile_definitions(dinput8 PRIVATE 
+    GAMEPLUG_VULKAN
+    FRAMEWORK_EXPORTS
+)
+target_link_libraries(dinput8 PRIVATE framework_vk volk)
 add_library(winmm SHARED vk/winmm.cpp ${VK_LAYER_SOURCES})
 target_include_directories(winmm PRIVATE
     ${PROJECT_SOURCE_DIR}/include
@@ -306,7 +331,7 @@ target_compile_definitions(winmm PRIVATE
     GAMEPLUG_VULKAN
     FRAMEWORK_EXPORTS
 )
-target_link_libraries(winmm PRIVATE shlwapi.lib framework_vk volk)
+target_link_libraries(winmm PRIVATE framework_vk volk)
 set_target_properties(winmm PROPERTIES PREFIX "")
 
 if(MSVC)
@@ -328,62 +353,4 @@ add_custom_command(TARGET winmm POST_BUILD
             "${BIN_OUTPUT_DIR}/$<TARGET_FILE_NAME:winmm>"
     COMMENT "Copying winmm proxy to bin folder"
 )
-
-
-
-# --- Vulkan Layer ---
-add_library(vklayer SHARED
-    vk/vk_layer_exports.cpp
-    vk/vk_layer_lifecycle.cpp
-    vk/vk_layer_resources.cpp
-    vk/vk_layer_commands.cpp
-    vk/vk_layer_exports.h
-    vk/vklayer.def
-)
-
-target_include_directories(vklayer PRIVATE
-    ${PROJECT_SOURCE_DIR}/include
-    ${PROJECT_SOURCE_DIR}/src/shared
-    ${PROJECT_SOURCE_DIR}/external/volk
-)
-
-target_compile_definitions(vklayer PRIVATE 
-    GAMEPLUG_VULKAN
-    FRAMEWORK_EXPORTS
-)
-
-if(MSVC)
-    target_compile_options(vklayer PRIVATE /utf-8 /FS)
-endif()
-
-target_link_libraries(vklayer 
-    PRIVATE 
-    framework_vk
-    volk
-)
-
-# Post-build copy to root bin folder
-add_custom_command(TARGET vklayer POST_BUILD
-    # 1. Copy the DLL
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "$<TARGET_FILE:vklayer>"
-            "${BIN_OUTPUT_DIR}/$<TARGET_FILE_NAME:vklayer>"
-    
-    # 2. Copy the manifest file (VK_LAYER_GAMEPLUG.json)
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${CMAKE_BINARY_DIR}/VK_LAYER_GAMEPLUG.json"
-            "${BIN_OUTPUT_DIR}/VK_LAYER_GAMEPLUG.json"
-
-    COMMENT "Copying layer DLL and manifest to bin folder"
-)
-
-# Export the layer functions
-if(WIN32)
-    set_target_properties(vklayer PROPERTIES
-        PREFIX ""
-        SUFFIX ".dll"
-    )
-endif()
-
-
 

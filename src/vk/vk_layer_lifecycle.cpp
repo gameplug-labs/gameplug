@@ -77,6 +77,7 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateWin32SurfaceKHR(
     return result;
 }
 
+/*
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_GetPhysicalDeviceSurfaceCapabilitiesKHR(
     VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, VkSurfaceCapabilitiesKHR* pSurfaceCapabilities) {
     auto* inst_entry = GamePlug::DispatchManager::Get().GetInstance(g_Instance);
@@ -94,6 +95,7 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_GetPhysicalDeviceSurfaceCapabilitie
 
     return inst_entry->table.vkGetPhysicalDeviceSurfaceCapabilities2KHR(physicalDevice, pSurfaceInfo, pSurfaceCapabilities);
 }
+*/
 
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateSwapchainKHR(
     VkDevice device, const VkSwapchainCreateInfoKHR* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkSwapchainKHR* pSwapchain) {
@@ -195,6 +197,7 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_AcquireNextImageKHR(
     return result;
 }
 
+/*
 VK_LAYER_EXPORT void VKAPI_CALL GamePlug_DestroySwapchainKHR(
     VkDevice device, VkSwapchainKHR swapchain, const VkAllocationCallbacks* pAllocator) {
     GamePlug::Logger::debug("Hook: vkDestroySwapchainKHR Entry");
@@ -204,6 +207,7 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_DestroySwapchainKHR(
     }
     GamePlug::Logger::debug("Hook: vkDestroySwapchainKHR Exit");
 }
+*/
 
 VK_LAYER_EXPORT void VKAPI_CALL GamePlug_DestroyDevice(VkDevice device, const VkAllocationCallbacks* pAllocator) {
     GamePlug::Logger::info("vkDestroyDevice intercepted - Shutting down GamePlug");
@@ -215,6 +219,7 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_DestroyDevice(VkDevice device, const Vk
     }
 }
 
+/*
 VK_LAYER_EXPORT void VKAPI_CALL GamePlug_DestroyInstance(VkInstance instance, const VkAllocationCallbacks* pAllocator) {
     GamePlug::Logger::info("vkDestroyInstance intercepted");
     auto* inst_entry = GamePlug::DispatchManager::Get().GetInstance(instance);
@@ -232,6 +237,7 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_DeviceWaitIdle(VkDevice device) {
     GamePlug::Logger::debug("Hook: vkDeviceWaitIdle Exit");
     return result;
 }
+*/
 
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_QueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPresentInfo) {
     auto* queue_dispatch = GamePlug::DispatchManager::Get().GetQueueDispatch(queue);

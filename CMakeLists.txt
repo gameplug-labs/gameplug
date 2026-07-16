@@ -43,12 +43,4 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 8)
 endif()
 
 
-# Copy the manifest to the build dir
-configure_file(
-    ${PROJECT_SOURCE_DIR}/src/vk/VK_LAYER_GAMEPLUG.json
-    ${CMAKE_CURRENT_BINARY_DIR}/VK_LAYER_GAMEPLUG.json
-    COPYONLY
-)
-
-
 

@@ -98,3 +98,26 @@ add_custom_command(TARGET version_d3d10 POST_BUILD
     COMMENT "Copying version.dll proxy to bin/d3d10 folder"
 )
 
+# WinMM DLL proxy
+add_library(winmm_d3d10 SHARED ../shared/winmm.cpp)
+target_include_directories(winmm_d3d10 PRIVATE
+    ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/src/d3d10
+    ${PROJECT_SOURCE_DIR}/src/shared
+)
+target_link_libraries(winmm_d3d10 PRIVATE framework_d3d10 minhook d3d10 dxgi d3dcompiler delayimp.lib)
+if(MSVC)
+    target_compile_options(winmm_d3d10 PRIVATE /utf-8 /FS)
+    set_target_properties(winmm_d3d10 PROPERTIES PREFIX "" SUFFIX ".dll" OUTPUT_NAME "winmm"
+        LINK_FLAGS "/DELAYLOAD:d3d10.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3dcompiler_47.dll")
+else()
+    set_target_properties(winmm_d3d10 PROPERTIES PREFIX "" SUFFIX ".dll" OUTPUT_NAME "winmm")
+endif()
+add_custom_command(TARGET winmm_d3d10 POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${PROJECT_SOURCE_DIR}/bin/${BIN_ARCH}/d3d10"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:winmm_d3d10>"
+            "${PROJECT_SOURCE_DIR}/bin/${BIN_ARCH}/d3d10/$<TARGET_FILE_NAME:winmm_d3d10>"
+    COMMENT "Copying winmm.dll proxy to bin/d3d10 folder"
+)
+

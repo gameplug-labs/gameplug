@@ -320,7 +320,7 @@ target_compile_definitions(dinput8 PRIVATE
     FRAMEWORK_EXPORTS
 )
 target_link_libraries(dinput8 PRIVATE framework_vk volk)
-add_library(winmm SHARED vk/winmm.cpp ${VK_LAYER_SOURCES})
+add_library(winmm SHARED shared/winmm.cpp ${VK_LAYER_SOURCES})
 target_include_directories(winmm PRIVATE
     ${PROJECT_SOURCE_DIR}/include
     ${PROJECT_SOURCE_DIR}/src/vk

@@ -182,13 +182,26 @@
 #pragma comment(linker, "/export:waveOutUnprepareHeader=C:\\Windows\\System32\\winmm.waveOutUnprepareHeader")
 #pragma comment(linker, "/export:waveOutWrite=C:\\Windows\\System32\\winmm.waveOutWrite")
 
+#if defined(GAMEPLUG_VULKAN)
 extern "C" void StartVulkanHookSetup();
+#else
+extern "C" void StartFramework();
+
+static DWORD WINAPI InitThread(LPVOID) {
+    StartFramework();
+    return 0;
+}
+#endif
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved) {
     switch (ul_reason_for_call) {
         case DLL_PROCESS_ATTACH:
             DisableThreadLibraryCalls(hModule);
+#if defined(GAMEPLUG_VULKAN)
             StartVulkanHookSetup();
+#else
+            CreateThread(nullptr, 0, InitThread, nullptr, 0, nullptr);
+#endif
             break;
         case DLL_THREAD_ATTACH:
         case DLL_THREAD_DETACH:

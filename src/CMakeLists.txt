@@ -280,15 +280,15 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 4)
     add_subdirectory(d3d9)
 endif()
 
-# --- Vulkan Loader Proxies ---
-set(VK_LAYER_SOURCES
+# --- Vulkan MinHook Proxies ---
+set(VK_HOOK_SOURCES
     vk/vk_layer_exports.cpp
     vk/vk_layer_lifecycle.cpp
     vk/vk_layer_resources.cpp
     vk/vk_layer_commands.cpp
 )
 
-add_library(version SHARED shared/version.cpp ${VK_LAYER_SOURCES})
+add_library(version SHARED shared/version.cpp ${VK_HOOK_SOURCES})
 target_include_directories(version PRIVATE
     ${PROJECT_SOURCE_DIR}/include
     ${PROJECT_SOURCE_DIR}/src/vk
@@ -308,7 +308,7 @@ add_custom_command(TARGET version POST_BUILD
     COMMENT "Copying version proxy to bin folder"
 )
 
-add_library(dinput8 SHARED shared/dinput8.cpp ${VK_LAYER_SOURCES})
+add_library(dinput8 SHARED shared/dinput8.cpp ${VK_HOOK_SOURCES})
 target_include_directories(dinput8 PRIVATE
     ${PROJECT_SOURCE_DIR}/include
     ${PROJECT_SOURCE_DIR}/src/vk
@@ -320,7 +320,7 @@ target_compile_definitions(dinput8 PRIVATE
     FRAMEWORK_EXPORTS
 )
 target_link_libraries(dinput8 PRIVATE framework_vk volk)
-add_library(winmm SHARED shared/winmm.cpp ${VK_LAYER_SOURCES})
+add_library(winmm SHARED shared/winmm.cpp ${VK_HOOK_SOURCES})
 target_include_directories(winmm PRIVATE
     ${PROJECT_SOURCE_DIR}/include
     ${PROJECT_SOURCE_DIR}/src/vk

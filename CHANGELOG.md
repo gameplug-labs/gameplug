@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.7] - 2026-07-17
+
+### Added
+- Added `winmm.dll` proxy builds for Vulkan and D3D9, D3D10, D3D11, and D3D12.
+- Added MinHook-based Vulkan loader interception, avoiding Vulkan-layer registration conflicts with overlays such as RivaTuner Statistics Server (RTSS).
+
+### Changed
+- Consolidated the `dinput8.dll`, `version.dll`, and `winmm.dll` proxy implementations into shared sources where backend behavior is identical.
+
+### Removed
+- Removed the legacy Vulkan-layer environment setup (`VK_LAYER_PATH` and `VK_INSTANCE_LAYERS`) from the D3D9 framework.
+- Removed unused Vulkan layer-negotiation callbacks from the MinHook-based interception path.
+
 ## [1.0.6] - 2026-07-02
 
 ### Added

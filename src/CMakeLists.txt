@@ -294,11 +294,39 @@ add_custom_command(TARGET version POST_BUILD
 add_library(dinput8 SHARED vk/dinput8.cpp)
 target_link_libraries(dinput8 PRIVATE shlwapi.lib)
 set_target_properties(dinput8 PROPERTIES PREFIX "")
+
+add_library(winmm SHARED vk/winmm.cpp ${VK_LAYER_SOURCES})
+target_include_directories(winmm PRIVATE
+    ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/src/vk
+    ${PROJECT_SOURCE_DIR}/src/shared
+    ${PROJECT_SOURCE_DIR}/external/volk
+)
+target_compile_definitions(winmm PRIVATE 
+    GAMEPLUG_VULKAN
+    FRAMEWORK_EXPORTS
+)
+target_link_libraries(winmm PRIVATE shlwapi.lib framework_vk volk)
+set_target_properties(winmm PROPERTIES PREFIX "")
+
+if(MSVC)
+    target_compile_options(version PRIVATE /utf-8 /FS)
+    target_compile_options(dinput8 PRIVATE /utf-8 /FS)
+    target_compile_options(winmm PRIVATE /utf-8 /FS)
+endif()
+
 add_custom_command(TARGET dinput8 POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "$<TARGET_FILE:dinput8>"
             "${BIN_OUTPUT_DIR}/$<TARGET_FILE_NAME:dinput8>"
     COMMENT "Copying dinput8 proxy to bin folder"
+)
+
+add_custom_command(TARGET winmm POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:winmm>"
+            "${BIN_OUTPUT_DIR}/$<TARGET_FILE_NAME:winmm>"
+    COMMENT "Copying winmm proxy to bin folder"
 )
 
 

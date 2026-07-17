@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Consolidated the `dinput8.dll`, `version.dll`, and `winmm.dll` proxy implementations into shared sources where backend behavior is identical.
+- Upgraded C++ standard (`CMAKE_CXX_STANDARD`) to C++23 for the main project.
 
 ### Removed
 - Removed the legacy Vulkan-layer environment setup (`VK_LAYER_PATH` and `VK_INSTANCE_LAYERS`) from the D3D9 framework.

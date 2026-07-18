@@ -9,6 +9,7 @@ extern "C" {
 
 static std::map<VkCommandBuffer, VkFramebuffer> g_ActiveFBs;
 
+/*
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateGraphicsPipelines(VkDevice device, VkPipelineCache pipelineCache,
     uint32_t createInfoCount, const VkGraphicsPipelineCreateInfo* pCreateInfos, const VkAllocationCallbacks* pAllocator,
     VkPipeline* pPipelines) {
@@ -65,6 +66,7 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdSetScissor(
 
     dev_entry->table.vkCmdSetScissor(commandBuffer, firstScissor, scissorCount, pScissors);
 }
+*/
 
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_AllocateCommandBuffers(
     VkDevice device, const VkCommandBufferAllocateInfo* pAllocateInfo, VkCommandBuffer* pCommandBuffers) {
@@ -91,6 +93,7 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_BeginCommandBuffer(VkCommandBuffer 
     return result;
 }
 
+/*
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_EndCommandBuffer(VkCommandBuffer commandBuffer) {
     auto* dev_entry = GamePlug::DispatchManager::Get().GetDeviceByCommandBuffer(commandBuffer);
     if (!dev_entry)
@@ -165,5 +168,6 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdEndRenderPass(VkCommandBuffer comman
 
     g_ActiveFBs.erase(commandBuffer);
 }
+*/
 
 } // extern "C"

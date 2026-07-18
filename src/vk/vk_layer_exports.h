@@ -28,11 +28,13 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateDevice(
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateWin32SurfaceKHR(
     VkInstance instance, const VkWin32SurfaceCreateInfoKHR* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkSurfaceKHR* pSurface);
 
+/*
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_GetPhysicalDeviceSurfaceCapabilitiesKHR(
     VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, VkSurfaceCapabilitiesKHR* pSurfaceCapabilities);
 
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_GetPhysicalDeviceSurfaceCapabilities2KHR(
     VkPhysicalDevice physicalDevice, const VkPhysicalDeviceSurfaceInfo2KHR* pSurfaceInfo, VkSurfaceCapabilities2KHR* pSurfaceCapabilities);
+*/
 
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateSwapchainKHR(
     VkDevice device, const VkSwapchainCreateInfoKHR* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkSwapchainKHR* pSwapchain);
@@ -57,6 +59,7 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateFramebuffer(
 VK_LAYER_EXPORT void VKAPI_CALL GamePlug_DestroyFramebuffer(
     VkDevice device, VkFramebuffer framebuffer, const VkAllocationCallbacks* pAllocator);
 
+/*
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_AllocateMemory(
     VkDevice device, const VkMemoryAllocateInfo* pAllocateInfo, const VkAllocationCallbacks* pAllocator, VkDeviceMemory* pMemory);
 
@@ -75,30 +78,44 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdSetViewport(
 
 VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdSetScissor(
     VkCommandBuffer commandBuffer, uint32_t firstScissor, uint32_t scissorCount, const VkRect2D* pScissors);
+*/
 
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_AllocateCommandBuffers(
     VkDevice device, const VkCommandBufferAllocateInfo* pAllocateInfo, VkCommandBuffer* pCommandBuffers);
 
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_BeginCommandBuffer(VkCommandBuffer commandBuffer, const VkCommandBufferBeginInfo* pBeginInfo);
 
-VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_EndCommandBuffer(VkCommandBuffer commandBuffer);
+// VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_EndCommandBuffer(VkCommandBuffer commandBuffer);
 
-VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdBeginRenderPass(
-    VkCommandBuffer commandBuffer, const VkRenderPassBeginInfo* pRenderPassBegin, VkSubpassContents contents);
+// VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdBeginRenderPass(
+//     VkCommandBuffer commandBuffer, const VkRenderPassBeginInfo* pRenderPassBegin, VkSubpassContents contents);
 
-VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdEndRenderPass(VkCommandBuffer commandBuffer);
+// VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdEndRenderPass(VkCommandBuffer commandBuffer);
+
+VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdBeginRendering(
+    VkCommandBuffer commandBuffer, const VkRenderingInfo* pRenderingInfo);
+VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdEndRendering(VkCommandBuffer commandBuffer);
+
+VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdBeginRenderingKHR(
+    VkCommandBuffer commandBuffer, const VkRenderingInfo* pRenderingInfo);
+VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdEndRenderingKHR(VkCommandBuffer commandBuffer);
+
 
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_AcquireNextImageKHR(
     VkDevice device, VkSwapchainKHR swapchain, uint64_t timeout, VkSemaphore semaphore, VkFence fence, uint32_t* pImageIndex);
 
+/*
 VK_LAYER_EXPORT void VKAPI_CALL GamePlug_DestroySwapchainKHR(
     VkDevice device, VkSwapchainKHR swapchain, const VkAllocationCallbacks* pAllocator);
+*/
 
 VK_LAYER_EXPORT void VKAPI_CALL GamePlug_DestroyDevice(VkDevice device, const VkAllocationCallbacks* pAllocator);
 
+/*
 VK_LAYER_EXPORT void VKAPI_CALL GamePlug_DestroyInstance(VkInstance instance, const VkAllocationCallbacks* pAllocator);
 
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_DeviceWaitIdle(VkDevice device);
+*/
 
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_QueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPresentInfo);
 
@@ -106,5 +123,16 @@ VK_LAYER_EXPORT PFN_vkVoidFunction VKAPI_CALL GamePlug_GetDeviceProcAddr(VkDevic
 VK_LAYER_EXPORT PFN_vkVoidFunction VKAPI_CALL GamePlug_GetInstanceProcAddr(VkInstance instance, const char* pName);
 VK_LAYER_EXPORT PFN_vkVoidFunction VKAPI_CALL GamePlug_GetPhysicalDeviceProcAddr(VkInstance instance, const char* pName);
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_NegotiateLoaderLayerInterfaceVersion(VkNegotiateLayerInterface* pVersionStruct);
+
+// Hooking support variables (trampolines)
+extern PFN_vkGetInstanceProcAddr Original_vkGetInstanceProcAddr;
+extern PFN_vkGetDeviceProcAddr Original_vkGetDeviceProcAddr;
+extern PFN_vkCreateInstance Original_vkCreateInstance;
+extern PFN_vkCreateDevice Original_vkCreateDevice;
+
+extern thread_local bool g_InsideCreateInstance;
+extern thread_local bool g_InsideCreateDevice;
+
+void StartVulkanHookSetup();
 
 } // extern "C"

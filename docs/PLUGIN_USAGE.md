@@ -12,7 +12,7 @@ GamePlug searches for plugins in a folder named `GamePlug/plugins`. This folder 
 1. **Beside the Game Executable**:
    - `C:/Games/CoolGame/Game.exe`
    - `C:/Games/CoolGame/GamePlug/plugins/YourPlugin.dll`
-2. **Beside the GamePlug DLL** (e.g., `dinput8.dll` or `vklayer.dll`):
+2. **Beside the GamePlug proxy DLL** (e.g., `dinput8.dll`, `version.dll`, or `winmm.dll`):
    - If you are using Proxy Mode (DX9/DX12), place the folder where you put `dinput8.dll`.
 
 > [!TIP]

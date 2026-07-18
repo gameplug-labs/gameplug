@@ -182,31 +182,24 @@
 #pragma comment(linker, "/export:waveOutUnprepareHeader=C:\\Windows\\System32\\winmm.waveOutUnprepareHeader")
 #pragma comment(linker, "/export:waveOutWrite=C:\\Windows\\System32\\winmm.waveOutWrite")
 
-#if defined(GAMEPLUG_VULKAN)
-extern "C" void StartVulkanHookSetup();
-#else
 extern "C" void StartFramework();
 
-static DWORD WINAPI InitThread(LPVOID) {
+DWORD WINAPI InitThread(LPVOID lpParam) {
+    // Wait for the game to stabilize (increased to 3s for better compatibility as in dinput.cpp for D3D12)
+    Sleep(3000);
+
+    OutputDebugStringA("[GamePlug] version: Calling StartFramework...");
     StartFramework();
     return 0;
 }
-#endif
 
-BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved) {
-    switch (ul_reason_for_call) {
-        case DLL_PROCESS_ATTACH:
-            DisableThreadLibraryCalls(hModule);
-#if defined(GAMEPLUG_VULKAN)
-            StartVulkanHookSetup();
-#else
-            CreateThread(nullptr, 0, InitThread, nullptr, 0, nullptr);
-#endif
-            break;
-        case DLL_THREAD_ATTACH:
-        case DLL_THREAD_DETACH:
-        case DLL_PROCESS_DETACH:
-            break;
+BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
+    if (fdwReason == DLL_PROCESS_ATTACH) {
+        OutputDebugStringA("[GamePlug] version.dll: DLL_PROCESS_ATTACH");
+        DisableThreadLibraryCalls(hinstDLL);
+        CreateThread(NULL, 0, InitThread, NULL, 0, NULL);
     }
     return TRUE;
 }
+
+

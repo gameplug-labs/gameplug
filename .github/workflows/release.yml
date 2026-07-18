@@ -114,18 +114,18 @@ jobs:
           mkdir -p nexus/GamePlug/vk_x64
 
           # Copy files
-          cp bin/x32/d3d9/dinput8.dll bin/x32/d3d9/version.dll nexus/GamePlug/d3d9_x32/
-          cp bin/x32/d3d9_skyrim/dinput8.dll bin/x32/d3d9_skyrim/version.dll nexus/GamePlug/d3d9_skyrim_x32/
-          cp bin/x32/d3d10/dinput8.dll bin/x32/d3d10/version.dll nexus/GamePlug/d3d10_x32/
-          cp bin/x32/d3d11/dinput8.dll bin/x32/d3d11/version.dll nexus/GamePlug/d3d11_x32/
-          cp bin/x64/d3d11/dinput8.dll bin/x64/d3d11/version.dll nexus/GamePlug/d3d11_x64/
-          cp bin/x64/d3d12/dinput8.dll bin/x64/d3d12/version.dll nexus/GamePlug/d3d12_x64/
-          cp bin/x32/vklayer.dll bin/x32/VK_LAYER_GAMEPLUG.json bin/x32/dinput8.dll bin/x32/version.dll nexus/GamePlug/vk_x32/
-          cp bin/x64/vklayer.dll bin/x64/VK_LAYER_GAMEPLUG.json bin/x64/dinput8.dll bin/x64/version.dll nexus/GamePlug/vk_x64/
+          cp bin/x32/d3d9/dinput8.dll bin/x32/d3d9/version.dll bin/x32/d3d9/winmm.dll nexus/GamePlug/d3d9_x32/
+          cp bin/x32/d3d9_skyrim/dinput8.dll bin/x32/d3d9_skyrim/version.dll bin/x32/d3d9_skyrim/winmm.dll nexus/GamePlug/d3d9_skyrim_x32/
+          cp bin/x32/d3d10/dinput8.dll bin/x32/d3d10/version.dll bin/x32/d3d10/winmm.dll nexus/GamePlug/d3d10_x32/
+          cp bin/x32/d3d11/dinput8.dll bin/x32/d3d11/version.dll bin/x32/d3d11/winmm.dll nexus/GamePlug/d3d11_x32/
+          cp bin/x64/d3d11/dinput8.dll bin/x64/d3d11/version.dll bin/x64/d3d11/winmm.dll nexus/GamePlug/d3d11_x64/
+          cp bin/x64/d3d12/dinput8.dll bin/x64/d3d12/version.dll bin/x64/d3d12/winmm.dll nexus/GamePlug/d3d12_x64/
+          cp bin/x32/dinput8.dll bin/x32/version.dll bin/x32/winmm.dll nexus/GamePlug/vk_x32/
+          cp bin/x64/dinput8.dll bin/x64/version.dll bin/x64/winmm.dll nexus/GamePlug/vk_x64/
 
           # Create readme.txt
           cat << 'EOF' > nexus/GamePlug/readme.txt
-          Place the any 1 file dinput8.dll or version.dll in your game executable folder
+          Place the any 1 file dinput8.dll, version.dll or winmm.dll in your game executable folder
 
           x32 games
           d3d9, d3d10, d3d11

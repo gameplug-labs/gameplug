@@ -14,7 +14,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added MinHook-based Vulkan loader interception, avoiding Vulkan-layer registration conflicts with overlays such as RivaTuner Statistics Server (RTSS).
 
 ### Changed
-- Consolidated the `dinput8.dll`, `version.dll`, and `winmm.dll` proxy implementations into shared sources where backend behavior is identical.
 - Upgraded C++ standard (`CMAKE_CXX_STANDARD`) to C++23 for the main project.
 - Change Shortcut key to ctrl + f1 or ~
 - UI updated

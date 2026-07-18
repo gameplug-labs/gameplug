@@ -4,7 +4,7 @@
 #include "d3d9_proxy_device.h"
 #include "d3d9_proxy_surface.h"
 #include "d3d9_proxy_swapchain.h"
-#include "upscaler_manager.h"
+#include "dx_upscaler_manager.h"
 
 using namespace GamePlug;
 

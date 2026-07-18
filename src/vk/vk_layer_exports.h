@@ -113,7 +113,7 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_DestroySwapchainKHR(
 
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_GetSwapchainImagesKHR(
     VkDevice device, VkSwapchainKHR swapchain, uint32_t* pSwapchainImageCount, VkImage* pSwapchainImages);
-*/
+
 
 VK_LAYER_EXPORT void VKAPI_CALL GamePlug_DestroyDevice(VkDevice device, const VkAllocationCallbacks* pAllocator);
 

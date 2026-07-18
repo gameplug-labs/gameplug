@@ -240,6 +240,5 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdEndRenderingKHR(VkCommandBuffer comm
 
     GamePlug::UpscalerManager::Get().OnCmdEndRendering(commandBuffer, views);
 }
-*/
 
 } // extern "C"

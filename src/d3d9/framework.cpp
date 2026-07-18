@@ -1,6 +1,9 @@
 #include "common.h"
 #include "config.h"
 #include "framework_export.h"
+#include "dx_overlay.h"
+#include "dx_upscaler_manager.h"
+
 extern void InitializeHooks();
 
 namespace GamePlug {

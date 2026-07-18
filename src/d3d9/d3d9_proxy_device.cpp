@@ -3,7 +3,7 @@
 #include "d3d9_proxy_surface.h"
 #include "d3d9_proxy_swapchain.h"
 #include "upscaler_interface.h"
-#include "upscaler_manager.h"
+#include "dx_upscaler_manager.h"
 #include <algorithm>
 #include <cctype>
 #include <cmath>

@@ -46,6 +46,7 @@ target_link_libraries(framework_vk PUBLIC volk minhook)
 if(MSVC)
     target_compile_options(framework_vk PRIVATE /utf-8 /FS)
 endif()
+add_subdirectory(vk)
 
 # --- D3D11 Framework ---
 add_library(framework_d3d11 STATIC
@@ -280,77 +281,4 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 4)
     add_subdirectory(d3d9)
 endif()
 
-# --- Vulkan MinHook Proxies ---
-set(VK_HOOK_SOURCES
-    vk/vk_layer_exports.cpp
-    vk/vk_layer_lifecycle.cpp
-    vk/vk_layer_resources.cpp
-    vk/vk_layer_commands.cpp
-)
-
-add_library(version SHARED vk/version.cpp ${VK_HOOK_SOURCES})
-target_include_directories(version PRIVATE
-    ${PROJECT_SOURCE_DIR}/include
-    ${PROJECT_SOURCE_DIR}/src/vk
-    ${PROJECT_SOURCE_DIR}/src/shared
-    ${PROJECT_SOURCE_DIR}/external/volk
-)
-target_compile_definitions(version PRIVATE 
-    GAMEPLUG_VULKAN
-    FRAMEWORK_EXPORTS
-)
-target_link_libraries(version PRIVATE framework_vk volk)
-set_target_properties(version PROPERTIES PREFIX "")
-add_custom_command(TARGET version POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "$<TARGET_FILE:version>"
-            "${BIN_OUTPUT_DIR}/$<TARGET_FILE_NAME:version>"
-    COMMENT "Copying version proxy to bin folder"
-)
-
-add_library(dinput8 SHARED vk/dinput8.cpp ${VK_HOOK_SOURCES})
-target_include_directories(dinput8 PRIVATE
-    ${PROJECT_SOURCE_DIR}/include
-    ${PROJECT_SOURCE_DIR}/src/vk
-    ${PROJECT_SOURCE_DIR}/src/shared
-    ${PROJECT_SOURCE_DIR}/external/volk
-)
-target_compile_definitions(dinput8 PRIVATE 
-    GAMEPLUG_VULKAN
-    FRAMEWORK_EXPORTS
-)
-target_link_libraries(dinput8 PRIVATE framework_vk volk)
-add_library(winmm SHARED vk/winmm.cpp ${VK_HOOK_SOURCES})
-target_include_directories(winmm PRIVATE
-    ${PROJECT_SOURCE_DIR}/include
-    ${PROJECT_SOURCE_DIR}/src/vk
-    ${PROJECT_SOURCE_DIR}/src/shared
-    ${PROJECT_SOURCE_DIR}/external/volk
-)
-target_compile_definitions(winmm PRIVATE 
-    GAMEPLUG_VULKAN
-    FRAMEWORK_EXPORTS
-)
-target_link_libraries(winmm PRIVATE framework_vk volk)
-set_target_properties(winmm PROPERTIES PREFIX "")
-
-if(MSVC)
-    target_compile_options(version PRIVATE /utf-8 /FS)
-    target_compile_options(dinput8 PRIVATE /utf-8 /FS)
-    target_compile_options(winmm PRIVATE /utf-8 /FS)
-endif()
-
-add_custom_command(TARGET dinput8 POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "$<TARGET_FILE:dinput8>"
-            "${BIN_OUTPUT_DIR}/$<TARGET_FILE_NAME:dinput8>"
-    COMMENT "Copying dinput8 proxy to bin folder"
-)
-
-add_custom_command(TARGET winmm POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "$<TARGET_FILE:winmm>"
-            "${BIN_OUTPUT_DIR}/$<TARGET_FILE_NAME:winmm>"
-    COMMENT "Copying winmm proxy to bin folder"
-)
 

@@ -20,28 +20,6 @@ if(MSVC)
     target_compile_options(dinput8_d3d9 PRIVATE /utf-8 /FS)
 endif()
 
-# WinMM DLL proxy
-add_library(winmm_d3d9 SHARED winmm.cpp)
-target_include_directories(winmm_d3d9 PRIVATE
-    ${PROJECT_SOURCE_DIR}/include
-    ${PROJECT_SOURCE_DIR}/src/d3d9
-    ${PROJECT_SOURCE_DIR}/src/shared
-)
-target_link_libraries(winmm_d3d9 PRIVATE framework_d3d9 minhook d3d9 d3dcompiler dxguid)
-set_target_properties(winmm_d3d9 PROPERTIES PREFIX "" SUFFIX ".dll" OUTPUT_NAME "winmm")
-if(MSVC)
-    target_compile_options(winmm_d3d9 PRIVATE /utf-8 /FS)
-endif()
-if(BIN_OUTPUT_DIR)
-    add_custom_command(TARGET winmm_d3d9 POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${BIN_OUTPUT_DIR}/d3d9"
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "$<TARGET_FILE:winmm_d3d9>"
-                "${BIN_OUTPUT_DIR}/d3d9/winmm.dll"
-        COMMENT "Copying D3D9 WinMM proxy to d3d9/winmm.dll"
-    )
-endif()
-
 # Standard Windows libraries + Framework
 target_link_libraries(dinput8_d3d9 PRIVATE
     shlwapi
@@ -207,3 +185,45 @@ if(BIN_OUTPUT_DIR)
     )
 endif()
 
+# WinMM DLL proxy
+add_library(winmm_d3d9 SHARED winmm.cpp)
+target_include_directories(winmm_d3d9 PRIVATE
+    ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/src/d3d9
+    ${PROJECT_SOURCE_DIR}/src/shared
+)
+target_link_libraries(winmm_d3d9 PRIVATE framework_d3d9 minhook d3d9 d3dcompiler dxguid)
+set_target_properties(winmm_d3d9 PROPERTIES PREFIX "" SUFFIX ".dll" OUTPUT_NAME "winmm")
+if(MSVC)
+    target_compile_options(winmm_d3d9 PRIVATE /utf-8 /FS)
+endif()
+if(BIN_OUTPUT_DIR)
+    add_custom_command(TARGET winmm_d3d9 POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${BIN_OUTPUT_DIR}/d3d9"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE:winmm_d3d9>"
+                "${BIN_OUTPUT_DIR}/d3d9/winmm.dll"
+        COMMENT "Copying D3D9 WinMM proxy to d3d9/winmm.dll"
+    )
+endif()
+
+add_library(winmm_skyrim SHARED winmm.cpp)
+target_include_directories(winmm_skyrim PRIVATE
+    ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/src/d3d9
+    ${PROJECT_SOURCE_DIR}/src/shared
+)
+target_link_libraries(winmm_skyrim PRIVATE framework_skyrim minhook d3d9 d3dcompiler dxguid)
+set_target_properties(winmm_skyrim PROPERTIES PREFIX "" SUFFIX ".dll" OUTPUT_NAME "winmm")
+if(MSVC)
+    target_compile_options(winmm_skyrim PRIVATE /utf-8 /FS)
+endif()
+if(BIN_OUTPUT_DIR)
+    add_custom_command(TARGET winmm_skyrim POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${BIN_OUTPUT_DIR}/d3d9_skyrim"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE:winmm_skyrim>"
+                "${BIN_OUTPUT_DIR}/d3d9_skyrim/winmm.dll"
+        COMMENT "Copying D3D9 WinMM proxy to d3d9_skyrim/winmm.dll"
+    )
+endif()

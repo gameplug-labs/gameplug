@@ -32,9 +32,8 @@ Only place one GamePlug proxy DLL in the game directory at a time.
 ### ⌨️ Toggle Overlay
 
 Once the game is launched with GamePlug, you can toggle the visibility of the ImGui overlay using any of the following shortcut keys:
-- `Ctrl + Home`
-- `Ctrl + End`
-- `` ` `` (Backtick / tilde key)
+- `Ctrl + F1`
+- `~`
 
 
 

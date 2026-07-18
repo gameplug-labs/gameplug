@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.0.7] - 2026-07-17
+## [1.0.7] - 2026-07-18
 
 ### Added
 - Added `winmm.dll` proxy builds for Vulkan and D3D9, D3D10, D3D11, and D3D12.

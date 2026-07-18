@@ -1,5 +1,5 @@
 add_library(dinput8_d3d12 SHARED
-    ../shared/dinput8.cpp
+    dinput.cpp
     dinput.def
 )
 

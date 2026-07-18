@@ -99,7 +99,7 @@ add_custom_command(TARGET version_d3d11 POST_BUILD
 )
 
 # WinMM DLL proxy
-add_library(winmm_d3d11 SHARED ../shared/winmm.cpp)
+add_library(winmm_d3d11 SHARED winmm.cpp)
 target_include_directories(winmm_d3d11 PRIVATE
     ${PROJECT_SOURCE_DIR}/include
     ${PROJECT_SOURCE_DIR}/src/d3d11

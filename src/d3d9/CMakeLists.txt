@@ -21,7 +21,7 @@ if(MSVC)
 endif()
 
 # WinMM DLL proxy
-add_library(winmm_d3d9 SHARED ../shared/winmm.cpp)
+add_library(winmm_d3d9 SHARED winmm.cpp)
 target_include_directories(winmm_d3d9 PRIVATE
     ${PROJECT_SOURCE_DIR}/include
     ${PROJECT_SOURCE_DIR}/src/d3d9

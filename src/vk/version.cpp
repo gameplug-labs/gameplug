@@ -19,29 +19,13 @@
 #pragma comment(linker, "/export:VerQueryValueA=C:\\Windows\\System32\\version.VerQueryValueA")
 #pragma comment(linker, "/export:VerQueryValueW=C:\\Windows\\System32\\version.VerQueryValueW")
 
-#if defined(GAMEPLUG_VULKAN)
 extern "C" void StartVulkanHookSetup();
-#else
-extern "C" void StartFramework();
 
-static DWORD WINAPI InitThread(LPVOID) {
-#if defined(GAMEPLUG_DELAY_FRAMEWORK_START)
-    Sleep(3000);
-#endif
-    StartFramework();
-    return 0;
-}
-#endif
-
-BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID) {
+BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved) {
     switch (ul_reason_for_call) {
         case DLL_PROCESS_ATTACH:
             DisableThreadLibraryCalls(hModule);
-#if defined(GAMEPLUG_VULKAN)
             StartVulkanHookSetup();
-#else
-            CreateThread(nullptr, 0, InitThread, nullptr, 0, nullptr);
-#endif
             break;
         case DLL_THREAD_ATTACH:
         case DLL_THREAD_DETACH:

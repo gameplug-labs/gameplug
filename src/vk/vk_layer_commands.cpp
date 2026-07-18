@@ -15,7 +15,6 @@ static std::unordered_map<VkCommandBuffer, VkFramebuffer> g_ActiveFBs;
 static std::unordered_map<VkCommandBuffer, std::vector<VkImageView>> g_ActiveRenderingViews;
 static std::mutex g_ActiveMapsMutex;
 
-
 /*
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateGraphicsPipelines(VkDevice device, VkPipelineCache pipelineCache,
     uint32_t createInfoCount, const VkGraphicsPipelineCreateInfo* pCreateInfos, const VkAllocationCallbacks* pAllocator,
@@ -241,5 +240,6 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_CmdEndRenderingKHR(VkCommandBuffer comm
 
     GamePlug::UpscalerManager::Get().OnCmdEndRendering(commandBuffer, views);
 }
+*/
 
 } // extern "C"

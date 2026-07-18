@@ -290,6 +290,7 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_GetSwapchainImagesKHR(
     return dev_entry->table.vkGetSwapchainImagesKHR(device, swapchain, pSwapchainImageCount, pSwapchainImages);
 }
 
+/*
 VK_LAYER_EXPORT void VKAPI_CALL GamePlug_DestroySwapchainKHR(
     VkDevice device, VkSwapchainKHR swapchain, const VkAllocationCallbacks* pAllocator) {
     GamePlug::Logger::debug("Hook: vkDestroySwapchainKHR Entry");
@@ -329,8 +330,6 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_DeviceWaitIdle(VkDevice device) {
     GamePlug::Logger::debug("Hook: vkDeviceWaitIdle Exit");
     return result;
 }
-*/
-
 
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_QueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPresentInfo) {
     auto* queue_dispatch = GamePlug::DispatchManager::Get().GetQueueDispatch(queue);

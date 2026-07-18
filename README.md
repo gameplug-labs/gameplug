@@ -4,6 +4,8 @@
   <img src="gameplug.png" alt="GamePlug Logo" width="600" />
 </p>
 
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/rohitdev)
+
 GamePlug is a powerful, multi-API interception framework designed for modders. It provides a unified plugin system to inject custom ImGui UIs and game logic across **Vulkan**, **DirectX 9**, **DirectX 10**, **DirectX 11**, and **DirectX 12**.
 
 ## ✨ Key Features
@@ -13,12 +15,28 @@ GamePlug is a powerful, multi-API interception framework designed for modders. I
 *   **ImGui Integration**: Full support for Dear ImGui overlays with shared context between the host and plugins.
 *   **Cross-Architecture**: Supports both x32 (Legacy/DXVK titles) and x64 (Modern titles).
 
-## 📖 Documentation
+## 🔧 Usage
 
-- [Plugin Development Guide](docs/PLUGIN_DEVELOPMENT.md) - Learn how to build your own plugins.
-- [Plugin Usage Guide](docs/PLUGIN_USAGE.md) - How to install and manage plugins.
-- [Games Compatibility List](GAMES_COMPATIBILITY_LIST.md) - Supported games and their compatible layers.
-- [Changelog](CHANGELOG.md) - Track recent changes and updates.
+Copy the selected proxy DLL beside the game's executable, then launch the game normally.
+
+| Backend | Recommended proxy | Alternatives |
+| --- | --- | --- |
+| Vulkan | `dinput8.dll` | `version.dll`, `winmm.dll` |
+| D3D9 | `dinput8.dll` | `version.dll`, `winmm.dll` |
+| D3D10 | `dinput8.dll` | `version.dll`, `winmm.dll` |
+| D3D11 | `dinput8.dll` | `version.dll`, `winmm.dll` |
+| D3D12 | `dinput8.dll` | `version.dll`, `winmm.dll` |
+
+Only place one GamePlug proxy DLL in the game directory at a time.
+
+### ⌨️ Toggle Overlay
+
+Once the game is launched with GamePlug, you can toggle the visibility of the ImGui overlay using any of the following shortcut keys:
+- `Ctrl + Home`
+- `Ctrl + End`
+- `` ` `` (Backtick / tilde key)
+
+
 
 ## 🛠 Build Instructions
 
@@ -42,38 +60,20 @@ cmake --build build64 --config Release
 
 ## 📦 Outputs
 
-### 🌋 Vulkan (Layer Mode)
-- `vklayer.dll`: The Vulkan interception layer.
-- `VK_LAYER_GAMEPLUG.json`: The manifest file for Vulkan.
-- `dinput8.dll`: The proxy loader to automatically set up the Vulkan layer environment.
-- `version.dll`: An alternative proxy loader to automatically set up the Vulkan layer environment.
+| Backend | Architecture | Output folder | Available proxy DLLs |
+| --- | --- | --- | --- |
+| Vulkan | x32, x64 | `bin/<architecture>` | `dinput8.dll`, `version.dll`, `winmm.dll` |
+| D3D9 | x32 | `bin/x32/d3d9` | `dinput8.dll`, `version.dll`, `winmm.dll` |
+| D3D10 | x32 | `bin/x32/d3d10` | `dinput8.dll`, `version.dll`, `winmm.dll` |
+| D3D11 | x32, x64 | `bin/<architecture>/d3d11` | `dinput8.dll`, `version.dll`, `winmm.dll` |
+| D3D12 | x64 | `bin/x64/d3d12` | `dinput8.dll`, `version.dll`, `winmm.dll` |
 
-### 🎮 DirectX 9 / 10 / 11 / 12 (Proxy Mode)
-- `dinput8.dll`: The universal drop-in proxy for all DirectX games (DX9, DX10, DX11 & DX12).
-- `version.dll`: Backend-specific alternative proxy files (for D3D9, D3D10, D3D11, and D3D12) if a game does not load or support `dinput8.dll`.
+## 📖 Documentation
 
-## 🔧 Usage
-
-### 🌋 Vulkan Integration
-Vulkan uses a layer system, which we automate using proxy DLL loaders.
-1. Place `vklayer.dll`, `VK_LAYER_GAMEPLUG.json`, and either `dinput8.dll` or `version.dll` in the game's executable directory.
-2. Launch the game normally.
-
-**Manual Method:**
-1. Place `vklayer.dll` and `VK_LAYER_GAMEPLUG.json` in a folder.
-2. Set `VK_LAYER_PATH` to that folder and `VK_INSTANCE_LAYERS` to `VK_LAYER_GAMEPLUG`.
-
-### 🎮 DirectX Integration (9 / 10 / 11 / 12)
-DirectX integration is simpler and uses a proxy DLL in the game's executable directory.
-
-#### Method 1: Universal Proxy (Recommended)
-1. Copy `dinput8.dll` into the game's executable directory.
-2. Launch the game normally.
-
-#### Method 2: Alternative Proxy (version.dll)
-If a game is incompatible with `dinput8.dll` or fails to load it:
-1. Copy the appropriate `version.dll` from the corresponding backend build folder (`d3d9`, `d3d10`, `d3d11`, or `d3d12`) into the game's executable directory.
-2. Launch the game normally.
+- [Plugin Development Guide](docs/PLUGIN_DEVELOPMENT.md) - Learn how to build your own plugins.
+- [Plugin Usage Guide](docs/PLUGIN_USAGE.md) - How to install and manage plugins.
+- [Games Compatibility List](GAMES_COMPATIBILITY_LIST.md) - Supported games and their compatible layers.
+- [Changelog](CHANGELOG.md) - Track recent changes and updates.
 
 ## 🤝 Contributing
 

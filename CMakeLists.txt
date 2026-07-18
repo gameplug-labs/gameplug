@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(GamePlug CXX)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Always use the Release CRT (/MD) even in Debug builds.
@@ -59,14 +59,6 @@ endif()
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/sub_projects/vkupscaler/CMakeLists.txt")
     add_subdirectory(sub_projects/vkupscaler)
 endif()
-
-
-# Copy the manifest to the build dir
-configure_file(
-    ${PROJECT_SOURCE_DIR}/src/vk/VK_LAYER_GAMEPLUG.json
-    ${CMAKE_CURRENT_BINARY_DIR}/VK_LAYER_GAMEPLUG.json
-    COPYONLY
-)
 
 
 

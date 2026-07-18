@@ -46,6 +46,7 @@ target_link_libraries(framework_vk PUBLIC volk minhook)
 if(MSVC)
     target_compile_options(framework_vk PRIVATE /utf-8 /FS)
 endif()
+add_subdirectory(vk)
 
 # --- D3D11 Framework ---
 add_library(framework_d3d11 STATIC
@@ -279,83 +280,5 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 4)
 
     add_subdirectory(d3d9)
 endif()
-
-# --- Vulkan Loader Proxies ---
-add_library(version SHARED vk/version.cpp)
-target_link_libraries(version PRIVATE shlwapi.lib)
-set_target_properties(version PROPERTIES PREFIX "")
-add_custom_command(TARGET version POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "$<TARGET_FILE:version>"
-            "${BIN_OUTPUT_DIR}/$<TARGET_FILE_NAME:version>"
-    COMMENT "Copying version proxy to bin folder"
-)
-
-add_library(dinput8 SHARED vk/dinput8.cpp)
-target_link_libraries(dinput8 PRIVATE shlwapi.lib)
-set_target_properties(dinput8 PROPERTIES PREFIX "")
-add_custom_command(TARGET dinput8 POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "$<TARGET_FILE:dinput8>"
-            "${BIN_OUTPUT_DIR}/$<TARGET_FILE_NAME:dinput8>"
-    COMMENT "Copying dinput8 proxy to bin folder"
-)
-
-
-
-# --- Vulkan Layer ---
-add_library(vklayer SHARED
-    vk/vk_layer_exports.cpp
-    vk/vk_layer_lifecycle.cpp
-    vk/vk_layer_resources.cpp
-    vk/vk_layer_commands.cpp
-    vk/vk_layer_exports.h
-    vk/vklayer.def
-)
-
-target_include_directories(vklayer PRIVATE
-    ${PROJECT_SOURCE_DIR}/include
-    ${PROJECT_SOURCE_DIR}/src/shared
-    ${PROJECT_SOURCE_DIR}/external/volk
-)
-
-target_compile_definitions(vklayer PRIVATE 
-    GAMEPLUG_VULKAN
-    FRAMEWORK_EXPORTS
-)
-
-if(MSVC)
-    target_compile_options(vklayer PRIVATE /utf-8 /FS)
-endif()
-
-target_link_libraries(vklayer 
-    PRIVATE 
-    framework_vk
-    volk
-)
-
-# Post-build copy to root bin folder
-add_custom_command(TARGET vklayer POST_BUILD
-    # 1. Copy the DLL
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "$<TARGET_FILE:vklayer>"
-            "${BIN_OUTPUT_DIR}/$<TARGET_FILE_NAME:vklayer>"
-    
-    # 2. Copy the manifest file (VK_LAYER_GAMEPLUG.json)
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${CMAKE_BINARY_DIR}/VK_LAYER_GAMEPLUG.json"
-            "${BIN_OUTPUT_DIR}/VK_LAYER_GAMEPLUG.json"
-
-    COMMENT "Copying layer DLL and manifest to bin folder"
-)
-
-# Export the layer functions
-if(WIN32)
-    set_target_properties(vklayer PROPERTIES
-        PREFIX ""
-        SUFFIX ".dll"
-    )
-endif()
-
 
 

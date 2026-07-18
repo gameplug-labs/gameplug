@@ -317,12 +317,11 @@ void OverlayRenderer::NewFrame() {
         Logger::info("OverlayRenderer: NewFrame started (Logged every 600 frames)");
     }
 
-    // Toggle Visibility with Ctrl + HOME key, Ctrl + END key, or ` key (VK_OEM_3)
+     // Toggle Visibility with Ctrl + F1 key, or ` key (VK_OEM_3)
     bool ctrlPressed = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
-    bool homePressed = (GetAsyncKeyState(VK_HOME) & 0x8000) != 0;
-    bool endPressed = (GetAsyncKeyState(VK_END) & 0x8000) != 0;
+    bool f1Pressed = (GetAsyncKeyState(VK_F1) & 0x8000) != 0;
     bool backtickPressed = (GetAsyncKeyState(VK_OEM_3) & 0x8000) != 0;
-    bool keyCurrentlyPressed = (ctrlPressed && homePressed) || (ctrlPressed && endPressed) || backtickPressed;
+    bool keyCurrentlyPressed = (ctrlPressed && f1Pressed) || backtickPressed;
 
     if (keyCurrentlyPressed && !m_showKeyWasPressed) {
         m_visible = !m_visible;

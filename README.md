@@ -20,7 +20,7 @@ GamePlug is a powerful, multi-API interception framework designed for modders. I
 Copy the selected proxy DLL beside the game's executable, then launch the game normally.
 
 | Backend | Recommended proxy | Alternatives |
-| --- | --- | --- | --- |
+| --- | --- | --- |
 | Vulkan | `dinput8.dll` | `version.dll`, `winmm.dll` |
 | D3D9 | `dinput8.dll` | `version.dll`, `winmm.dll` |
 | D3D10 | `dinput8.dll` | `version.dll`, `winmm.dll` |

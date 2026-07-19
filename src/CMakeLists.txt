@@ -206,7 +206,7 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 4)
         # d3d9/d3d9_proxy_texture.cpp
         # d3d9/texture_replacer.cpp
         d3d9/dx_overlay.cpp
-        ${PROJECT_SOURCE_DIR}/sub_projects/upscaler-manager/d3d9/upscaler_manager.cpp
+        ${PROJECT_SOURCE_DIR}/sub_projects/upscaler-manager/d3d9/dx_upscaler_manager.cpp
         ${PROJECT_SOURCE_DIR}/external/imgui/backends/imgui_impl_dx9.cpp
     )
 
@@ -253,7 +253,7 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 4)
         # d3d9/d3d9_proxy_texture.cpp
         # d3d9/texture_replacer.cpp
         d3d9/dx_overlay.cpp
-        ${PROJECT_SOURCE_DIR}/sub_projects/upscaler-manager/d3d9/upscaler_manager.cpp
+        ${PROJECT_SOURCE_DIR}/sub_projects/upscaler-manager/d3d9/dx_upscaler_manager.cpp
         ${PROJECT_SOURCE_DIR}/external/imgui/backends/imgui_impl_dx9.cpp
     )
 
@@ -286,6 +286,83 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 4)
 
     if(MSVC)
         target_compile_options(framework_skyrim PRIVATE /utf-8 /FS)
+    endif()
+
+    add_library(framework_unified STATIC
+        ${SHARED_SOURCES}
+        # Vulkan files
+        vk/framework.cpp
+        vk/overlay.cpp
+        vk/image_tracker.cpp
+        vk/dispatch.cpp
+        vk/jitter_helper.cpp
+        ${PROJECT_SOURCE_DIR}/sub_projects/upscaler-manager/vk/upscaler_manager.cpp
+        ${PROJECT_SOURCE_DIR}/external/imgui/backends/imgui_impl_vulkan.cpp
+    )
+
+    # Define everything needed for Vulkan compilation universally
+    target_compile_definitions(framework_unified PUBLIC 
+        FRAMEWORK_EXPORTS
+        GAMEPLUG_VULKAN
+        VK_NO_PROTOTYPES
+        IMGUI_IMPL_VULKAN_NO_PROTOTYPES
+        "IMGUI_USER_CONFIG=\"GAMEPLUG_imgui_config.h\""
+    )
+
+    target_include_directories(framework_unified PUBLIC
+        ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/src/vk
+        ${PROJECT_SOURCE_DIR}/src/shared
+        ${PROJECT_SOURCE_DIR}/external/volk
+        ${PROJECT_SOURCE_DIR}/external/spdlog/include
+        ${PROJECT_SOURCE_DIR}/external/imgui
+        ${PROJECT_SOURCE_DIR}/external/imgui/backends
+        ${PROJECT_SOURCE_DIR}/external/minhook/include
+        ${PROJECT_SOURCE_DIR}/sub_projects/upscaler-manager/d3d9
+        ${PROJECT_SOURCE_DIR}/sub_projects/upscaler-manager/vk
+    )
+
+    target_link_libraries(framework_unified PUBLIC volk minhook)
+
+    # Conditionally append D3D9 files if building for 32-bit
+    if(CMAKE_SIZEOF_VOID_P EQUAL 4)
+        target_sources(framework_unified PRIVATE
+            d3d9/framework.cpp
+            d3d9/d3d9_proxy.cpp
+            d3d9/d3d9_proxy_d3d9.cpp
+            d3d9/d3d9_proxy_device.cpp
+            d3d9/d3d9_proxy_surface.cpp
+            d3d9/d3d9_proxy_swapchain.cpp
+            d3d9/d3d9_proxy_texture.cpp
+            d3d9/texture_replacer.cpp
+            d3d9/dx_overlay.cpp
+            ${PROJECT_SOURCE_DIR}/sub_projects/upscaler-manager/d3d9/dx_upscaler_manager.cpp
+            ${PROJECT_SOURCE_DIR}/external/imgui/backends/imgui_impl_dx9.cpp
+        )
+        
+        target_compile_definitions(framework_unified PUBLIC 
+            GAMEPLUG_WIN32
+            GamePlug_INTERNAL_LOGGER
+        )
+        
+        target_include_directories(framework_unified PUBLIC 
+            ${PROJECT_SOURCE_DIR}/src/d3d9
+        )
+        
+        target_link_libraries(framework_unified PUBLIC 
+            d3d9
+            d3dcompiler
+            dxguid
+        )
+    endif()
+
+    if(MSVC)
+        target_compile_options(framework_unified PRIVATE /utf-8 /FS)
+        
+        # # Modern way to force MSVC to preserve directory hierarchies for .obj files
+        # set_target_properties(framework_unified PROPERTIES 
+        #     VS_GLOBAL_ObjectFileName "$(IntDir)%(RelativeDir)"
+        # )
     endif()
 
     add_subdirectory(d3d9)

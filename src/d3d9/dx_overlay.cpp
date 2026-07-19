@@ -14,24 +14,24 @@ namespace GamePlug {
 
 static thread_local bool g_isRenderingOverlay = false;
 
-bool OverlayRenderer::IsRenderingOverlay() {
+bool DXOverlayRenderer::IsRenderingOverlay() {
     return g_isRenderingOverlay;
 }
-void OverlayRenderer::SetIsRenderingOverlay(bool val) {
+void DXOverlayRenderer::SetIsRenderingOverlay(bool val) {
     g_isRenderingOverlay = val;
 }
 
-OverlayRenderer& OverlayRenderer::Get() {
-    static OverlayRenderer instance;
+DXOverlayRenderer& DXOverlayRenderer::Get() {
+    static DXOverlayRenderer instance;
     return instance;
 }
 
-void OverlayRenderer::Init(IDirect3DDevice9* device) {
+void DXOverlayRenderer::Init(IDirect3DDevice9* device) {
     if (m_initialized)
         return;
     m_pDevice = device;
 
-    Logger::info("OverlayRenderer::Init: Entry (device={:p})", (void*)device);
+    Logger::info("DXOverlayRenderer::Init: Entry (device={:p})", (void*)device);
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -40,34 +40,34 @@ void OverlayRenderer::Init(IDirect3DDevice9* device) {
 
     ImGui::StyleColorsDark();
 
-    Logger::info("OverlayRenderer::Init: Calling ImGui_ImplWin32_Init for HWND {:p}...", (void*)m_hWnd);
+    Logger::info("DXOverlayRenderer::Init: Calling ImGui_ImplWin32_Init for HWND {:p}...", (void*)m_hWnd);
     if (!ImGui_ImplWin32_Init(m_hWnd)) {
-        Logger::error("OverlayRenderer::Init: ImGui_ImplWin32_Init failed!");
+        Logger::error("DXOverlayRenderer::Init: ImGui_ImplWin32_Init failed!");
         return;
     }
 
-    Logger::info("OverlayRenderer::Init: Calling ImGui_ImplDX9_Init...");
+    Logger::info("DXOverlayRenderer::Init: Calling ImGui_ImplDX9_Init...");
     if (!ImGui_ImplDX9_Init(device)) {
-        Logger::error("OverlayRenderer::Init: ImGui_ImplDX9_Init failed!");
+        Logger::error("DXOverlayRenderer::Init: ImGui_ImplDX9_Init failed!");
         return;
     }
 
-    Logger::info("OverlayRenderer::Init: Hooking WndProc...");
+    Logger::info("DXOverlayRenderer::Init: Hooking WndProc...");
     m_originalWndProc = (WNDPROC)SetWindowLongPtr(m_hWnd, GWLP_WNDPROC, (LONG_PTR)WndProc);
-    Logger::info("OverlayRenderer: Window hooked. Original WndProc={:p}", (void*)m_originalWndProc);
+    Logger::info("DXOverlayRenderer: Window hooked. Original WndProc={:p}", (void*)m_originalWndProc);
 
     m_lastTime = std::chrono::steady_clock::now();
     m_initialized = true;
-    Logger::info("OverlayRenderer: Initialized Successfully. Loading plugins...");
+    Logger::info("DXOverlayRenderer: Initialized Successfully. Loading plugins...");
 
     // TextureReplacer::Get().Init();
     PluginManager::Get().LoadPlugins();
 }
 
-void OverlayRenderer::Shutdown() {
+void DXOverlayRenderer::Shutdown() {
     if (!m_initialized)
         return;
-    Logger::info("OverlayRenderer::Shutdown: Starting teardown...");
+    Logger::info("DXOverlayRenderer::Shutdown: Starting teardown...");
 
     ImGui_ImplDX9_Shutdown();
     ImGui_ImplWin32_Shutdown();
@@ -79,24 +79,24 @@ void OverlayRenderer::Shutdown() {
     }
 
     m_initialized = false;
-    Logger::info("OverlayRenderer::Shutdown: Done.");
+    Logger::info("DXOverlayRenderer::Shutdown: Done.");
 }
 
-void OverlayRenderer::OnReset() {
+void DXOverlayRenderer::OnReset() {
     if (!m_initialized)
         return;
-    Logger::info("OverlayRenderer::OnReset: Invalidating device objects...");
+    Logger::info("DXOverlayRenderer::OnReset: Invalidating device objects...");
     ImGui_ImplDX9_InvalidateDeviceObjects();
 }
 
-void OverlayRenderer::OnPostReset() {
+void DXOverlayRenderer::OnPostReset() {
     if (!m_initialized)
         return;
-    Logger::info("OverlayRenderer::OnPostReset: Creating device objects...");
+    Logger::info("DXOverlayRenderer::OnPostReset: Creating device objects...");
     ImGui_ImplDX9_CreateDeviceObjects();
 }
 
-void OverlayRenderer::NewFrame() {
+void DXOverlayRenderer::NewFrame() {
     if (!m_initialized)
         return;
     if (Config::Get().GetBool("VKUpscaler", true))
@@ -118,7 +118,7 @@ void OverlayRenderer::NewFrame() {
 
     if (keyCurrentlyPressed && !m_showKeyWasPressed) {
         m_visible = !m_visible;
-        Logger::info("OverlayRenderer: Visibility toggled manually to: " + std::string(m_visible ? "ON" : "OFF"));
+        Logger::info("DXOverlayRenderer: Visibility toggled manually to: " + std::string(m_visible ? "ON" : "OFF"));
     }
     m_showKeyWasPressed = keyCurrentlyPressed;
 
@@ -150,7 +150,7 @@ void OverlayRenderer::NewFrame() {
     ImGui::NewFrame();
 }
 
-void OverlayRenderer::Render(IDirect3DDevice9* device, uint32_t width, uint32_t height) {
+void DXOverlayRenderer::Render(IDirect3DDevice9* device, uint32_t width, uint32_t height) {
     if (!m_initialized || m_uiRendered)
         return;
     if (Config::Get().GetBool("VKUpscaler", true))
@@ -158,7 +158,7 @@ void OverlayRenderer::Render(IDirect3DDevice9* device, uint32_t width, uint32_t 
 
     static uint32_t renderCount = 0;
     if (renderCount++ % 600 == 0) {
-        Logger::info("OverlayRenderer::Render called (Logged every 600 frames)");
+        Logger::info("DXOverlayRenderer::Render called (Logged every 600 frames)");
     }
 
     m_uiRendered = true;
@@ -177,7 +177,7 @@ void OverlayRenderer::Render(IDirect3DDevice9* device, uint32_t width, uint32_t 
         ImGuiOverlayShared::DrawUI(width, height, [width, height, device]() {
             // TextureReplacer::Get().RenderUI(device);
             ImGuiIO& io = ImGui::GetIO();
-            UpscalerManager::Get().RenderUI(io.Framerate, width, height);
+            DXUpscalerManager::Get().RenderUI(io.Framerate, width, height);
         });
     }
 
@@ -189,8 +189,8 @@ void OverlayRenderer::Render(IDirect3DDevice9* device, uint32_t width, uint32_t 
     }
 }
 
-LRESULT CALLBACK OverlayRenderer::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    auto& renderer = OverlayRenderer::Get();
+LRESULT CALLBACK DXOverlayRenderer::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    auto& renderer = DXOverlayRenderer::Get();
 
     if (Config::Get().GetBool("VKUpscaler", true)) {
         return CallWindowProc(renderer.m_originalWndProc, hWnd, msg, wParam, lParam);

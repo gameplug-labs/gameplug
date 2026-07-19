@@ -129,13 +129,13 @@ static void LogPresentParameters(const char* prefix, const D3DPRESENT_PARAMETERS
 STDMETHODIMP ProxyDirect3D9::CreateDevice(UINT A, D3DDEVTYPE DT, HWND hFW, DWORD BF, D3DPRESENT_PARAMETERS* pPP, IDirect3DDevice9** ppRDI) {
     if (!pPP)
         return D3DERR_INVALIDCALL;
-    OverlayRenderer::Get().SetWindow(hFW);
+    DXOverlayRenderer::Get().SetWindow(hFW);
 
     // Load the upscaler plugin early so GetScaledResolution can check its status correctly
     if (!Config::Get().GetBool("VKUpscaler", true)) {
-        UpscalerManager::Get().LoadUpscaler();
+        DXUpscalerManager::Get().LoadUpscaler();
     }else{
-        UpscalerManager::Get().UpdateFallbackConfig();
+        DXUpscalerManager::Get().UpdateFallbackConfig();
     }
 
     int requestedW = pPP->BackBufferWidth;
@@ -158,7 +158,7 @@ STDMETHODIMP ProxyDirect3D9::CreateDevice(UINT A, D3DDEVTYPE DT, HWND hFW, DWORD
 
     int scaledW = nativeW;
     int scaledH = nativeH;
-    UpscalerManager::Get().GetScaledResolution(scaledW, scaledH);
+    DXUpscalerManager::Get().GetScaledResolution(scaledW, scaledH);
 
     D3DPRESENT_PARAMETERS realPP = *pPP;
     realPP.BackBufferWidth = nativeW;
@@ -229,13 +229,13 @@ STDMETHODIMP ProxyDirect3D9::CreateDeviceEx(
     UINT A, D3DDEVTYPE DT, HWND hFW, DWORD BF, D3DPRESENT_PARAMETERS* pPP, D3DDISPLAYMODEEX* pFDM, IDirect3DDevice9Ex** ppRDI) {
     if (!pPP)
         return D3DERR_INVALIDCALL;
-    OverlayRenderer::Get().SetWindow(hFW);
+    DXOverlayRenderer::Get().SetWindow(hFW);
 
     // Load the upscaler plugin early so GetScaledResolution can check its status correctly
     if (!Config::Get().GetBool("VKUpscaler", true)) {
-        UpscalerManager::Get().LoadUpscaler();
+        DXUpscalerManager::Get().LoadUpscaler();
     }else{
-        UpscalerManager::Get().UpdateFallbackConfig();
+        DXUpscalerManager::Get().UpdateFallbackConfig();
     }
 
     int requestedW = pPP->BackBufferWidth;
@@ -259,7 +259,7 @@ STDMETHODIMP ProxyDirect3D9::CreateDeviceEx(
 
     int scaledW = nativeW;
     int scaledH = nativeH;
-    UpscalerManager::Get().GetScaledResolution(scaledW, scaledH);
+    DXUpscalerManager::Get().GetScaledResolution(scaledW, scaledH);
 
     D3DPRESENT_PARAMETERS realPP = *pPP;
     realPP.BackBufferWidth = nativeW;

@@ -5,13 +5,13 @@
 #include "vk_layer_exports.h"
 extern "C" {
 
-VK_LAYER_EXPORT void GamePlug_SetCreatingFakeBackBuffer(bool active) {
-    GamePlug::UpscalerManager::Get().SetCreatingFakeBackBuffer(active);
-}
+// VK_LAYER_EXPORT void GamePlug_SetCreatingFakeBackBuffer(bool active) {
+//     GamePlug::UpscalerManager::Get().SetCreatingFakeBackBuffer(active);
+// }
 
-VK_LAYER_EXPORT bool GamePlug_IsCreatingFakeBackBuffer() {
-    return GamePlug::UpscalerManager::Get().IsCreatingFakeBackBuffer();
-}
+// VK_LAYER_EXPORT bool GamePlug_IsCreatingFakeBackBuffer() {
+//     return GamePlug::UpscalerManager::Get().IsCreatingFakeBackBuffer();
+// }
 
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateImage(
     VkDevice device, const VkImageCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkImage* pImage) {

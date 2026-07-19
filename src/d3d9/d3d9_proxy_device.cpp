@@ -31,15 +31,15 @@ static void LogActiveDefaultPoolResources() {
 void ProxyDirect3DDevice9::UpdateScaledResolution() {
     int sw = m_displayW;
     int sh = m_displayH;
-    UpscalerManager::Get().GetScaledResolution(sw, sh);
+    DXUpscalerManager::Get().GetScaledResolution(sw, sh);
     if (sw != (int)m_renderW || sh != (int)m_renderH) {
         Logger::info("Proxy: Render resolution changed real-time: {}x{} -> {}x{}", m_renderW, m_renderH, sw, sh);
         m_renderW = (uint32_t)sw;
         m_renderH = (uint32_t)sh;
 
         if (m_isUpscaling) {
-            UpscalerManager::Get().CreateFakeBackBuffer(m_pReal, m_displayW, m_displayH, D3DFMT_A8R8G8B8);
-            IDirect3DSurface9* pRealSurf = UpscalerManager::Get().GetFakeBackBufferSurface();
+            DXUpscalerManager::Get().CreateFakeBackBuffer(m_pReal, m_displayW, m_displayH, D3DFMT_A8R8G8B8);
+            IDirect3DSurface9* pRealSurf = DXUpscalerManager::Get().GetFakeBackBufferSurface();
             if (pRealSurf) {
                 if (!m_pFakeBackBuffer) {
                     m_pFakeBackBuffer = new ProxySurface9(pRealSurf, this, m_displayW, m_displayH);
@@ -55,7 +55,7 @@ void ProxyDirect3DDevice9::UpdateScaledResolution() {
 }
 
 void ProxyDirect3DDevice9::UpdateJitterAndFrameIndex() {
-    GamePlug::UpscalerManager::Get().UpdateJitterAndFrameIndex();
+    GamePlug::DXUpscalerManager::Get().UpdateJitterAndFrameIndex();
 }
 
 void ProxyDirect3DDevice9::PerformDepthDownsampling() {
@@ -81,23 +81,23 @@ ProxyDirect3DDevice9::ProxyDirect3DDevice9(
     Logger::info("ProxyDirect3DDevice9: Created. Render: {}x{}, Display: {}x{}, Upscale: {}, RealEx: {}", m_renderW, m_renderH, m_displayW,
         m_displayH, m_isUpscaling, (void*)m_pRealEx);
 
-    OverlayRenderer::Get().Init((IDirect3DDevice9*)this);
+    DXOverlayRenderer::Get().Init((IDirect3DDevice9*)this);
 
     if (m_isUpscaling) {
         bool upscalerReady = false;
         if (!Config::Get().GetBool("VKUpscaler", true)) {
-            if (UpscalerManager::Get().LoadUpscaler()) {
-                UpscalerManager::Get().InitUpscaler((void*)m_pReal);
+            if (DXUpscalerManager::Get().LoadUpscaler()) {
+                DXUpscalerManager::Get().InitUpscaler((void*)m_pReal);
                 upscalerReady = true;
             }
         } else {
             upscalerReady = true;
-            UpscalerManager::Get().UpdateFallbackConfig();
+            DXUpscalerManager::Get().UpdateFallbackConfig();
         }
 
         if (upscalerReady) {
-            UpscalerManager::Get().CreateFakeBackBuffer(m_pReal, m_displayW, m_displayH, D3DFMT_A8R8G8B8);
-            IDirect3DSurface9* pRealSurf = UpscalerManager::Get().GetFakeBackBufferSurface();
+            DXUpscalerManager::Get().CreateFakeBackBuffer(m_pReal, m_displayW, m_displayH, D3DFMT_A8R8G8B8);
+            IDirect3DSurface9* pRealSurf = DXUpscalerManager::Get().GetFakeBackBufferSurface();
             if (pRealSurf) {
                 m_pFakeBackBuffer = new ProxySurface9(pRealSurf, this, m_displayW, m_displayH);
                 m_pReal->SetRenderTarget(0, pRealSurf);
@@ -119,7 +119,7 @@ ProxyDirect3DDevice9::~ProxyDirect3DDevice9() {
         m_downsampledDepthTexINTZ->Release();
         m_downsampledDepthTexINTZ = nullptr;
     }
-    UpscalerManager::Get().DestroyFakeBackBuffer();
+    DXUpscalerManager::Get().DestroyFakeBackBuffer();
 }
 
 // IUnknown
@@ -259,8 +259,8 @@ STDMETHODIMP ProxyDirect3DDevice9::Reset(D3DPRESENT_PARAMETERS* pPP) {
         m_downsampledDepthTexINTZ = nullptr;
     }
 
-    OverlayRenderer::Get().OnReset();
-    UpscalerManager::Get().OnReset();
+    DXOverlayRenderer::Get().OnReset();
+    DXUpscalerManager::Get().OnReset();
     if (m_pFakeBackBuffer) {
         m_pFakeBackBuffer->SetInternalSurface(nullptr);
     }
@@ -289,7 +289,7 @@ STDMETHODIMP ProxyDirect3DDevice9::Reset(D3DPRESENT_PARAMETERS* pPP) {
 
     int scaledW = nativeW;
     int scaledH = nativeH;
-    UpscalerManager::Get().GetScaledResolution(scaledW, scaledH);
+    DXUpscalerManager::Get().GetScaledResolution(scaledW, scaledH);
 
     D3DPRESENT_PARAMETERS realPP = *pPP;
     realPP.BackBufferWidth = nativeW;
@@ -308,8 +308,8 @@ STDMETHODIMP ProxyDirect3DDevice9::Reset(D3DPRESENT_PARAMETERS* pPP) {
         scaledW, scaledH);
 
     {
-        auto& mgr = GamePlug::UpscalerManager::Get();
-        mgr.UpdateSharedHDR(GamePlug::UpscalerManager::IsHDRFormat(pPP->BackBufferFormat) || GamePlug::UpscalerManager::IsHDRFormat(realPP.BackBufferFormat));
+        auto& mgr = GamePlug::DXUpscalerManager::Get();
+        mgr.UpdateSharedHDR(GamePlug::DXUpscalerManager::IsHDRFormat(pPP->BackBufferFormat) || GamePlug::DXUpscalerManager::IsHDRFormat(realPP.BackBufferFormat));
     }
 
     LogPresentParameters("Reset (Game input)", pPP);
@@ -323,8 +323,8 @@ STDMETHODIMP ProxyDirect3DDevice9::Reset(D3DPRESENT_PARAMETERS* pPP) {
         pPP->BackBufferWidth = scaledW;
         pPP->BackBufferHeight = scaledH;
         if (m_isUpscaling) {
-            UpscalerManager::Get().CreateFakeBackBuffer(m_pReal, m_displayW, m_displayH, D3DFMT_A8R8G8B8);
-            IDirect3DSurface9* pRealSurf = UpscalerManager::Get().GetFakeBackBufferSurface();
+            DXUpscalerManager::Get().CreateFakeBackBuffer(m_pReal, m_displayW, m_displayH, D3DFMT_A8R8G8B8);
+            IDirect3DSurface9* pRealSurf = DXUpscalerManager::Get().GetFakeBackBufferSurface();
             if (pRealSurf) {
                 if (!m_pFakeBackBuffer) {
                     m_pFakeBackBuffer = new ProxySurface9(pRealSurf, this, m_displayW, m_displayH);
@@ -335,7 +335,7 @@ STDMETHODIMP ProxyDirect3DDevice9::Reset(D3DPRESENT_PARAMETERS* pPP) {
                 Logger::info("Proxy: Fake backbuffer re-created at {}x{} (Reset path)", m_renderW, m_renderH);
             }
         }
-        OverlayRenderer::Get().OnPostReset();
+        DXOverlayRenderer::Get().OnPostReset();
     }
     return hr;
 }
@@ -346,18 +346,18 @@ STDMETHODIMP ProxyDirect3DDevice9::Present(CONST RECT* pSR, CONST RECT* pDR, HWN
         UpdateJitterAndFrameIndex();
         m_jitterReadyForFrame = true;
     }
-    OverlayRenderer::Get().NewFrame();
+    DXOverlayRenderer::Get().NewFrame();
     IDirect3DSurface9* pRBB = nullptr;
     if (SUCCEEDED(m_pReal->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &pRBB))) {
         D3DSURFACE_DESC bbDesc = {};
         if (SUCCEEDED(pRBB->GetDesc(&bbDesc))) {
-            GamePlug::UpscalerManager::Get().UpdateSharedHDR(GamePlug::UpscalerManager::IsHDRFormat(bbDesc.Format));
+            GamePlug::DXUpscalerManager::Get().UpdateSharedHDR(GamePlug::DXUpscalerManager::IsHDRFormat(bbDesc.Format));
         }
         if (m_isUpscaling && m_pFakeBackBuffer) {
             bool upscalerHandled = false;
-            if (UpscalerManager::Get().IsUpscalingEnabled() && !Config::Get().GetBool("VKUpscaler", true)) {
+            if (DXUpscalerManager::Get().IsUpscalingEnabled() && !Config::Get().GetBool("VKUpscaler", true)) {
                 g_InUpscalerPass = true;
-                UpscalerManager::Get().RenderFrame((void*)m_pReal, (void*)m_pFakeBackBuffer->GetInternalSurface(), (void*)pRBB, m_displayW,
+                DXUpscalerManager::Get().RenderFrame((void*)m_pReal, (void*)m_pFakeBackBuffer->GetInternalSurface(), (void*)pRBB, m_displayW,
                     m_displayH, m_renderW, m_renderH);
                 g_InUpscalerPass = false;
                 upscalerHandled = true;
@@ -370,17 +370,17 @@ STDMETHODIMP ProxyDirect3DDevice9::Present(CONST RECT* pSR, CONST RECT* pDR, HWN
         IDirect3DSurface9* pOldRT = nullptr;
         m_pReal->GetRenderTarget(0, &pOldRT);
         m_pReal->SetRenderTarget(0, pRBB);
-        OverlayRenderer::Get().Render(m_pReal, m_displayW, m_displayH);
+        DXOverlayRenderer::Get().Render(m_pReal, m_displayW, m_displayH);
         m_pReal->SetRenderTarget(0, pOldRT);
         if (pOldRT)
             pOldRT->Release();
         pRBB->Release();
     } else {
-        OverlayRenderer::Get().Render(m_pReal, m_displayW, m_displayH);
+        DXOverlayRenderer::Get().Render(m_pReal, m_displayW, m_displayH);
     }
     m_jitterReadyForFrame = false;
 
-    auto& sharedData = GamePlug::UpscalerManager::Get().GetSharedFrameData();
+    auto& sharedData = GamePlug::DXUpscalerManager::Get().GetSharedFrameData();
     if (sharedData.fgRequestDoublePresent) {
         // Present 1: Interpolated frame
         sharedData.fgPresentPhase = 1;
@@ -438,7 +438,7 @@ STDMETHODIMP ProxyDirect3DDevice9::CreateTexture(
     IDirect3DTexture9* pRealTex = nullptr;
     HRESULT hr = m_pReal->CreateTexture(W, H, L, U, F, P, &pRealTex, pS);
     if (SUCCEEDED(hr) && (U & D3DUSAGE_RENDERTARGET)) {
-        GamePlug::UpscalerManager::Get().UpdateSharedHDR(GamePlug::UpscalerManager::IsHDRFormat(F));
+        GamePlug::DXUpscalerManager::Get().UpdateSharedHDR(GamePlug::DXUpscalerManager::IsHDRFormat(F));
     }
     if (SUCCEEDED(hr) && pRealTex) {
         // Return the real texture pointer directly (no ProxyTexture9 wrapping)
@@ -471,7 +471,7 @@ STDMETHODIMP ProxyDirect3DDevice9::CreateRenderTarget(
     UINT W, UINT H, D3DFORMAT F, D3DMULTISAMPLE_TYPE M, DWORD MQ, BOOL L, IDirect3DSurface9** ppS, HANDLE* pS2) {
     HRESULT hr = m_pReal->CreateRenderTarget(W, H, F, M, MQ, L, ppS, pS2);
     if (SUCCEEDED(hr)) {
-        GamePlug::UpscalerManager::Get().UpdateSharedHDR(GamePlug::UpscalerManager::IsHDRFormat(F));
+        GamePlug::DXUpscalerManager::Get().UpdateSharedHDR(GamePlug::DXUpscalerManager::IsHDRFormat(F));
     }
     return hr;
 }
@@ -580,7 +580,7 @@ STDMETHODIMP ProxyDirect3DDevice9::Clear(DWORD C, CONST D3DRECT* pR, DWORD F, D3
 STDMETHODIMP ProxyDirect3DDevice9::SetTransform(D3DTRANSFORMSTATETYPE S, CONST D3DMATRIX* pM) {
     if (S == D3DTS_PROJECTION && pM) {
         D3DMATRIX modifiedM;
-        if (GamePlug::UpscalerManager::Get().ProcessSetTransform(S, pM, modifiedM)) {
+        if (GamePlug::DXUpscalerManager::Get().ProcessSetTransform(S, pM, modifiedM)) {
             return m_pReal->SetTransform(S, &modifiedM);
         }
     }
@@ -605,7 +605,7 @@ STDMETHODIMP ProxyDirect3DDevice9::SetViewport(CONST D3DVIEWPORT9* pV) {
 
     D3DVIEWPORT9 scaledVp;
     IDirect3DSurface9* fakeSurf = m_pFakeBackBuffer ? m_pFakeBackBuffer->GetInternalSurface() : nullptr;
-    bool modified = GamePlug::UpscalerManager::Get().ProcessSetViewport(pV, pRT, fakeSurf, g_InUpscalerPass, scaledVp);
+    bool modified = GamePlug::DXUpscalerManager::Get().ProcessSetViewport(pV, pRT, fakeSurf, g_InUpscalerPass, scaledVp);
 
     if (pRT)
         pRT->Release();
@@ -737,7 +737,7 @@ STDMETHODIMP ProxyDirect3DDevice9::SetScissorRect(CONST RECT* pR) {
 
     RECT scaledR;
     IDirect3DSurface9* fakeSurf = m_pFakeBackBuffer ? m_pFakeBackBuffer->GetInternalSurface() : nullptr;
-    bool modified = GamePlug::UpscalerManager::Get().ProcessSetScissorRect(pR, pRT, fakeSurf, g_InUpscalerPass, scaledR);
+    bool modified = GamePlug::DXUpscalerManager::Get().ProcessSetScissorRect(pR, pRT, fakeSurf, g_InUpscalerPass, scaledR);
 
     if (pRT)
         pRT->Release();
@@ -784,7 +784,7 @@ STDMETHODIMP ProxyDirect3DDevice9::DrawPrimitiveUP(D3DPRIMITIVETYPE PT, UINT PC,
     m_pReal->GetRenderTarget(0, &pRT);
 
     std::vector<uint8_t> scaledV;
-    bool modified = GamePlug::UpscalerManager::Get().ProcessDrawPrimitiveUP(PT, PC, pV, VS, pRT, scaledV);
+    bool modified = GamePlug::DXUpscalerManager::Get().ProcessDrawPrimitiveUP(PT, PC, pV, VS, pRT, scaledV);
 
     if (pRT)
         pRT->Release();
@@ -804,7 +804,7 @@ STDMETHODIMP ProxyDirect3DDevice9::DrawIndexedPrimitiveUP(
     m_pReal->GetRenderTarget(0, &pRT);
 
     std::vector<uint8_t> scaledV;
-    bool modified = GamePlug::UpscalerManager::Get().ProcessDrawIndexedPrimitiveUP(PT, MVI, NV, PC, pV, VS, pRT, scaledV);
+    bool modified = GamePlug::DXUpscalerManager::Get().ProcessDrawIndexedPrimitiveUP(PT, MVI, NV, PC, pV, VS, pRT, scaledV);
 
     if (pRT)
         pRT->Release();
@@ -855,7 +855,7 @@ STDMETHODIMP ProxyDirect3DDevice9::GetVertexShader(IDirect3DVertexShader9** ppS)
 STDMETHODIMP ProxyDirect3DDevice9::SetVertexShaderConstantF(UINT SR, CONST float* pCD, UINT V4C) {
     if (pCD && V4C >= 4) {
         std::vector<float> modifiedCD;
-        if (GamePlug::UpscalerManager::Get().ProcessSetVertexShaderConstantF(SR, pCD, V4C, modifiedCD)) {
+        if (GamePlug::DXUpscalerManager::Get().ProcessSetVertexShaderConstantF(SR, pCD, V4C, modifiedCD)) {
             return m_pReal->SetVertexShaderConstantF(SR, modifiedCD.data(), V4C);
         }
     }
@@ -980,18 +980,18 @@ STDMETHODIMP ProxyDirect3DDevice9::PresentEx(CONST RECT* pSR, CONST RECT* pDR, H
         UpdateJitterAndFrameIndex();
         m_jitterReadyForFrame = true;
     }
-    OverlayRenderer::Get().NewFrame();
+    DXOverlayRenderer::Get().NewFrame();
     IDirect3DSurface9* pRBB = nullptr;
     if (SUCCEEDED(m_pReal->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &pRBB))) {
         D3DSURFACE_DESC bbDesc = {};
         if (SUCCEEDED(pRBB->GetDesc(&bbDesc))) {
-            GamePlug::UpscalerManager::Get().UpdateSharedHDR(GamePlug::UpscalerManager::IsHDRFormat(bbDesc.Format));
+            GamePlug::DXUpscalerManager::Get().UpdateSharedHDR(GamePlug::DXUpscalerManager::IsHDRFormat(bbDesc.Format));
         }
         if (m_isUpscaling && m_pFakeBackBuffer) {
             bool upscalerHandled = false;
-            if (UpscalerManager::Get().IsUpscalingEnabled() && !Config::Get().GetBool("VKUpscaler", true)) {
+            if (DXUpscalerManager::Get().IsUpscalingEnabled() && !Config::Get().GetBool("VKUpscaler", true)) {
                 g_InUpscalerPass = true;
-                UpscalerManager::Get().RenderFrame((void*)m_pReal, (void*)m_pFakeBackBuffer->GetInternalSurface(), (void*)pRBB, m_displayW,
+                DXUpscalerManager::Get().RenderFrame((void*)m_pReal, (void*)m_pFakeBackBuffer->GetInternalSurface(), (void*)pRBB, m_displayW,
                     m_displayH, m_renderW, m_renderH);
                 g_InUpscalerPass = false;
                 upscalerHandled = true;
@@ -1004,13 +1004,13 @@ STDMETHODIMP ProxyDirect3DDevice9::PresentEx(CONST RECT* pSR, CONST RECT* pDR, H
         IDirect3DSurface9* pOldRT = nullptr;
         m_pReal->GetRenderTarget(0, &pOldRT);
         m_pReal->SetRenderTarget(0, pRBB);
-        OverlayRenderer::Get().Render(m_pReal, m_displayW, m_displayH);
+        DXOverlayRenderer::Get().Render(m_pReal, m_displayW, m_displayH);
         m_pReal->SetRenderTarget(0, pOldRT);
         if (pOldRT)
             pOldRT->Release();
         pRBB->Release();
     } else {
-        OverlayRenderer::Get().Render(m_pReal, m_displayW, m_displayH);
+        DXOverlayRenderer::Get().Render(m_pReal, m_displayW, m_displayH);
     }
     if (!m_pRealEx) {
         m_jitterReadyForFrame = false;
@@ -1018,7 +1018,7 @@ STDMETHODIMP ProxyDirect3DDevice9::PresentEx(CONST RECT* pSR, CONST RECT* pDR, H
     }
     m_jitterReadyForFrame = false;
 
-    auto& sharedData = GamePlug::UpscalerManager::Get().GetSharedFrameData();
+    auto& sharedData = GamePlug::DXUpscalerManager::Get().GetSharedFrameData();
     if (sharedData.fgRequestDoublePresent) {
         // Present 1: Interpolated frame
         sharedData.fgPresentPhase = 1;
@@ -1143,8 +1143,8 @@ STDMETHODIMP ProxyDirect3DDevice9::ResetEx(D3DPRESENT_PARAMETERS* pPP, D3DDISPLA
         m_downsampledDepthTexINTZ = nullptr;
     }
 
-    OverlayRenderer::Get().OnReset();
-    UpscalerManager::Get().OnReset();
+    DXOverlayRenderer::Get().OnReset();
+    DXUpscalerManager::Get().OnReset();
     if (m_pFakeBackBuffer) {
         m_pFakeBackBuffer->SetInternalSurface(nullptr);
         m_pFakeBackBuffer->Release();
@@ -1170,7 +1170,7 @@ STDMETHODIMP ProxyDirect3DDevice9::ResetEx(D3DPRESENT_PARAMETERS* pPP, D3DDISPLA
 
     int scaledW = nativeW;
     int scaledH = nativeH;
-    UpscalerManager::Get().GetScaledResolution(scaledW, scaledH);
+    DXUpscalerManager::Get().GetScaledResolution(scaledW, scaledH);
 
     D3DPRESENT_PARAMETERS realPP = *pPP;
     realPP.BackBufferWidth = nativeW;
@@ -1189,8 +1189,8 @@ STDMETHODIMP ProxyDirect3DDevice9::ResetEx(D3DPRESENT_PARAMETERS* pPP, D3DDISPLA
         pPP->BackBufferHeight, nativeW, nativeH, scaledW, scaledH);
 
     {
-        auto& mgr = GamePlug::UpscalerManager::Get();
-        mgr.UpdateSharedHDR(GamePlug::UpscalerManager::IsHDRFormat(pPP->BackBufferFormat) || GamePlug::UpscalerManager::IsHDRFormat(realPP.BackBufferFormat));
+        auto& mgr = GamePlug::DXUpscalerManager::Get();
+        mgr.UpdateSharedHDR(GamePlug::DXUpscalerManager::IsHDRFormat(pPP->BackBufferFormat) || GamePlug::DXUpscalerManager::IsHDRFormat(realPP.BackBufferFormat));
     }
 
     LogPresentParameters("ResetEx (Game input)", pPP);
@@ -1215,8 +1215,8 @@ STDMETHODIMP ProxyDirect3DDevice9::ResetEx(D3DPRESENT_PARAMETERS* pPP, D3DDISPLA
         pPP->BackBufferWidth = scaledW;
         pPP->BackBufferHeight = scaledH;
         if (m_isUpscaling) {
-            UpscalerManager::Get().CreateFakeBackBuffer(m_pReal, m_displayW, m_displayH, D3DFMT_A8R8G8B8);
-            IDirect3DSurface9* pRealSurf = UpscalerManager::Get().GetFakeBackBufferSurface();
+            DXUpscalerManager::Get().CreateFakeBackBuffer(m_pReal, m_displayW, m_displayH, D3DFMT_A8R8G8B8);
+            IDirect3DSurface9* pRealSurf = DXUpscalerManager::Get().GetFakeBackBufferSurface();
             if (pRealSurf) {
                 if (!m_pFakeBackBuffer) {
                     m_pFakeBackBuffer = new ProxySurface9(pRealSurf, this, m_displayW, m_displayH);
@@ -1227,7 +1227,7 @@ STDMETHODIMP ProxyDirect3DDevice9::ResetEx(D3DPRESENT_PARAMETERS* pPP, D3DDISPLA
                 Logger::info("Proxy: Fake backbuffer re-created at {}x{} (ResetEx path)", m_renderW, m_renderH);
             }
         }
-        OverlayRenderer::Get().OnPostReset();
+        DXOverlayRenderer::Get().OnPostReset();
     }
     return hr;
 }

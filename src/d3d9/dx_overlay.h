@@ -6,9 +6,9 @@
 
 namespace GamePlug {
 
-class OverlayRenderer {
+class DXOverlayRenderer {
 public:
-    static OverlayRenderer& Get();
+    static DXOverlayRenderer& Get();
 
     void SetWindow(HWND hWnd) { m_hWnd = hWnd; }
     void Init(IDirect3DDevice9* device);
@@ -27,7 +27,7 @@ public:
     static void SetIsRenderingOverlay(bool val);
 
 private:
-    OverlayRenderer() = default;
+    DXOverlayRenderer() = default;
     static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
     HWND m_hWnd = nullptr;

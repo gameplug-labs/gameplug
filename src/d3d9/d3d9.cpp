@@ -176,12 +176,14 @@ void WINAPI PSGPSampleTexture(void* a, UINT b, float (*const c)[4], UINT d, floa
 }
 
 extern "C" void StartFramework();
+extern "C" void StartVulkanHookSetup();
 
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
     if (fdwReason == DLL_PROCESS_ATTACH) {
         OutputDebugStringA("[GamePlug] d3d9/dinput8.dll: DLL_PROCESS_ATTACH");
         DisableThreadLibraryCalls(hinstDLL);
         StartFramework();
+        StartVulkanHookSetup();
     } else if (fdwReason == DLL_PROCESS_DETACH) {
         Logger::info("--- Proxy Unloaded ---");
     }

@@ -55,7 +55,7 @@ extern "C" {
 
     FRAMEWORK_API void GamePlug_GetResolutionOverride(uint32_t outputW, uint32_t outputH, uint32_t* renderW, uint32_t* renderH) {
         GamePlug::Logger::info("GamePlug_GetResolutionOverride: Requested display resolution: {}x{}", outputW, outputH);
-        IDirect3DDevice9* device = GamePlug::UpscalerManager::Get().GetDevice();
+        IDirect3DDevice9* device = GamePlug::DXUpscalerManager::Get().GetDevice();
         if (device) {
             IDirect3DSurface9* pRBB = nullptr;
             if (SUCCEEDED(device->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &pRBB))) {
@@ -81,15 +81,15 @@ extern "C" {
             }
         }
 
-        // Update dimensions in UpscalerManager with the game's target resolution
+        // Update dimensions in DXUpscalerManager with the game's target resolution
         int rw = (int)outputW;
         int rh = (int)outputH;
         if (!GamePlug::Config::Get().GetBool("VKUpscaler", true)) {
-            GamePlug::UpscalerManager::Get().LoadUpscaler();
+            GamePlug::DXUpscalerManager::Get().LoadUpscaler();
         }else{
-            GamePlug::UpscalerManager::Get().UpdateFallbackConfig();
+            GamePlug::DXUpscalerManager::Get().UpdateFallbackConfig();
         }
-        GamePlug::UpscalerManager::Get().GetScaledResolution(rw, rh);
+        GamePlug::DXUpscalerManager::Get().UpdateDimensions(rw, rh);
         
         if (renderW) *renderW = (uint32_t)rw;
         if (renderH) *renderH = (uint32_t)rh;
@@ -99,7 +99,7 @@ extern "C" {
     }
 
     FRAMEWORK_API bool GamePlug_IsOverlayVisible() {
-        bool visible = GamePlug::OverlayRenderer::Get().IsVisible();
+        bool visible = GamePlug::DXOverlayRenderer::Get().IsVisible();
         static bool lastVisible = false;
         if (visible != lastVisible) {
             GamePlug::Logger::info("GamePlug_IsOverlayVisible: Overlay visibility changed to {}", visible);

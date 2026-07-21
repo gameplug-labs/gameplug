@@ -111,8 +111,23 @@ void OverlayRenderer::SetupDevice(
     m_deviceSetup = true;
     Logger::info("OverlayRenderer: Device setup complete");
 
-    // Load Plugins
-    PluginManager::Get().LoadPlugins();
+    // Set Graphics Context
+    GamePlugGraphicsContext graphicsCtx = {};
+    graphicsCtx.ApiType = GAMEPLUG_API_VULKAN;
+    graphicsCtx.Vulkan.Instance = (void*)instance;
+    graphicsCtx.Vulkan.PhysicalDevice = (void*)physicalDevice;
+    graphicsCtx.Vulkan.Device = (void*)device;
+    graphicsCtx.Vulkan.Queue = (void*)queue;
+    graphicsCtx.Vulkan.QueueFamilyIndex = queueFamily;
+    graphicsCtx.Vulkan.InstanceTable = (void*)&inst_entry->table;
+    graphicsCtx.Vulkan.DeviceTable = (void*)&dev_entry->table;
+    auto* queue_dispatch = DispatchManager::Get().GetQueueDispatch(queue);
+    graphicsCtx.Vulkan.QueueTable = queue_dispatch ? (void*)&queue_dispatch->table : nullptr;
+
+    PluginManager::Get().SetGraphicsContext(graphicsCtx);
+
+    // Initialize already loaded plugins
+    PluginManager::Get().InitializeLoadedPlugins();
 }
 
 void OverlayRenderer::SetupSwapchain(
@@ -187,6 +202,9 @@ void OverlayRenderer::SetupSwapchain(
     }
 
     Logger::info("OverlayRenderer: Swapchain setup complete (" + std::to_string(imageCount) + " images)");
+
+    // Update plugins with the new swapchain handle
+    PluginManager::Get().UpdateVulkanSwapchain((void*)swapchain);
 }
 
 void OverlayRenderer::CreateRenderPass(VkFormat format) {

@@ -52,7 +52,7 @@ void PluginManager::LoadPlugins() {
     char buf[MAX_PATH];
     GetModuleFileNameA(NULL, buf, MAX_PATH);
     std::filesystem::path gamePath = std::filesystem::path(buf).parent_path();
-    std::filesystem::path pluginsPath = gamePath / "GamePlug" / "plugins";
+    std::filesystem::path pluginsPath = gamePath / "gameplug" / "plugins";
 
     // Try DLL Directory as fallback
     if (!std::filesystem::exists(pluginsPath)) {
@@ -62,7 +62,7 @@ void PluginManager::LoadPlugins() {
         if (hSelf) {
             GetModuleFileNameA(hSelf, buf, MAX_PATH);
             std::filesystem::path dllPath = std::filesystem::path(buf).parent_path();
-            pluginsPath = dllPath / "GamePlug" / "plugins";
+            pluginsPath = dllPath / "gameplug" / "plugins";
         }
     }
 
@@ -110,10 +110,22 @@ void PluginManager::LoadPlugins() {
                         plugin.handle = hModule;
                         plugin.pInterface = pInterface;
 
-                        if (plugin.pInterface->OnInit) {
-                            Logger::info("PluginManager: Calling OnInit for plugin " + std::string(pInterface->GetName()));
-                            plugin.pInterface->OnInit(ImGui::GetCurrentContext(), PluginLogBridge, (void*)pInterface->GetName());
-                            Logger::info("PluginManager: OnInit complete for plugin " + std::string(pInterface->GetName()));
+                        if (plugin.pInterface->RequestHookInterface) {
+                            plugin.vulkanHooks = (GamePlugVulkanHookInterface*)plugin.pInterface->RequestHookInterface(GP_INTERFACE_VULKAN);
+                            plugin.d3d11Hooks = (GamePlugD3D11HookInterface*)plugin.pInterface->RequestHookInterface(GP_INTERFACE_D3D11);
+                        }
+
+                        if (ImGui::GetCurrentContext()) {
+                            if (plugin.pInterface->OnInit) {
+                                Logger::info("PluginManager: Calling OnInit for plugin " + std::string(pInterface->GetName()));
+                                plugin.pInterface->OnInit(ImGui::GetCurrentContext(), PluginLogBridge, (void*)pInterface->GetName());
+                                Logger::info("PluginManager: OnInit complete for plugin " + std::string(pInterface->GetName()));
+                            }
+
+                            if (m_hasGraphicsContext && plugin.pInterface->OnGraphicsInit) {
+                                Logger::info("PluginManager: Calling OnGraphicsInit (upon load) for plugin " + std::string(pInterface->GetName()));
+                                plugin.pInterface->OnGraphicsInit(&m_graphicsContext);
+                            }
                         }
 
                         m_plugins.push_back(plugin);
@@ -284,6 +296,283 @@ void PluginManager::LoadIndividualPlugin(DiscoveredPlugin& dp) {
 
 void PluginManager::UnloadIndividualPlugin(const std::string& name) {
     // Basic implementation
+}
+
+void PluginManager::InitializeLoadedPlugins() {
+    Logger::info("PluginManager: Initializing loaded plugins...");
+    for (auto& plugin : m_plugins) {
+        if (plugin.pInterface && plugin.pInterface->OnInit) {
+            Logger::info("PluginManager: Calling OnInit for plugin " + std::string(plugin.pInterface->GetName()));
+            plugin.pInterface->OnInit(ImGui::GetCurrentContext(), PluginLogBridge, (void*)plugin.pInterface->GetName());
+            Logger::info("PluginManager: OnInit complete for plugin " + std::string(plugin.pInterface->GetName()));
+        }
+    }
+}
+
+void PluginManager::SetGraphicsContext(const GamePlugGraphicsContext& context) {
+    m_graphicsContext = context;
+    m_hasGraphicsContext = true;
+
+    Logger::info("PluginManager: SetGraphicsContext called. API Type = " + std::to_string(context.ApiType));
+
+    for (auto& plugin : m_plugins) {
+        if (plugin.pInterface && plugin.pInterface->OnGraphicsInit) {
+            Logger::info("PluginManager: Propagating graphics context to plugin " + std::string(plugin.pInterface->GetName()));
+            plugin.pInterface->OnGraphicsInit(&m_graphicsContext);
+        }
+    }
+}
+
+void PluginManager::UpdateVulkanSwapchain(void* swapchain) {
+    m_graphicsContext.Vulkan.Swapchain = swapchain;
+
+    Logger::info("PluginManager: UpdateVulkanSwapchain called. Swapchain = " + std::to_string((uintptr_t)swapchain));
+
+    for (auto& plugin : m_plugins) {
+        if (plugin.pInterface && plugin.pInterface->OnGraphicsInit) {
+            plugin.pInterface->OnGraphicsInit(&m_graphicsContext);
+        }
+    }
+}
+
+void PluginManager::DispatchGetDeviceQueue(void* device, unsigned int queueFamilyIndex, unsigned int queueIndex, void** pQueue) {
+    for (auto& plugin : m_plugins) {
+        if (plugin.vulkanHooks && plugin.vulkanHooks->vkGetDeviceQueue) {
+            plugin.vulkanHooks->vkGetDeviceQueue(device, queueFamilyIndex, queueIndex, pQueue);
+        }
+    }
+}
+
+void PluginManager::DispatchGetDeviceQueue2(void* device, const void* pQueueInfo, void** pQueue) {
+    for (auto& plugin : m_plugins) {
+        if (plugin.vulkanHooks && plugin.vulkanHooks->vkGetDeviceQueue2) {
+            plugin.vulkanHooks->vkGetDeviceQueue2(device, pQueueInfo, pQueue);
+        }
+    }
+}
+
+void PluginManager::DispatchDestroySwapchainKHR(void* device, void* swapchain, const void* pAllocator) {
+    for (auto& plugin : m_plugins) {
+        if (plugin.vulkanHooks && plugin.vulkanHooks->vkDestroySwapchainKHR) {
+            plugin.vulkanHooks->vkDestroySwapchainKHR(device, swapchain, pAllocator);
+        }
+    }
+}
+
+void PluginManager::DispatchQueuePresent(void* queue, const void* pPresentInfo) {
+    for (auto& plugin : m_plugins) {
+        if (plugin.vulkanHooks && plugin.vulkanHooks->vkQueuePresentKHR) {
+            plugin.vulkanHooks->vkQueuePresentKHR(queue, pPresentInfo);
+        }
+    }
+}
+
+void PluginManager::DispatchAcquireNextImageKHR(void* device, void* swapchain, unsigned long long timeout, void* semaphore, void* fence, unsigned int* pImageIndex) {
+    for (auto& plugin : m_plugins) {
+        if (plugin.vulkanHooks && plugin.vulkanHooks->vkAcquireNextImageKHR) {
+            plugin.vulkanHooks->vkAcquireNextImageKHR(device, swapchain, timeout, semaphore, fence, pImageIndex);
+        }
+    }
+}
+
+void PluginManager::DispatchGetSwapchainImagesKHR(void* device, void* swapchain, unsigned int* pSwapchainImageCount, void** pSwapchainImages) {
+    for (auto& plugin : m_plugins) {
+        if (plugin.vulkanHooks && plugin.vulkanHooks->vkGetSwapchainImagesKHR) {
+            plugin.vulkanHooks->vkGetSwapchainImagesKHR(device, swapchain, pSwapchainImageCount, pSwapchainImages);
+        }
+    }
+}
+
+void PluginManager::DispatchCreateWin32SurfaceKHR(void* instance, const void* pCreateInfo, const void* pAllocator, void** pSurface) {
+    for (auto& plugin : m_plugins) {
+        if (plugin.vulkanHooks && plugin.vulkanHooks->vkCreateWin32SurfaceKHR) {
+            plugin.vulkanHooks->vkCreateWin32SurfaceKHR(instance, pCreateInfo, pAllocator, pSurface);
+        }
+    }
+}
+
+void PluginManager::DispatchGetPhysicalDeviceSurfaceCapabilitiesKHR(void* physicalDevice, void* surface, void* pSurfaceCapabilities) {
+    for (auto& plugin : m_plugins) {
+        if (plugin.vulkanHooks && plugin.vulkanHooks->vkGetPhysicalDeviceSurfaceCapabilitiesKHR) {
+            plugin.vulkanHooks->vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, pSurfaceCapabilities);
+        }
+    }
+}
+
+void PluginManager::DispatchGetPhysicalDeviceSurfaceCapabilities2KHR(void* physicalDevice, const void* pSurfaceInfo, void* pSurfaceCapabilities) {
+    for (auto& plugin : m_plugins) {
+        if (plugin.vulkanHooks && plugin.vulkanHooks->vkGetPhysicalDeviceSurfaceCapabilities2KHR) {
+            plugin.vulkanHooks->vkGetPhysicalDeviceSurfaceCapabilities2KHR(physicalDevice, pSurfaceInfo, pSurfaceCapabilities);
+        }
+    }
+}
+
+void PluginManager::DispatchCreateImage(void* device, void* pCreateInfo, const void* pAllocator, void** pImage) {
+    for (auto& plugin : m_plugins) {
+        if (plugin.vulkanHooks && plugin.vulkanHooks->vkCreateImage) {
+            plugin.vulkanHooks->vkCreateImage(device, pCreateInfo, pAllocator, pImage);
+        }
+    }
+}
+
+void PluginManager::DispatchDestroyImage(void* device, void* image, const void* pAllocator) {
+    for (auto& plugin : m_plugins) {
+        if (plugin.vulkanHooks && plugin.vulkanHooks->vkDestroyImage) {
+            plugin.vulkanHooks->vkDestroyImage(device, image, pAllocator);
+        }
+    }
+}
+
+void PluginManager::DispatchCreateImageView(void* device, const void* pCreateInfo, const void* pAllocator, void** pView) {
+    for (auto& plugin : m_plugins) {
+        if (plugin.vulkanHooks && plugin.vulkanHooks->vkCreateImageView) {
+            plugin.vulkanHooks->vkCreateImageView(device, pCreateInfo, pAllocator, pView);
+        }
+    }
+}
+
+void PluginManager::DispatchDestroyImageView(void* device, void* imageView, const void* pAllocator) {
+    for (auto& plugin : m_plugins) {
+        if (plugin.vulkanHooks && plugin.vulkanHooks->vkDestroyImageView) {
+            plugin.vulkanHooks->vkDestroyImageView(device, imageView, pAllocator);
+        }
+    }
+}
+
+void PluginManager::DispatchCreateFramebuffer(void* device, const void* pCreateInfo, const void* pAllocator, void** pFramebuffer) {
+    for (auto& plugin : m_plugins) {
+        if (plugin.vulkanHooks && plugin.vulkanHooks->vkCreateFramebuffer) {
+            plugin.vulkanHooks->vkCreateFramebuffer(device, pCreateInfo, pAllocator, pFramebuffer);
+        }
+    }
+}
+
+void PluginManager::DispatchDestroyFramebuffer(void* device, void* framebuffer, const void* pAllocator) {
+    for (auto& plugin : m_plugins) {
+        if (plugin.vulkanHooks && plugin.vulkanHooks->vkDestroyFramebuffer) {
+            plugin.vulkanHooks->vkDestroyFramebuffer(device, framebuffer, pAllocator);
+        }
+    }
+}
+
+void PluginManager::DispatchAllocateMemory(void* device, const void* pAllocateInfo, const void* pAllocator, void** pMemory) {
+    for (auto& plugin : m_plugins) {
+        if (plugin.vulkanHooks && plugin.vulkanHooks->vkAllocateMemory) {
+            plugin.vulkanHooks->vkAllocateMemory(device, pAllocateInfo, pAllocator, pMemory);
+        }
+    }
+}
+
+void PluginManager::DispatchBindImageMemory(void* device, void* image, void* memory, unsigned long long memoryOffset) {
+    for (auto& plugin : m_plugins) {
+        if (plugin.vulkanHooks && plugin.vulkanHooks->vkBindImageMemory) {
+            plugin.vulkanHooks->vkBindImageMemory(device, image, memory, memoryOffset);
+        }
+    }
+}
+
+void PluginManager::DispatchCreateRenderPass(void* device, const void* pCreateInfo, const void* pAllocator, void** pRenderPass) {
+    for (auto& plugin : m_plugins) {
+        if (plugin.vulkanHooks && plugin.vulkanHooks->vkCreateRenderPass) {
+            plugin.vulkanHooks->vkCreateRenderPass(device, pCreateInfo, pAllocator, pRenderPass);
+        }
+    }
+}
+
+void PluginManager::DispatchCreateGraphicsPipelines(void* device, void* pipelineCache, unsigned int createInfoCount, const void* pCreateInfos, const void* pAllocator, void** pPipelines) {
+    for (auto& plugin : m_plugins) {
+        if (plugin.vulkanHooks && plugin.vulkanHooks->vkCreateGraphicsPipelines) {
+            plugin.vulkanHooks->vkCreateGraphicsPipelines(device, pipelineCache, createInfoCount, pCreateInfos, pAllocator, pPipelines);
+        }
+    }
+}
+
+void PluginManager::DispatchAllocateCommandBuffers(void* device, const void* pAllocateInfo, void** pCommandBuffers) {
+    for (auto& plugin : m_plugins) {
+        if (plugin.vulkanHooks && plugin.vulkanHooks->vkAllocateCommandBuffers) {
+            plugin.vulkanHooks->vkAllocateCommandBuffers(device, pAllocateInfo, pCommandBuffers);
+        }
+    }
+}
+
+void PluginManager::DispatchBeginCommandBuffer(void* commandBuffer, const void* pBeginInfo) {
+    for (auto& plugin : m_plugins) {
+        if (plugin.vulkanHooks && plugin.vulkanHooks->vkBeginCommandBuffer) {
+            plugin.vulkanHooks->vkBeginCommandBuffer(commandBuffer, pBeginInfo);
+        }
+    }
+}
+
+void PluginManager::DispatchEndCommandBuffer(void* commandBuffer) {
+    for (auto& plugin : m_plugins) {
+        if (plugin.vulkanHooks && plugin.vulkanHooks->vkEndCommandBuffer) {
+            plugin.vulkanHooks->vkEndCommandBuffer(commandBuffer);
+        }
+    }
+}
+
+void PluginManager::DispatchCmdBeginRenderPass(void* commandBuffer, const void* pRenderPassBegin, unsigned int contents) {
+    for (auto& plugin : m_plugins) {
+        if (plugin.vulkanHooks && plugin.vulkanHooks->vkCmdBeginRenderPass) {
+            plugin.vulkanHooks->vkCmdBeginRenderPass(commandBuffer, pRenderPassBegin, contents);
+        }
+    }
+}
+
+void PluginManager::DispatchCmdEndRenderPass(void* commandBuffer) {
+    for (auto& plugin : m_plugins) {
+        if (plugin.vulkanHooks && plugin.vulkanHooks->vkCmdEndRenderPass) {
+            plugin.vulkanHooks->vkCmdEndRenderPass(commandBuffer);
+        }
+    }
+}
+
+void PluginManager::DispatchCmdSetViewport(void* commandBuffer, unsigned int firstViewport, unsigned int viewportCount, const void* pViewports) {
+    for (auto& plugin : m_plugins) {
+        if (plugin.vulkanHooks && plugin.vulkanHooks->vkCmdSetViewport) {
+            plugin.vulkanHooks->vkCmdSetViewport(commandBuffer, firstViewport, viewportCount, pViewports);
+        }
+    }
+}
+
+void PluginManager::DispatchCmdSetScissor(void* commandBuffer, unsigned int firstScissor, unsigned int scissorCount, const void* pScissors) {
+    for (auto& plugin : m_plugins) {
+        if (plugin.vulkanHooks && plugin.vulkanHooks->vkCmdSetScissor) {
+            plugin.vulkanHooks->vkCmdSetScissor(commandBuffer, firstScissor, scissorCount, pScissors);
+        }
+    }
+}
+
+void PluginManager::DispatchCmdBeginRendering(void* commandBuffer, const void* pRenderingInfo) {
+    for (auto& plugin : m_plugins) {
+        if (plugin.vulkanHooks && plugin.vulkanHooks->vkCmdBeginRendering) {
+            plugin.vulkanHooks->vkCmdBeginRendering(commandBuffer, pRenderingInfo);
+        }
+    }
+}
+
+void PluginManager::DispatchCmdEndRendering(void* commandBuffer) {
+    for (auto& plugin : m_plugins) {
+        if (plugin.vulkanHooks && plugin.vulkanHooks->vkCmdEndRendering) {
+            plugin.vulkanHooks->vkCmdEndRendering(commandBuffer);
+        }
+    }
+}
+
+void PluginManager::DispatchCmdBeginRenderingKHR(void* commandBuffer, const void* pRenderingInfo) {
+    for (auto& plugin : m_plugins) {
+        if (plugin.vulkanHooks && plugin.vulkanHooks->vkCmdBeginRenderingKHR) {
+            plugin.vulkanHooks->vkCmdBeginRenderingKHR(commandBuffer, pRenderingInfo);
+        }
+    }
+}
+
+void PluginManager::DispatchCmdEndRenderingKHR(void* commandBuffer) {
+    for (auto& plugin : m_plugins) {
+        if (plugin.vulkanHooks && plugin.vulkanHooks->vkCmdEndRenderingKHR) {
+            plugin.vulkanHooks->vkCmdEndRenderingKHR(commandBuffer);
+        }
+    }
 }
 
 } // namespace GamePlug

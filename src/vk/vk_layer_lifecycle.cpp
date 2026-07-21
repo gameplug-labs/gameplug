@@ -4,6 +4,7 @@
 #include "logger.h"
 #include "overlay.h"
 #include "vk_layer_exports.h"
+#include "plugin_manager.h"
 
 extern "C" {
 
@@ -19,18 +20,30 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateInstance(
         layer_info = (VkLayerInstanceCreateInfo*)layer_info->pNext;
     }
 
-    if (!layer_info)
-        return VK_ERROR_INITIALIZATION_FAILED;
+    VkResult result;
+    if (!layer_info) {
+        GamePlug::Logger::info("vkCreateInstance: No layer link info, falling back to hook mode");
+        if (Original_vkCreateInstance) {
+            result = Original_vkCreateInstance(pCreateInfo, pAllocator, pInstance);
+            if (result == VK_SUCCESS) {
+                g_Instance = *pInstance;
+                GamePlug::DispatchManager::Get().AddInstance(*pInstance, Original_vkGetInstanceProcAddr);
+            }
+        } else {
+            return VK_ERROR_INITIALIZATION_FAILED;
+        }
+    }else{
+        GamePlug::Logger::info("vkCreateInstance initialized");
+        PFN_vkGetInstanceProcAddr nextGIPA = layer_info->u.pLayerInfo->pfnNextGetInstanceProcAddr;
+        PFN_vkCreateInstance nextCreateInstance = (PFN_vkCreateInstance)nextGIPA(NULL, "vkCreateInstance");
 
-    PFN_vkGetInstanceProcAddr nextGIPA = layer_info->u.pLayerInfo->pfnNextGetInstanceProcAddr;
-    PFN_vkCreateInstance nextCreateInstance = (PFN_vkCreateInstance)nextGIPA(NULL, "vkCreateInstance");
+        layer_info->u.pLayerInfo = layer_info->u.pLayerInfo->pNext;
 
-    layer_info->u.pLayerInfo = layer_info->u.pLayerInfo->pNext;
-
-    VkResult result = nextCreateInstance(pCreateInfo, pAllocator, pInstance);
-    if (result == VK_SUCCESS) {
-        g_Instance = *pInstance;
-        GamePlug::DispatchManager::Get().AddInstance(*pInstance, nextGIPA);
+        result = nextCreateInstance(pCreateInfo, pAllocator, pInstance);
+        if (result == VK_SUCCESS) {
+            g_Instance = *pInstance;
+            GamePlug::DispatchManager::Get().AddInstance(*pInstance, nextGIPA);
+        }
     }
 
     return result;
@@ -47,18 +60,28 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateDevice(
         layer_info = (VkLayerDeviceCreateInfo*)layer_info->pNext;
     }
 
-    if (!layer_info)
-        return VK_ERROR_INITIALIZATION_FAILED;
+    VkResult result;
+    if (!layer_info) {
+        GamePlug::Logger::info("vkCreateDevice: No layer link info, falling back to hook mode");
+        if (Original_vkCreateDevice) {
+            result = Original_vkCreateDevice(physicalDevice, pCreateInfo, pAllocator, pDevice);
+            if (result == VK_SUCCESS) {
+                GamePlug::DispatchManager::Get().AddDevice(*pDevice, Original_vkGetDeviceProcAddr);
+            }
+        } else {
+            return VK_ERROR_INITIALIZATION_FAILED;
+        }
+    } else {
+        PFN_vkGetInstanceProcAddr nextGIPA = layer_info->u.pLayerInfo->pfnNextGetInstanceProcAddr;
+        PFN_vkGetDeviceProcAddr nextGDPA = layer_info->u.pLayerInfo->pfnNextGetDeviceProcAddr;
+        PFN_vkCreateDevice nextCreateDevice = (PFN_vkCreateDevice)nextGIPA(NULL, "vkCreateDevice");
 
-    PFN_vkGetInstanceProcAddr nextGIPA = layer_info->u.pLayerInfo->pfnNextGetInstanceProcAddr;
-    PFN_vkGetDeviceProcAddr nextGDPA = layer_info->u.pLayerInfo->pfnNextGetDeviceProcAddr;
-    PFN_vkCreateDevice nextCreateDevice = (PFN_vkCreateDevice)nextGIPA(NULL, "vkCreateDevice");
+        layer_info->u.pLayerInfo = layer_info->u.pLayerInfo->pNext;
 
-    layer_info->u.pLayerInfo = layer_info->u.pLayerInfo->pNext;
-
-    VkResult result = nextCreateDevice(physicalDevice, pCreateInfo, pAllocator, pDevice);
-    if (result == VK_SUCCESS) {
-        GamePlug::DispatchManager::Get().AddDevice(*pDevice, nextGDPA);
+        result = nextCreateDevice(physicalDevice, pCreateInfo, pAllocator, pDevice);
+        if (result == VK_SUCCESS) {
+            GamePlug::DispatchManager::Get().AddDevice(*pDevice, nextGDPA);
+        }
     }
 
     return result;
@@ -66,10 +89,11 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateDevice(
 
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateWin32SurfaceKHR(
     VkInstance instance, const VkWin32SurfaceCreateInfoKHR* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkSurfaceKHR* pSurface) {
-    auto* inst_entry = GamePlug::DispatchManager::Get().GetInstance(instance);
-    if (!inst_entry)
+        auto* inst_entry = GamePlug::DispatchManager::Get().GetInstance(instance);
+        if (!inst_entry)
         return VK_ERROR_INITIALIZATION_FAILED;
-
+    
+    GamePlug::PluginManager::Get().DispatchCreateWin32SurfaceKHR((void*)instance, (const void*)pCreateInfo, (const void*)pAllocator, (void**)pSurface);
     VkResult result = inst_entry->table.vkCreateWin32SurfaceKHR(instance, pCreateInfo, pAllocator, pSurface);
     if (result == VK_SUCCESS) {
         GamePlug::OverlayRenderer::Get().SetWindow(pCreateInfo->hwnd);
@@ -77,31 +101,30 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateWin32SurfaceKHR(
     return result;
 }
 
-/*
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_GetPhysicalDeviceSurfaceCapabilitiesKHR(
     VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, VkSurfaceCapabilitiesKHR* pSurfaceCapabilities) {
     auto* inst_entry = GamePlug::DispatchManager::Get().GetInstance(g_Instance);
     if (!inst_entry)
         return VK_ERROR_INITIALIZATION_FAILED;
-
-    return inst_entry->table.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, pSurfaceCapabilities);
+    GamePlug::PluginManager::Get().DispatchGetPhysicalDeviceSurfaceCapabilitiesKHR((void*)physicalDevice, (void*)surface, (void*)pSurfaceCapabilities);
+    VkResult result = inst_entry->table.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, pSurfaceCapabilities);
+    return result;
 }
 
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_GetPhysicalDeviceSurfaceCapabilities2KHR(
     VkPhysicalDevice physicalDevice, const VkPhysicalDeviceSurfaceInfo2KHR* pSurfaceInfo, VkSurfaceCapabilities2KHR* pSurfaceCapabilities) {
-    auto* inst_entry = GamePlug::DispatchManager::Get().GetInstance(g_Instance);
-    if (!inst_entry)
+        auto* inst_entry = GamePlug::DispatchManager::Get().GetInstance(g_Instance);
+        if (!inst_entry)
         return VK_ERROR_INITIALIZATION_FAILED;
-
-    return inst_entry->table.vkGetPhysicalDeviceSurfaceCapabilities2KHR(physicalDevice, pSurfaceInfo, pSurfaceCapabilities);
+    
+    GamePlug::PluginManager::Get().DispatchGetPhysicalDeviceSurfaceCapabilities2KHR((void*)physicalDevice, (const void*)pSurfaceInfo, (void*)pSurfaceCapabilities);
+    VkResult result = inst_entry->table.vkGetPhysicalDeviceSurfaceCapabilities2KHR(physicalDevice, pSurfaceInfo, pSurfaceCapabilities);
+    return result;
 }
-*/
 
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateSwapchainKHR(
     VkDevice device, const VkSwapchainCreateInfoKHR* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkSwapchainKHR* pSwapchain) {
 
-    GamePlug::Logger::info("vkCreateSwapchainKHR: Entry. Game Requested Extent=" + std::to_string(pCreateInfo->imageExtent.width) + "x" +
-                           std::to_string(pCreateInfo->imageExtent.height));
     auto* dev_entry = GamePlug::DispatchManager::Get().GetDevice(device);
 
     VkSwapchainCreateInfoKHR spoofInfo = *pCreateInfo;
@@ -112,15 +135,13 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateSwapchainKHR(
     uint32_t nativeH = GamePlug::ImageTracker::Get().GetScreenHeight();
     if (nativeW > 0 && nativeH > 0 && sw < nativeW) {
         GamePlug::Logger::info(
-            "vkCreateSwapchainKHR: OVERRIDING 720p backbuffer to " + std::to_string(nativeW) + "x" + std::to_string(nativeH));
+            "vkCreateSwapchainKHR: OVERRIDING backbuffer to " + std::to_string(nativeW) + "x" + std::to_string(nativeH));
         spoofInfo.imageExtent = {nativeW, nativeH};
     }
 
     VkResult result = dev_entry->table.vkCreateSwapchainKHR(device, &spoofInfo, pAllocator, pSwapchain);
-    GamePlug::Logger::info("vkCreateSwapchainKHR: Trace 10.2 (Result=" + std::to_string(result) + ")");
 
     if (result == VK_SUCCESS) {
-        GamePlug::Logger::info("vkCreateSwapchainKHR: Trace 10.3 (Getting images)");
         uint32_t imageCount = 0;
         dev_entry->table.vkGetSwapchainImagesKHR(device, *pSwapchain, &imageCount, nullptr);
         std::vector<VkImage> images(imageCount);
@@ -145,26 +166,24 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateSwapchainKHR(
             GamePlug::ImageTracker::Get().RegisterSwapchainImage(img);
         }
 
-        GamePlug::Logger::info("vkCreateSwapchainKHR: Trace 10.4 (Getting queue)");
         VkQueue queue;
         dev_entry->table.vkGetDeviceQueue(device, 0, 0, &queue);
         GamePlug::DispatchManager::Get().AddQueue(queue, device);
 
-        GamePlug::Logger::info("vkCreateSwapchainKHR: Trace 10.5 (SetupDevice)");
         GamePlug::ImageTracker::Get().ResetScores();
         GamePlug::ImageTracker::Get().SetScreenDimensions(pCreateInfo->imageExtent.width, pCreateInfo->imageExtent.height);
         GamePlug::OverlayRenderer::Get().SetupDevice(g_Instance, g_PhysDevice, device, 0, queue);
 
-        GamePlug::Logger::info("vkCreateSwapchainKHR: Trace 10.6 (SetupSwapchain)");
         GamePlug::OverlayRenderer::Get().SetupSwapchain(
             *pSwapchain, pCreateInfo->imageFormat, pCreateInfo->imageExtent, imageCount, images);
-        GamePlug::Logger::info("vkCreateSwapchainKHR: Trace 10.7 (Done)");
+        
     }
 
     return result;
 }
 
 VK_LAYER_EXPORT void VKAPI_CALL GamePlug_GetDeviceQueue(VkDevice device, uint32_t queueFamilyIndex, uint32_t queueIndex, VkQueue* pQueue) {
+    GamePlug::PluginManager::Get().DispatchGetDeviceQueue((void*)device, queueFamilyIndex, queueIndex, (void**)pQueue);
     auto* dev_entry = GamePlug::DispatchManager::Get().GetDevice(device);
     if (dev_entry) {
         dev_entry->table.vkGetDeviceQueue(device, queueFamilyIndex, queueIndex, pQueue);
@@ -175,6 +194,7 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_GetDeviceQueue(VkDevice device, uint32_
 }
 
 VK_LAYER_EXPORT void VKAPI_CALL GamePlug_GetDeviceQueue2(VkDevice device, const VkDeviceQueueInfo2* pQueueInfo, VkQueue* pQueue) {
+    GamePlug::PluginManager::Get().DispatchGetDeviceQueue2((void*)device, (const void*)pQueueInfo, (void**)pQueue);
     auto* dev_entry = GamePlug::DispatchManager::Get().GetDevice(device);
     if (dev_entry) {
         dev_entry->table.vkGetDeviceQueue2(device, pQueueInfo, pQueue);
@@ -186,10 +206,11 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_GetDeviceQueue2(VkDevice device, const 
 
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_AcquireNextImageKHR(
     VkDevice device, VkSwapchainKHR swapchain, uint64_t timeout, VkSemaphore semaphore, VkFence fence, uint32_t* pImageIndex) {
-    auto* dev_entry = GamePlug::DispatchManager::Get().GetDevice(device);
-    if (!dev_entry)
+        auto* dev_entry = GamePlug::DispatchManager::Get().GetDevice(device);
+        if (!dev_entry)
         return VK_ERROR_INITIALIZATION_FAILED;
-
+    
+    GamePlug::PluginManager::Get().DispatchAcquireNextImageKHR((void*)device, (void*)swapchain, timeout, (void*)semaphore, (void*)fence, pImageIndex);
     VkResult result = dev_entry->table.vkAcquireNextImageKHR(device, swapchain, timeout, semaphore, fence, pImageIndex);
     if (result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR) {
         GamePlug::OverlayRenderer::Get().SetCurrentSwapchainImage(*pImageIndex);
@@ -197,17 +218,25 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_AcquireNextImageKHR(
     return result;
 }
 
-/*
+VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_GetSwapchainImagesKHR(
+    VkDevice device, VkSwapchainKHR swapchain, uint32_t* pSwapchainImageCount, VkImage* pSwapchainImages) {
+        auto* dev_entry = GamePlug::DispatchManager::Get().GetDevice(device);
+        if (!dev_entry)
+        return VK_ERROR_INITIALIZATION_FAILED;
+    GamePlug::PluginManager::Get().DispatchGetSwapchainImagesKHR((void*)device, (void*)swapchain, pSwapchainImageCount, (void**)pSwapchainImages);
+    return dev_entry->table.vkGetSwapchainImagesKHR(device, swapchain, pSwapchainImageCount, pSwapchainImages);
+}
+
 VK_LAYER_EXPORT void VKAPI_CALL GamePlug_DestroySwapchainKHR(
     VkDevice device, VkSwapchainKHR swapchain, const VkAllocationCallbacks* pAllocator) {
     GamePlug::Logger::debug("Hook: vkDestroySwapchainKHR Entry");
+    GamePlug::PluginManager::Get().DispatchDestroySwapchainKHR((void*)device, (void*)swapchain, (const void*)pAllocator);
     auto* dev_entry = GamePlug::DispatchManager::Get().GetDevice(device);
     if (dev_entry) {
         dev_entry->table.vkDestroySwapchainKHR(device, swapchain, pAllocator);
     }
     GamePlug::Logger::debug("Hook: vkDestroySwapchainKHR Exit");
 }
-*/
 
 VK_LAYER_EXPORT void VKAPI_CALL GamePlug_DestroyDevice(VkDevice device, const VkAllocationCallbacks* pAllocator) {
     GamePlug::Logger::info("vkDestroyDevice intercepted - Shutting down GamePlug");
@@ -219,7 +248,6 @@ VK_LAYER_EXPORT void VKAPI_CALL GamePlug_DestroyDevice(VkDevice device, const Vk
     }
 }
 
-/*
 VK_LAYER_EXPORT void VKAPI_CALL GamePlug_DestroyInstance(VkInstance instance, const VkAllocationCallbacks* pAllocator) {
     GamePlug::Logger::info("vkDestroyInstance intercepted");
     auto* inst_entry = GamePlug::DispatchManager::Get().GetInstance(instance);
@@ -237,7 +265,6 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_DeviceWaitIdle(VkDevice device) {
     GamePlug::Logger::debug("Hook: vkDeviceWaitIdle Exit");
     return result;
 }
-*/
 
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_QueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPresentInfo) {
     auto* queue_dispatch = GamePlug::DispatchManager::Get().GetQueueDispatch(queue);
@@ -265,6 +292,9 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_QueuePresentKHR(VkQueue queue, cons
                 GamePlug::Logger::warn("QueuePresentKHR: Standalone fallback skipped - No target image");
             }
         }
+
+        // Notify plugins
+        GamePlug::PluginManager::Get().DispatchQueuePresent((void*)queue, (const void*)pPresentInfo);
 
         VkResult result = queue_dispatch->table.vkQueuePresentKHR(queue, pPresentInfo);
 

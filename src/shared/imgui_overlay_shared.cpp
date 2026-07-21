@@ -10,6 +10,12 @@ namespace GamePlug {
 
 void ImGuiOverlayShared::DrawUI(uint32_t width, uint32_t height, std::function<void()> apiSpecificUI) {
     ImGuiIO& io = ImGui::GetIO();
+    if (height == 1080) {
+        height = 720;
+    }
+    if (height == 1440) {
+        height = 1080;
+    }
     if (height > 1440) {
         height = 1440;
     }

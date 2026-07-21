@@ -125,8 +125,6 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_GetPhysicalDeviceSurfaceCapabilitie
 VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateSwapchainKHR(
     VkDevice device, const VkSwapchainCreateInfoKHR* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkSwapchainKHR* pSwapchain) {
 
-    // GamePlug::Logger::info("vkCreateSwapchainKHR: Entry. Game Requested Extent=" + std::to_string(pCreateInfo->imageExtent.width) + "x" +
-                           std::to_string(pCreateInfo->imageExtent.height));
     auto* dev_entry = GamePlug::DispatchManager::Get().GetDevice(device);
 
     VkSwapchainCreateInfoKHR spoofInfo = *pCreateInfo;
@@ -136,16 +134,14 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateSwapchainKHR(
     uint32_t nativeW = GamePlug::ImageTracker::Get().GetScreenWidth();
     uint32_t nativeH = GamePlug::ImageTracker::Get().GetScreenHeight();
     if (nativeW > 0 && nativeH > 0 && sw < nativeW) {
-        // GamePlug::Logger::info(
-        //     "vkCreateSwapchainKHR: OVERRIDING 720p backbuffer to " + std::to_string(nativeW) + "x" + std::to_string(nativeH));
+        GamePlug::Logger::info(
+            "vkCreateSwapchainKHR: OVERRIDING backbuffer to " + std::to_string(nativeW) + "x" + std::to_string(nativeH));
         spoofInfo.imageExtent = {nativeW, nativeH};
     }
 
     VkResult result = dev_entry->table.vkCreateSwapchainKHR(device, &spoofInfo, pAllocator, pSwapchain);
-    //GamePlug::Logger::info("vkCreateSwapchainKHR: Trace 10.2 (Result=" + std::to_string(result) + ")");
 
     if (result == VK_SUCCESS) {
-        //GamePlug::Logger::info("vkCreateSwapchainKHR: Trace 10.3 (Getting images)");
         uint32_t imageCount = 0;
         dev_entry->table.vkGetSwapchainImagesKHR(device, *pSwapchain, &imageCount, nullptr);
         std::vector<VkImage> images(imageCount);
@@ -170,17 +166,14 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL GamePlug_CreateSwapchainKHR(
             GamePlug::ImageTracker::Get().RegisterSwapchainImage(img);
         }
 
-        GamePlug::Logger::info("vkCreateSwapchainKHR: Trace 10.4 (Getting queue)");
         VkQueue queue;
         dev_entry->table.vkGetDeviceQueue(device, 0, 0, &queue);
         GamePlug::DispatchManager::Get().AddQueue(queue, device);
 
-        GamePlug::Logger::info("vkCreateSwapchainKHR: Trace 10.5 (SetupDevice)");
         GamePlug::ImageTracker::Get().ResetScores();
         GamePlug::ImageTracker::Get().SetScreenDimensions(pCreateInfo->imageExtent.width, pCreateInfo->imageExtent.height);
         GamePlug::OverlayRenderer::Get().SetupDevice(g_Instance, g_PhysDevice, device, 0, queue);
 
-        GamePlug::Logger::info("vkCreateSwapchainKHR: Trace 10.6 (SetupSwapchain)");
         GamePlug::OverlayRenderer::Get().SetupSwapchain(
             *pSwapchain, pCreateInfo->imageFormat, pCreateInfo->imageExtent, imageCount, images);
         

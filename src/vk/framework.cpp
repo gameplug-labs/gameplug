@@ -1,6 +1,7 @@
 #include "common.h"
 #include "config.h"
 #include "types.h"
+#include "plugin_manager.h"
 
 namespace GamePlug {
 FRAMEWORK_API void Init() {
@@ -14,5 +15,8 @@ FRAMEWORK_API void Init() {
     } else {
         Logger::info("volk initialized successfully");
     }
+
+    // Load plugins early so that all startup hooks are active and called
+    PluginManager::Get().LoadPlugins();
 }
 } // namespace GamePlug

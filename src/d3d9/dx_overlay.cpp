@@ -7,7 +7,7 @@
 #include "logger.h"
 #include "plugin_manager.h"
 #include "texture_replacer.h"
-#include "upscaler_manager.h"
+#include "dx_upscaler_manager.h"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 

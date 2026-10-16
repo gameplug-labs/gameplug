@@ -1,6 +1,6 @@
 #include "d3d9_proxy_d3d9.h"
 #include "d3d9_proxy_device.h"
-#include "upscaler_manager.h"
+#include "dx_upscaler_manager.h"
 
 ProxyDirect3D9::ProxyDirect3D9(IDirect3D9* pReal)
     : m_pReal(pReal)

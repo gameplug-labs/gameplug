@@ -5,7 +5,7 @@
 #include "d3d9_proxy_texture.h"
 #include "texture_replacer.h"
 #include "upscaler_interface.h"
-#include "upscaler_manager.h"
+#include "dx_upscaler_manager.h"
 #include <algorithm>
 #include <cctype>
 #include <cmath>

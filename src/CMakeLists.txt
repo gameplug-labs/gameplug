@@ -90,6 +90,23 @@ if(MSVC)
         "/DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3dcompiler_47.dll"
     )
 endif()
+
+# --- Batman: Arkham Knight SDK Integration ---
+set(BAK_SDK_DIR "D:/BatmanAKSdkGeneration/BAKFramework" CACHE PATH "Path to BAKFramework")
+if(EXISTS "${BAK_SDK_DIR}/shared/sdk/SdkHeaders.hpp")
+    target_sources(framework_d3d11 PRIVATE
+        ${PROJECT_SOURCE_DIR}/sub_projects/upscaler-manager/d3d11/batman_sdk_bridge.cpp
+    )
+    target_include_directories(framework_d3d11 PUBLIC "${BAK_SDK_DIR}/shared/sdk")
+    if(EXISTS "${BAK_SDK_DIR}/build/lib/Release/BAKSDK.lib")
+        target_link_libraries(framework_d3d11 PUBLIC "${BAK_SDK_DIR}/build/lib/Release/BAKSDK.lib")
+    elseif(EXISTS "${BAK_SDK_DIR}/build/lib/BAKSDK.lib")
+        target_link_libraries(framework_d3d11 PUBLIC "${BAK_SDK_DIR}/build/lib/BAKSDK.lib")
+    endif()
+    target_compile_definitions(framework_d3d11 PUBLIC GAMEPLUG_ENABLE_BAK_SDK=1)
+    message(STATUS "GamePlug: Linked Batman AK SDK from ${BAK_SDK_DIR}")
+endif()
+
 add_subdirectory(d3d11)
 
 # --- DirectX Framework (x64 only) ---

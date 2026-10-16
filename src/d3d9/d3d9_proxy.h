@@ -26,5 +26,4 @@ typedef HRESULT(WINAPI* PFN_Direct3DCreate9Ex)(UINT SDKVersion, IDirect3D9Ex** p
 extern bool g_InUpscalerPass;
 
 // Helper Functions
-void GetScaledResolution(int& outW, int& outH);
 void InitializeHooks();

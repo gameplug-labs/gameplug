@@ -109,10 +109,11 @@ void OverlayRenderer::NewFrame() {
     ImGuiIO& io = ImGui::GetIO();
     io.DeltaTime = deltaTime > 0 ? deltaTime : 1.0f / 60.0f;
 
-    // Toggle Visibility with Ctrl + HOME key
+    // Toggle Visibility with Ctrl + F1 key, or ` key (VK_OEM_3)
     bool ctrlPressed = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
-    bool homePressed = (GetAsyncKeyState(VK_HOME) & 0x8000) != 0;
-    bool keyCurrentlyPressed = ctrlPressed && homePressed;
+    bool f1Pressed = (GetAsyncKeyState(VK_F1) & 0x8000) != 0;
+    bool backtickPressed = (GetAsyncKeyState(VK_OEM_3) & 0x8000) != 0;
+    bool keyCurrentlyPressed = (ctrlPressed && f1Pressed) || backtickPressed;
 
     if (keyCurrentlyPressed && !m_showKeyWasPressed) {
         m_visible = !m_visible;

@@ -111,8 +111,23 @@ void OverlayRenderer::SetupDevice(
     m_deviceSetup = true;
     Logger::info("OverlayRenderer: Device setup complete");
 
-    // Load Plugins
-    PluginManager::Get().LoadPlugins();
+    // Set Graphics Context
+    GamePlugGraphicsContext graphicsCtx = {};
+    graphicsCtx.ApiType = GAMEPLUG_API_VULKAN;
+    graphicsCtx.Vulkan.Instance = (void*)instance;
+    graphicsCtx.Vulkan.PhysicalDevice = (void*)physicalDevice;
+    graphicsCtx.Vulkan.Device = (void*)device;
+    graphicsCtx.Vulkan.Queue = (void*)queue;
+    graphicsCtx.Vulkan.QueueFamilyIndex = queueFamily;
+    graphicsCtx.Vulkan.InstanceTable = (void*)&inst_entry->table;
+    graphicsCtx.Vulkan.DeviceTable = (void*)&dev_entry->table;
+    auto* queue_dispatch = DispatchManager::Get().GetQueueDispatch(queue);
+    graphicsCtx.Vulkan.QueueTable = queue_dispatch ? (void*)&queue_dispatch->table : nullptr;
+
+    PluginManager::Get().SetGraphicsContext(graphicsCtx);
+
+    // Initialize already loaded plugins
+    PluginManager::Get().InitializeLoadedPlugins();
 }
 
 void OverlayRenderer::SetupSwapchain(
@@ -187,6 +202,9 @@ void OverlayRenderer::SetupSwapchain(
     }
 
     Logger::info("OverlayRenderer: Swapchain setup complete (" + std::to_string(imageCount) + " images)");
+
+    // Update plugins with the new swapchain handle
+    PluginManager::Get().UpdateVulkanSwapchain((void*)swapchain);
 }
 
 void OverlayRenderer::CreateRenderPass(VkFormat format) {
@@ -317,10 +335,11 @@ void OverlayRenderer::NewFrame() {
         Logger::info("OverlayRenderer: NewFrame started (Logged every 600 frames)");
     }
 
-    // Toggle Visibility with Ctrl + HOME key
+     // Toggle Visibility with Ctrl + F1 key, or ` key (VK_OEM_3)
     bool ctrlPressed = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
-    bool homePressed = (GetAsyncKeyState(VK_HOME) & 0x8000) != 0;
-    bool keyCurrentlyPressed = ctrlPressed && homePressed;
+    bool f1Pressed = (GetAsyncKeyState(VK_F1) & 0x8000) != 0;
+    bool backtickPressed = (GetAsyncKeyState(VK_OEM_3) & 0x8000) != 0;
+    bool keyCurrentlyPressed = (ctrlPressed && f1Pressed) || backtickPressed;
 
     if (keyCurrentlyPressed && !m_showKeyWasPressed) {
         m_visible = !m_visible;

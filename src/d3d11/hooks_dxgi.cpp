@@ -1,5 +1,6 @@
 #include "hooks_common.h"
 #include "upscaler_manager.h"
+#include "batman_sdk_bridge.h"
 #include <iomanip>
 #include <psapi.h>
 #include <sstream>
@@ -265,6 +266,12 @@ HRESULT STDMETHODCALLTYPE HookedGetBuffer(IDXGISwapChain* pSwapChain, UINT Buffe
         }
 
         Logger::info("HookedGetBuffer: IsUpscalingEnabled=" + std::to_string(DXUpscalerManager::Get().IsUpscalingEnabled()));
+
+        // For Batman: Arkham Knight, 3D renders into native SceneColor and UI renders directly to SwapChain.
+        // Bypass FakeBackBuffer redirection so Scaleform GFx UI renders at full native display resolution!
+        if (BatmanAK_IsActive()) {
+            return g_OriginalGetBuffer(pSwapChain, Buffer, riid, ppSurface);
+        }
 
         if (DXUpscalerManager::Get().IsUpscalingEnabled()) {
             if (!DXUpscalerManager::Get().GetFakeBackBuffer()) {

@@ -5,6 +5,7 @@
 #include "imgui_overlay_shared.h"
 #include "plugin_manager.h"
 #include "upscaler_manager.h"
+#include "batman_sdk_bridge.h"
 #include <d3d11.h>
 #include <mutex>
 
@@ -333,14 +334,20 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
 
             bool upscaled = false;
             if (DXUpscalerManager::Get().IsUpscalingEnabled()) {
-                ID3D11ShaderResourceView* srcSRV = DXUpscalerManager::Get().GetFakeBackBufferSRV();
+                ID3D11ShaderResourceView* srcSRV = nullptr;
+                if (BatmanAK_IsActive()) {
+                    srcSRV = DXUpscalerManager::Get().GetSceneColorSRV();
+                } else {
+                    srcSRV = DXUpscalerManager::Get().GetFakeBackBufferSRV();
+                }
+
                 if (srcSRV) {
                     DXUpscalerManager::Get().RenderFrameDX11(
                         g_pd3dDeviceContext, srcSRV, g_mainRenderTargetView, desc.BufferDesc.Width, desc.BufferDesc.Height);
                     upscaled = true;
                 }
             }
-            if (!upscaled) {
+            if (!upscaled && !BatmanAK_IsActive()) {
                 ID3D11Texture2D* fakeBuffer = DXUpscalerManager::Get().GetFakeBackBuffer();
                 if (fakeBuffer) {
                     ID3D11Texture2D* realBuffer = nullptr;

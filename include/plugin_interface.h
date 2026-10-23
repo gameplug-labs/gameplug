@@ -19,10 +19,60 @@
 
 extern "C" {
 
+// --- 3. The Unified Plugin Interface ---
+enum GamePlugHookInterfaceId {
+    GP_INTERFACE_VULKAN,
+    GP_INTERFACE_D3D9,
+    GP_INTERFACE_D3D11,
+    GP_INTERFACE_D3D12
+};
+
+enum GamePlugGraphicsApiType {
+    GAMEPLUG_API_NONE = 0,
+    GAMEPLUG_API_VULKAN = 1,
+    GAMEPLUG_API_D3D9 = 2,
+    GAMEPLUG_API_D3D10 = 3,
+    GAMEPLUG_API_D3D11 = 4,
+    GAMEPLUG_API_D3D12 = 5
+};
+
+struct GamePlugGraphicsContext {
+    int ApiType;
+    union {
+        struct {
+            void* Instance;
+            void* PhysicalDevice;
+            void* Device;
+            void* Queue;
+            unsigned int QueueFamilyIndex;
+            // void* GetInstanceProcAddr;
+            // void* GetDeviceProcAddr;
+            void* InstanceTable;
+            void* DeviceTable;
+            void* QueueTable;
+            void* Swapchain;
+        } Vulkan;
+        struct {
+            void* Device;
+        } D3D9;
+        struct {
+            void* Device;
+        } D3D10;
+        struct {
+            void* Device;
+            void* DeviceContext;
+        } D3D11;
+        struct {
+            void* Device;
+            void* CommandQueue;
+        } D3D12;
+    };
+};
+
 struct GamePlugPluginInterface {
     // The version of the interface.
     // Increment this if the struct layout changes.
-    int InterfaceVersion; // Current version: 8
+    int InterfaceVersion; // Current version: 9
 
     // Returns a human-readable name for the plugin.
     const char* (*GetName)();
@@ -57,6 +107,11 @@ struct GamePlugPluginInterface {
 
     // Returns the number of fields and a pointer to an array of descriptors.
     int (*GetFields)(FieldDescriptor** outFields);
+
+    // Called when the graphics context is initialized or when the plugin is loaded.
+    void (*OnGraphicsInit)(const GamePlugGraphicsContext* context);
+
+    void* (*RequestHookInterface)(GamePlugHookInterfaceId id);
 };
 
 // Plugins must export this function to be recognized by GamePlug.

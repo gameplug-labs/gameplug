@@ -154,7 +154,7 @@ STDMETHODIMP ProxyDirect3D9::CreateDevice(UINT A, D3DDEVTYPE DT, HWND hFW, DWORD
 
     int scaledW = nativeW;
     int scaledH = nativeH;
-    GetScaledResolution(scaledW, scaledH);
+    UpscalerManager::Get().GetScaledResolution(scaledW, scaledH);
 
     D3DPRESENT_PARAMETERS realPP = *pPP;
     realPP.BackBufferWidth = nativeW;
@@ -249,7 +249,7 @@ STDMETHODIMP ProxyDirect3D9::CreateDeviceEx(
 
     int scaledW = nativeW;
     int scaledH = nativeH;
-    GetScaledResolution(scaledW, scaledH);
+    UpscalerManager::Get().GetScaledResolution(scaledW, scaledH);
 
     D3DPRESENT_PARAMETERS realPP = *pPP;
     realPP.BackBufferWidth = nativeW;

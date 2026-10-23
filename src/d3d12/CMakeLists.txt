@@ -35,7 +35,7 @@ if(MSVC)
         PREFIX ""
         SUFFIX ".dll"
         OUTPUT_NAME "dinput8"
-        LINK_FLAGS "/DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3dcompiler_47.dll"
+        LINK_FLAGS "/DELAYLOAD:d3d9.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3dcompiler_47.dll"
     )
 else()
     set_target_properties(dinput8_d3d12 PROPERTIES

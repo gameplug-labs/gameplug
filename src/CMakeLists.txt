@@ -90,57 +90,52 @@ endif()
 
 add_subdirectory(d3d11)
 
-# --- DirectX Framework (x64 only) ---
-if(CMAKE_SIZEOF_VOID_P EQUAL 8)
-    # --- D3D12 Framework ---
-    add_library(framework_d3d12 STATIC
-        ${SHARED_SOURCES}
-        d3d12/framework.cpp
-        d3d12/overlay.cpp
-        d3d12/hooks.cpp
-        d3d12/hooks_d3d12.cpp
-        d3d12/hooks_dxgi.cpp
-        ${PROJECT_SOURCE_DIR}/external/imgui/backends/imgui_impl_dx12.cpp
-    )
+# --- D3D12 Framework ---
+add_library(framework_d3d12 STATIC
+    ${SHARED_SOURCES}
+    d3d12/framework.cpp
+    d3d12/overlay.cpp
+    d3d12/hooks.cpp
+    d3d12/hooks_d3d12.cpp
+    d3d12/hooks_dxgi.cpp
+    ${PROJECT_SOURCE_DIR}/external/imgui/backends/imgui_impl_dx12.cpp
+)
 
-    target_compile_definitions(framework_d3d12 PRIVATE 
-        FRAMEWORK_EXPORTS
-    )
-    target_include_directories(framework_d3d12 PUBLIC
-        ${PROJECT_SOURCE_DIR}/include
-        ${PROJECT_SOURCE_DIR}/src/d3d12
-        ${PROJECT_SOURCE_DIR}/src/shared
-        ${PROJECT_SOURCE_DIR}/external/spdlog/include
-        ${PROJECT_SOURCE_DIR}/external/imgui
-        ${PROJECT_SOURCE_DIR}/external/imgui/backends
-    )
-    target_compile_definitions(framework_d3d12 PUBLIC 
-        "IMGUI_USER_CONFIG=\"GAMEPLUG_imgui_config.h\""
-    )
-    target_link_libraries(framework_d3d12 PUBLIC 
-        minhook
-        d3d12
-        dxgi
-        d3dcompiler
-        delayimp.lib
-    )
+target_compile_definitions(framework_d3d12 PRIVATE 
+    FRAMEWORK_EXPORTS
+)
+target_include_directories(framework_d3d12 PUBLIC
+    ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/src/d3d12
+    ${PROJECT_SOURCE_DIR}/src/shared
+    ${PROJECT_SOURCE_DIR}/external/spdlog/include
+    ${PROJECT_SOURCE_DIR}/external/imgui
+    ${PROJECT_SOURCE_DIR}/external/imgui/backends
+)
+target_compile_definitions(framework_d3d12 PUBLIC 
+    "IMGUI_USER_CONFIG=\"GAMEPLUG_imgui_config.h\""
+)
+target_link_libraries(framework_d3d12 PUBLIC 
+    minhook
+    d3d12
+    dxgi
+    d3dcompiler
+    delayimp.lib
+)
 
-    if(MSVC)
-        target_compile_options(framework_d3d12 PRIVATE /utf-8 /FS)
-        set_target_properties(framework_d3d12 PROPERTIES LINK_FLAGS 
-            "/DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3dcompiler_47.dll"
-        )
-    endif()
-
-    add_subdirectory(d3d12)
+if(MSVC)
+    target_compile_options(framework_d3d12 PRIVATE /utf-8 /FS)
+    set_target_properties(framework_d3d12 PROPERTIES LINK_FLAGS 
+        "/DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3dcompiler_47.dll"
+    )
 endif()
+
+add_subdirectory(d3d12)
 
 # --- Post-build naming ---
 set_target_properties(framework_vk PROPERTIES OUTPUT_NAME "framework_vk")
 set_target_properties(framework_d3d11 PROPERTIES OUTPUT_NAME "framework_d3d11")
-if(CMAKE_SIZEOF_VOID_P EQUAL 8)
-    set_target_properties(framework_d3d12 PROPERTIES OUTPUT_NAME "framework_d3d12")
-endif()
+set_target_properties(framework_d3d12 PROPERTIES OUTPUT_NAME "framework_d3d12")
 
 
 # --- D3D9 / D3D10 Support (x32 only) ---

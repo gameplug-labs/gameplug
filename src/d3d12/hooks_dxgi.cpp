@@ -106,9 +106,8 @@ HRESULT STDMETHODCALLTYPE HookedResizeBuffers(
         vtable[8] = (void*)g_OriginalPresent;
         vtable[9] = (void*)g_OriginalGetBuffer;
         vtable[13] = (void*)g_OriginalResizeBuffers;
-        vtable[21] = (void*)g_OriginalPresent1;
         vtable[22] = (void*)g_OriginalPresent1;
-        vtable[31] = (void*)g_OriginalResizeBuffers1;
+        vtable[39] = (void*)g_OriginalResizeBuffers1;
         VirtualProtect(vtable, 128 * sizeof(void*), old, &old);
     }
 
@@ -121,9 +120,8 @@ HRESULT STDMETHODCALLTYPE HookedResizeBuffers(
         vtable[8] = (void*)HookedPresent;
         vtable[9] = (void*)HookedGetBuffer;
         vtable[13] = (void*)HookedResizeBuffers;
-        vtable[21] = (void*)HookedPresent1;
         vtable[22] = (void*)HookedPresent1;
-        vtable[31] = (void*)HookedResizeBuffers1;
+        vtable[39] = (void*)HookedResizeBuffers1;
         VirtualProtect(vtable, 128 * sizeof(void*), old, &old);
     }
 
@@ -166,9 +164,8 @@ HRESULT STDMETHODCALLTYPE HookedResizeBuffers1(IDXGISwapChain3* pSwapChain, UINT
         vtable[8] = (void*)g_OriginalPresent;
         vtable[9] = (void*)g_OriginalGetBuffer;
         vtable[13] = (void*)g_OriginalResizeBuffers;
-        vtable[21] = (void*)g_OriginalPresent1;
         vtable[22] = (void*)g_OriginalPresent1;
-        vtable[31] = (void*)g_OriginalResizeBuffers1;
+        vtable[39] = (void*)g_OriginalResizeBuffers1;
         VirtualProtect(vtable, 128 * sizeof(void*), old, &old);
     }
 
@@ -180,9 +177,8 @@ HRESULT STDMETHODCALLTYPE HookedResizeBuffers1(IDXGISwapChain3* pSwapChain, UINT
         vtable[8] = (void*)HookedPresent;
         vtable[9] = (void*)HookedGetBuffer;
         vtable[13] = (void*)HookedResizeBuffers;
-        vtable[21] = (void*)HookedPresent1;
         vtable[22] = (void*)HookedPresent1;
-        vtable[31] = (void*)HookedResizeBuffers1;
+        vtable[39] = (void*)HookedResizeBuffers1;
         VirtualProtect(vtable, 128 * sizeof(void*), old, &old);
     }
 
@@ -286,7 +282,7 @@ void ApplySwapChainHooks(void* pSwapChain) {
     if (!g_OriginalPresent1)
         g_OriginalPresent1 = (PFN_Present1)pVTable[22];
     if (!g_OriginalResizeBuffers1)
-        g_OriginalResizeBuffers1 = (PFN_ResizeBuffers1)pVTable[31];
+        g_OriginalResizeBuffers1 = (PFN_ResizeBuffers1)pVTable[39];
 
     // Patch original VTable memory
     DWORD old;
@@ -296,9 +292,8 @@ void ApplySwapChainHooks(void* pSwapChain) {
         pVTable[8] = (void*)HookedPresent;
         pVTable[9] = (void*)HookedGetBuffer;
         pVTable[13] = (void*)HookedResizeBuffers;
-        pVTable[21] = (void*)HookedPresent1;
         pVTable[22] = (void*)HookedPresent1;
-        pVTable[31] = (void*)HookedResizeBuffers1;
+        pVTable[39] = (void*)HookedResizeBuffers1;
         VirtualProtect(pVTable, 128 * sizeof(void*), old, &old);
 
         s_PatchedVTables.insert(pVTable);
@@ -391,7 +386,7 @@ void HandleNewFactory(IUnknown* pFactory) {
     if (SUCCEEDED(pFactory->QueryInterface(__uuidof(IDXGIFactory2), (void**)&factory2))) {
         void** pFactory2VTable = *(void***)factory2;
         MH_CreateHook(pFactory2VTable[15], (LPVOID)HookedCreateSwapChainForHwnd, (LPVOID*)&g_OriginalCreateSwapChainForHwnd);
-        MH_CreateHook(pFactory2VTable[16], (LPVOID)HookedCreateSwapChainForComposition, (LPVOID*)&g_OriginalCreateSwapChainForComposition);
+        MH_CreateHook(pFactory2VTable[24], (LPVOID)HookedCreateSwapChainForComposition, (LPVOID*)&g_OriginalCreateSwapChainForComposition);
         factory2->Release();
     }
     MH_EnableHook(MH_ALL_HOOKS);

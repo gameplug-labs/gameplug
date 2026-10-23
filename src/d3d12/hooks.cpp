@@ -119,7 +119,7 @@ void InstallDXGIHooks() {
                 void** pFactory2VTable = *(void***)factory2;
                 MH_CreateHook(pFactory2VTable[15], (LPVOID)HookedCreateSwapChainForHwnd, (LPVOID*)&g_OriginalCreateSwapChainForHwnd);
                 MH_CreateHook(
-                    pFactory2VTable[16], (LPVOID)HookedCreateSwapChainForComposition, (LPVOID*)&g_OriginalCreateSwapChainForComposition);
+                    pFactory2VTable[24], (LPVOID)HookedCreateSwapChainForComposition, (LPVOID*)&g_OriginalCreateSwapChainForComposition);
                 factory2->Release();
             }
 
@@ -140,10 +140,10 @@ void InstallDXGIHooks() {
                     // Hook ResourceBarrier (Index 26) - Most stable for discovery
                     MH_CreateHook(pListVTable[26], (LPVOID)HookedResourceBarrier, (LPVOID*)&g_OriginalResourceBarrier);
 
-                    MH_CreateHook(pListVTable[33], (LPVOID)HookedOMSetRenderTargets, (LPVOID*)&g_OriginalOMSetRenderTargets);
+                    MH_CreateHook(pListVTable[46], (LPVOID)HookedOMSetRenderTargets, (LPVOID*)&g_OriginalOMSetRenderTargets);
 
                     Logger::info(
-                        "DX Hooks: Hooked RSSetViewports (21), RSSetScissorRects (22), ResourceBarrier (26), OMSetRenderTargets (33)");
+                        "DX Hooks: Hooked RSSetViewports (21), RSSetScissorRects (22), ResourceBarrier (26), OMSetRenderTargets (46)");
                 }
             }
 

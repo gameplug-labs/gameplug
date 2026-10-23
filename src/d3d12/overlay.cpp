@@ -155,6 +155,15 @@ void SetDX12CommandQueue(ID3D12CommandQueue* pQueue) {
     }
 
     std::lock_guard<std::mutex> lock(g_QueueMtx);
+    // If we already know the swapchain queue, do not overwrite it with a secondary queue
+    if (g_currentSwapChain && g_CommandQueueOffset != 0) {
+        ID3D12CommandQueue* scQueue = *(ID3D12CommandQueue**)((uintptr_t)g_currentSwapChain + g_CommandQueueOffset);
+        if (scQueue && pQueue != scQueue) {
+            HookCommandQueue(pQueue);
+            return;
+        }
+    }
+
     if (g_pd3dCommandQueue != pQueue) {
         Logger::info("DX12: Primary Graphics Queue identified: " + std::to_string((uintptr_t)pQueue));
         g_pd3dCommandQueue = pQueue;
@@ -784,10 +793,10 @@ void OnDXPresent(IDXGISwapChain* pSwapChain) {
                 g_pd3dCommandList->Close();
 
                 ID3D12CommandList* lists[] = {g_pd3dCommandList};
-                g_pd3dCommandQueue->ExecuteCommandLists(1, lists);
+                pQueue->ExecuteCommandLists(1, lists);
 
                 // Sync to avoid race conditions with next frame
-                SyncDX12Capture(g_pd3dCommandQueue);
+                SyncDX12Capture(pQueue);
 
                 // Finalize Frame Capture: No Release needed for cached backbuffer
                 if (g_lastEngineRenderTarget == pBackBuffer) {

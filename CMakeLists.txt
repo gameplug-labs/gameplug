@@ -9,9 +9,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # which uses a single CRT heap. Mixing /MDd and /MD across DLL boundaries causes crashes.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL" CACHE STRING "" FORCE)
 
-if(WIN32)
-    add_compile_definitions(VK_USE_PLATFORM_WIN32_KHR)
-endif()
+# if(WIN32)
+#     add_compile_definitions(VK_USE_PLATFORM_WIN32_KHR)
+# endif()
 
 include_directories(${PROJECT_SOURCE_DIR}/external/spdlog/include)
 
@@ -26,7 +26,10 @@ set(BIN_OUTPUT_DIR "${PROJECT_SOURCE_DIR}/bin/${BIN_ARCH}")
 file(MAKE_DIRECTORY ${BIN_OUTPUT_DIR})
 
 # External dependencies
-add_subdirectory(external/volk)
+find_package(Vulkan QUIET)
+if(Vulkan_FOUND OR DEFINED ENV{VULKAN_SDK})
+    add_subdirectory(external/volk)
+endif()
 add_subdirectory(external/minhook)
 
 # Framework and Vulkan Subprojects

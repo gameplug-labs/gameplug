@@ -12,44 +12,44 @@ set(SHARED_SOURCES
     ${PROJECT_SOURCE_DIR}/external/imgui/backends/imgui_impl_win32.cpp
 )
 
-# --- Vulkan Framework ---
-add_library(framework_vk STATIC
-    ${SHARED_SOURCES}
-    vk/framework.cpp
-    vk/overlay.cpp
-    vk/image_tracker.cpp
-    vk/dispatch.cpp
-    vk/jitter_helper.cpp
-    ${PROJECT_SOURCE_DIR}/sub_projects/upscaler-manager/vk/upscaler_manager.cpp
-    ${PROJECT_SOURCE_DIR}/external/imgui/backends/imgui_impl_vulkan.cpp
-)
+# # --- Vulkan Framework ---
+# add_library(framework_vk STATIC
+#     ${SHARED_SOURCES}
+#     vk/framework.cpp
+#     vk/overlay.cpp
+#     vk/image_tracker.cpp
+#     vk/dispatch.cpp
+#     vk/jitter_helper.cpp
+#     ${PROJECT_SOURCE_DIR}/sub_projects/upscaler-manager/vk/upscaler_manager.cpp
+#     ${PROJECT_SOURCE_DIR}/external/imgui/backends/imgui_impl_vulkan.cpp
+# )
 
-target_compile_definitions(framework_vk PRIVATE 
-    FRAMEWORK_EXPORTS
-    GAMEPLUG_VULKAN
-    GAMEPLUG_SKYRIM
-)
-target_include_directories(framework_vk PUBLIC
-    ${PROJECT_SOURCE_DIR}/include
-    ${PROJECT_SOURCE_DIR}/src/vk
-    ${PROJECT_SOURCE_DIR}/src/shared
-    ${PROJECT_SOURCE_DIR}/sub_projects/upscaler-manager/vk
-    ${PROJECT_SOURCE_DIR}/external/volk
-    ${PROJECT_SOURCE_DIR}/external/spdlog/include
-    ${PROJECT_SOURCE_DIR}/external/imgui
-    ${PROJECT_SOURCE_DIR}/external/imgui/backends
-)
-target_compile_definitions(framework_vk PUBLIC 
-    VK_NO_PROTOTYPES
-    IMGUI_IMPL_VULKAN_NO_PROTOTYPES
-    "IMGUI_USER_CONFIG=\"GAMEPLUG_imgui_config.h\""
-)
-target_link_libraries(framework_vk PUBLIC volk minhook)
+# target_compile_definitions(framework_vk PRIVATE 
+#     FRAMEWORK_EXPORTS
+#     GAMEPLUG_VULKAN
+#     GAMEPLUG_SKYRIM
+# )
+# target_include_directories(framework_vk PUBLIC
+#     ${PROJECT_SOURCE_DIR}/include
+#     ${PROJECT_SOURCE_DIR}/src/vk
+#     ${PROJECT_SOURCE_DIR}/src/shared
+#     ${PROJECT_SOURCE_DIR}/sub_projects/upscaler-manager/vk
+#     ${PROJECT_SOURCE_DIR}/external/volk
+#     ${PROJECT_SOURCE_DIR}/external/spdlog/include
+#     ${PROJECT_SOURCE_DIR}/external/imgui
+#     ${PROJECT_SOURCE_DIR}/external/imgui/backends
+# )
+# target_compile_definitions(framework_vk PUBLIC 
+#     VK_NO_PROTOTYPES
+#     IMGUI_IMPL_VULKAN_NO_PROTOTYPES
+#     "IMGUI_USER_CONFIG=\"GAMEPLUG_imgui_config.h\""
+# )
+# target_link_libraries(framework_vk PUBLIC volk minhook)
 
-if(MSVC)
-    target_compile_options(framework_vk PRIVATE /utf-8 /FS)
-endif()
-add_subdirectory(vk)
+# if(MSVC)
+#     target_compile_options(framework_vk PRIVATE /utf-8 /FS)
+# endif()
+# add_subdirectory(vk)
 
 # --- D3D11 Framework ---
 add_library(framework_d3d11 STATIC
@@ -141,7 +141,7 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 8)
 endif()
 
 # --- Post-build naming ---
-set_target_properties(framework_vk PROPERTIES OUTPUT_NAME "framework_vk")
+# set_target_properties(framework_vk PROPERTIES OUTPUT_NAME "framework_vk")
 set_target_properties(framework_d3d11 PROPERTIES OUTPUT_NAME "framework_d3d11")
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
     set_target_properties(framework_d3d12 PROPERTIES OUTPUT_NAME "framework_d3d12")

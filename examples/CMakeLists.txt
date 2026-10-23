@@ -66,6 +66,7 @@ add_custom_command(TARGET minimal_plugin POST_BUILD
     COMMENT "Copying minimal_plugin to bin/${BIN_ARCH}/gameplug/plugins"
 )
 
+if(TARGET volk)
 # 4. Graphic API Plugin
 add_library(vk_graphic_api_plugin SHARED 
     vk_graphic_api_plugin.cpp
@@ -87,3 +88,4 @@ add_custom_command(TARGET vk_graphic_api_plugin POST_BUILD
             "${BIN_OUTPUT_DIR}/gameplug/plugins/vk_graphic_api.dll"
     COMMENT "Copying vk_graphic_api_plugin to bin/${BIN_ARCH}/gameplug/plugins"
 )
+endif()

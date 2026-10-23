@@ -33,6 +33,9 @@ struct GamePlugSharedFrameData {
     float currViewProj[16];
     float prevViewProj[16];
     float invCurrViewProj[16];
+    uint32_t fgRequestDoublePresent;
+    uint32_t fgPresentPhase;
+    uint32_t fgVulkanPresentDone;
 };
 
 struct GamePlugUpscalerInterface {
@@ -63,7 +66,8 @@ struct GamePlugUpscalerInterface {
     void(__cdecl* OnRenderFrame)(uintptr_t commandBuffer, uint64_t source, uint64_t target, uint32_t targetFormat, uint32_t width,
         uint32_t height, uint32_t renderWidth, uint32_t renderHeight, uint64_t depth, uint32_t depthFormat, uint64_t motionVectors,
         uint32_t motionVectorFormat, float jitterX, float jitterY, float cameraNear, float cameraFar, float cameraFov,
-        float viewSpaceToMetersFactor, bool invertedDepth, bool hdr);
+        float viewSpaceToMetersFactor, bool invertedDepth, bool hdr,
+        uint32_t matrixFlags, const float* currViewProj, const float* prevViewProj, const float* invCurrViewProj);
 
     // Metadata for configuration fields
     struct FieldDescriptor {
@@ -83,6 +87,16 @@ struct GamePlugUpscalerInterface {
 
     // Returns the resolved interpolated frame image (optional, used by VK plugin)
     uint64_t(__cdecl* GetInterpolatedFrameImage)();
+
+    // [v2] Called when a Vulkan swapchain is created so the plugin can wire up the SDK FGSC.
+    // Parameters: swapchain, gameQueue, gameQueueFamily, surface, pCreateInfo (all as uintptr_t / opaque pointers)
+    void(__cdecl* OnSwapchainCreated)(uintptr_t swapchain, uintptr_t gameQueue,
+                                      uint32_t gameQueueFamily, uintptr_t surface,
+                                      const void* pCreateInfo);
+
+    // [v2] Returns the SDK's vkQueuePresentKHR replacement function pointer (or nullptr).
+    uintptr_t(__cdecl* GetSdkPresentFunction)();
+
 };
 
 #define GamePlug_UPSCALER_INTERFACE_VERSION 1
